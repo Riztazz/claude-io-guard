@@ -7,8 +7,9 @@ plugin's marketplace: github.com/Riztazz/claude-io-guard.
 ## Layout
 
 The tasks build most of this. Today the marketplace, the plugin's manifest, hooks, launcher, stub server and
-stub skill, `tests/` with its fixtures and helpers, `tools/probes/`, `.github/workflows/ci.yml`, `.claude/`,
-`docs/`, `workbench/` and this file exist.
+stub skill, the `ioguard` package's runtime core (`lib/` and the pipeline in `checks/`, with no check yet),
+`tests/` with its fixtures and helpers, `tools/probes/`, `.github/workflows/ci.yml`, `.claude/`, `docs/`,
+`workbench/` and this file exist.
 
 ```
 .claude-plugin/marketplace.json   the catalog

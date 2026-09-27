@@ -39,8 +39,9 @@ primary fix, and a repair here is the exception.
      - `ENCODING_INVALID`
      - `NON_ASCII_ADDED`, by the repository's policy in `io-guard.json`
      - `INDENT_MISMATCH`
-3. **Per-language verify.** Each project sets it per extension in `io-guard.json`: one command, run on the changed
-   file. Examples:
+3. **Per-language verify.** The user sets it per extension in their own `config.json`, and a project's
+   `io-guard.json` may not set it (D24): one command, run on the changed file. A command for one project only is
+   keyed in the user's config by the project's root. Examples:
    - `python -m py_compile`
    - `node --check`
    - a JSX parse
@@ -61,3 +62,5 @@ primary fix, and a repair here is the exception.
 - Each byte fault injected into a fixture after a simulated write is reported, in CI on both platforms.
 - Every repair is logged, counted and shown to the agent with the re-read line.
 - Live on Windows, an Edit after a repair succeeds once the file is read again.
+- **A project file that sets `verify` is dropped whole** with a scope error naming the key and the user's
+  `config.json` as the place to set it, and no command from it runs (D24). A test proves both, in CI.

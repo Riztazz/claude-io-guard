@@ -35,6 +35,7 @@ which it answers, is `docs/design/review.md`. Both reviews use the task numbers 
 | D21 | The lead's Mac is down from 2026-09-27 for the foreseeable future. Live checks run on Windows only, CI still runs macOS on GitHub's runners, and the live macOS checks wait in task 36. Code assumes the Mac has Python 3.14 | Nothing can be checked live on a Mac until it is back |
 | D22 | Telemetry copied into a clone goes in `events/`, and a report page written into a clone goes in `reports/`. Both are gitignored at the root, beside `corpus/`. Chosen by the lead on 2026-09-27 | No task named an export path, and D8 keeps telemetry out of git. A bare `*.jsonl` would also hide the conformance scripts in `tests/mcp/requests/` |
 | D23 | GitHub Pages serves `docs/` from `main`, and the README links the drawing there: `https://riztazz.github.io/claude-io-guard/architecture.svg`. `docs/.nojekyll` makes Pages serve the folder as files. Chosen by the lead on 2026-09-27 | GitHub shows an SVG in a README, and in the file view, as an image with no script. `raw.githubusercontent.com` and `gist.githubusercontent.com` both send `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox`, which blocks it too. Pages sends no such header, checked with curl on 2026-09-27 |
+| D24 | A project's `io-guard.json` never makes io-guard run a program. `verify` commands come only from the user's `config.json`, where a command for one project is keyed by the project's root. Set on 2026-09-27, when the lead asked for the security issue raised in task 07 to be handled | A cloned repository must not execute code through the guard (`architecture.md`, section 12), and the design's first draft let a project file add `verify` commands, which io-guard would run on every write |
 
 ## Surfaces
 
@@ -359,10 +360,11 @@ Surveyed on 2026-09-27, every tracked text file.
 | SmartTablesHost | autocrlf=true. clang-format UseTab: Never, LineEnding: CRLF | 217 / 0 / 0 | 0 | 0 / 206 / 0 | 23 / 37 |
 | UNREAL-SHARED | autocrlf=true. clang-format UseTab: Always, LineEnding: CRLF | 0 / 74 / 0 | 0 | 71 / 0 / 0 | 1 / 183 |
 
-## Error codes (draft, task 07 fixes the final list in `lib/results.py`)
+## Error codes
 
-`docs/design/architecture.md`, section 2, adds `REWRITE_CONFLICT`, `BUDGET_EXCEEDED`, `HANDLE_EXPIRED`,
-`RULE_DENIED`, `RULE_ASKED`, `SERVER_DOWN` and `CANCELLED` to the list below.
+Task 07 settled the list in `docs/design/architecture.md`, section 2, with the task that adds each code.
+`lib/results.py` holds a code once something produces it, and on 2026-09-27 that is `GUARD_ERROR`,
+`REWRITE_CONFLICT` and `BUDGET_EXCEEDED`. The table below is the draft the list came from.
 
 Every result the guard returns has this shape:
 

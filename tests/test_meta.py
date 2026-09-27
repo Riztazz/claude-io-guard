@@ -5,10 +5,20 @@ import unittest
 from collections import defaultdict
 from pathlib import Path
 
+from ioguard.checks.registry import default_registry
+from ioguard.lib.results import Code
 from tests import REPO
 from tests.support import fixtures
+from tests.support.checks import make_check
+from tests.support.meta import checks_without_test_modules, codes_without_tests
 
 TESTS_DIR = REPO / "tests"
+
+
+def test_sources() -> dict[str, str]:
+    """Every test module but this one, which names codes only to check the others."""
+    return {path.name: path.read_bytes().decode("utf-8") for path in TESTS_DIR.rglob("test_*.py")
+            if path.name != "test_meta.py"}
 
 
 def test_methods() -> dict[str, list[str]]:
@@ -33,6 +43,27 @@ class TestNamesAreUniqueAcrossTheSuite(unittest.TestCase):
     def test_the_scan_finds_the_tests_in_this_file(self):
         self.assertIn("test_no_test_method_name_appears_twice", test_methods(),
                       "the duplicate scan reads every test module, this one included")
+
+
+class EveryCodeAndCheckHasATest(unittest.TestCase):
+    def test_every_code_is_named_by_a_test(self):
+        missing = codes_without_tests([code.value for code in Code], test_sources())
+        self.assertEqual(missing, [], "every code in CODES has a test that asserts it was produced")
+
+    def test_every_registered_check_has_a_test_module(self):
+        missing = checks_without_test_modules(default_registry().classes.values(), TESTS_DIR)
+        self.assertEqual(missing, [], "every shipped check has tests/checks/test_<module>.py")
+
+    def test_the_code_scan_reports_a_code_no_test_names(self):
+        sources = {"test_x.py": "self.assertEqual(result.code, Code.GUARD_ERROR)"}
+        self.assertEqual(codes_without_tests(["GUARD_ERROR", "NEVER_TESTED"], sources), ["NEVER_TESTED"],
+                         "a code no test names makes the meta test fail")
+
+    def test_the_check_scan_reports_a_check_without_a_test_module(self):
+        orphan = make_check("demo.orphan", module="ioguard.checks.nothing_tests_this")
+        self.assertEqual(checks_without_test_modules([orphan], TESTS_DIR),
+                         ["demo.orphan (ioguard.checks.nothing_tests_this)"],
+                         "a registered check with no test module makes the meta test fail")
 
 
 class FixturesKeepTheirRecordedBytes(unittest.TestCase):

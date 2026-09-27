@@ -24,11 +24,10 @@ File one kit ticket for each change below, in `UNREAL-SHARED/tasks/open/`:
 2. `tools/CLAUDE.md.template` drops the rules io-guard enforces, and points at the io-guard skill instead.
 3. The kit's `.clang-format` sets `LineEnding: DeriveLF` in place of `CRLF`. All 74 kit C++ files are LF (BYT-3).
 4. io-guard is installed on the lead's machine and enabled for the four projects and this repository.
-5. Each project gets its own `.claude/io-guard.json`, holding:
-   - the LFS-heavy trees the guard should skip
-   - the verify command for each file extension
+5. Each project gets its own `.claude/io-guard.json`, holding the LFS-heavy trees the guard should skip.
 
-   The kit as an extra write root goes in the user's config, because a project file cannot add a root.
+   The lead's own config holds two things a project file cannot set: the kit as an extra write root, and each
+   project's verify command per file extension, keyed by the project's root (D24).
 
 ## Where
 

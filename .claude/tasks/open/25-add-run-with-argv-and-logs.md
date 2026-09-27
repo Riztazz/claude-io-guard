@@ -57,3 +57,8 @@ A run tool is also a way around the user's rules. Settings cannot match an MCP t
 
 - The Tasks extension (`io.modelcontextprotocol/tasks`) has no Claude client yet (`context.md`), so background runs
   use handles. Task 04's compatibility matrix tracks when a client declares it.
+- **`noise_patterns` from a project file are regular expressions io-guard runs, and a cloned repository writes
+  them.** Python's `re` has no timeout, so a pattern with nested repetition can stall a call for as long as the
+  hook allows, 600 s by default. Bound them before `io.read_log` applies any: a length cap and a refusal of nested
+  quantifiers at config load, or project patterns matched as plain substrings while only the user's own patterns
+  are regexes. Raised with D24 on 2026-09-27, and the lead asked for it to be kept on record.

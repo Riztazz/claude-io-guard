@@ -143,6 +143,7 @@ class Event:
     agent_id: Optional[str]
     surface: Surface
     raw: Mapping[str, Any]
+    platform: Platform
 
     command: Optional[str]          # Bash and PowerShell, from tool_input["command"]
     file_path: Optional[Path]       # Edit, Write, Read, normalised once
@@ -152,10 +153,17 @@ class Event:
     content: Optional[str]
 
     @classmethod
-    def from_hook_json(cls, raw: Mapping[str, Any], surface: Surface) -> "Event": ...
+    def from_hook_json(cls, raw: Mapping[str, Any], surface: Surface,
+                       platform: Optional[Platform] = None) -> "Event": ...
     @classmethod
-    def from_fields(cls, fields: Mapping[str, str]) -> "Event": ...
+    def from_fields(cls, fields: Mapping[str, str], platform: Optional[Platform] = None) -> "Event": ...
+    def with_tool_input(self, tool_input: Mapping[str, Any]) -> "Event": ...
 ```
+
+An event the harness sends that io-guard cannot read, such as an unknown `hook_event_name` or no `cwd`, raises
+`EventError`, and the entry point fails open around it. `tool_input` is read-only, and `with_tool_input` gives
+the pipeline a new event with the derived fields worked out again. `platform` defaults to `platform.detect()`,
+and a test passes another to read an event as the other platform would.
 
 `from_hook_json` reads the harness JSON. `from_fields` rebuilds an event from the map an `mcp_tool` hook passes.
 Every value in that map arrives as a string, and an absent one as an empty string (task 03, item 12). The scalars
@@ -193,13 +201,18 @@ class Probe:
     pwsh: Optional[ToolVersion]
     python: ToolVersion
     git: Optional[ToolVersion]
-    console_encoding: str
+    console_encoding: Optional[str]
     fs_case_insensitive: bool
-    transport_budget: Optional[int]  # bytes, None where no cut exists
-    halving: bool                    # the Bash tool halves backslashes
+    transport_budget: Optional[int]  # bytes, None where no cut exists or none was measured
+    halving: Optional[bool]          # the Bash tool halves backslashes, None when not probed
     claude_code_version: Optional[str]
     dirty_at_start: tuple[Path, ...]
-    taken_at: datetime
+    taken_at: Optional[datetime]
+
+    @classmethod
+    def unprobed(cls, platform: Platform) -> "Probe": ...   # before task 10's probe: the platform and Python
+    @classmethod
+    def from_json(cls, raw: Mapping[str, Any]) -> "Probe": ...
 
 class SessionState:
     read_hashes: MutableMapping[Path, str]      # sha256 of the bytes the agent last saw
@@ -207,6 +220,9 @@ class SessionState:
     warned: MutableSet[str]                      # one user warning per key per session
     budget_override: Optional[int]               # learned from an EOF failure
     last_failed_build: Optional[datetime]
+    lock: RLock                                  # guards every field
+
+    def first_time(self, key: str) -> bool: ...  # True once per key, for a once-per-session warning
 
 @dataclass(frozen=True)
 class Context:
@@ -218,17 +234,21 @@ class Context:
     clock: Clock
     session: SessionState
     telemetry: Telemetry
+    config_report: Optional[LoadReport] = None   # what loading the config found, for the one user message
 
     @classmethod
-    def live(cls, data_dir: Path, project: Path) -> "Context": ...
+    def live(cls, data_dir: Path, project: Path,
+             check_keys: Optional[Mapping[str, Mapping[str, ConfigKey]]] = None) -> "Context": ...
     @classmethod
-    def fake(cls, **overrides: Any) -> "Context": ...
+    def fake(cls, files: Optional[Mapping[Path, bytes]] = None, **overrides: Any) -> "Context": ...
 ```
 
-`Context.live` builds the real ports and loads the probe and the config from `${CLAUDE_PLUGIN_DATA}`.
-`Context.fake` builds in-memory ports for tests, with a fake file system that takes a mapping of path to
-bytes. A check receives a `Context` and reads it. No check writes into it except `session`, and only through
-its typed fields.
+`Context.live` builds the real ports and loads the probe and the config from `${CLAUDE_PLUGIN_DATA}`. `lib`
+cannot import the registry, so the caller passes `check_keys`, the registry's `keys()`, for the config to
+validate. A probe field nobody has measured is `None`, never a guess. `Context.fake` builds in-memory ports
+for tests from `lib.fakes`: a file system that takes a mapping of path to bytes, a git that answers what it
+was given, and a clock that moves only when told. A check receives a `Context` and reads it. No check writes
+into it except `session`, and only through its typed fields.
 
 ### Result and the codes
 
@@ -290,9 +310,29 @@ class Result:
 ```
 
 `CODES` is the one declaration. The `Code` enum, the skill's code table, the telemetry vocabulary and the
-meta test that demands one producing test per code all read it. The full list is the draft in `context.md`
-plus `REWRITE_CONFLICT`, `BUDGET_EXCEEDED`, `HANDLE_EXPIRED`, `RULE_DENIED`, `RULE_ASKED`, `SERVER_DOWN` and
-`CANCELLED`.
+meta test that demands one producing test per code all read it. `Result.of(code, message, tool, platform)`
+builds a result with the severity its code declares.
+
+**`CODES` holds the codes that something already produces.** The meta test fails on a code no test names, so
+a code enters `CODES` in the task that builds its check, with that check's tests. Task 07 settled the full
+list below, and a task that needs a code not on it adds it here in the same change.
+
+| Layer | Codes | Task |
+|---|---|---|
+| Location | `OUTSIDE_WRITE_ROOT`, `LINKED_PATH`, `READ_ONLY`, `FILE_LOCKED` | 19 |
+| Transport | `BODY_MOVED_TO_FILE`, `TRANSPORT_BUDGET`, `BACKSLASH_TRANSPORT` | 11 |
+| Transport | `SHELL_WRITE` | 12 |
+| Transport | `BACKTICK_IN_DOUBLE_QUOTES`, `TRAILING_BACKSLASH_QUOTE`, `DIALECT_MISMATCH`, `PIPE_HIDES_EXIT`, `INLINE_SCRIPT_INVALID` | 13 |
+| Transport | `MSYS_PATH`, `RESERVED_NAME` | 14 |
+| Bytes | `EOL_CONVERTED`, `BOM_RESTORED`, `TRAILING_WS_STRIPPED`, `INDENT_MISMATCH` | 17 |
+| Bytes | `EOL_MISMATCH`, `BOM_CHANGED`, `ENCODING_INVALID`, `NON_ASCII_ADDED`, `CONTROL_BYTES_ADDED`, `SIZE_COLLAPSED`, `UNINTENDED_CHANGE` | 18 |
+| Stale | `ANCHOR_NOT_FOUND`, `ANCHOR_AMBIGUOUS`, `STALE_VIEW`, `NOT_READ` | 20 |
+| Stale | `TOUCHED_BY_SHELL` | 21 |
+| Read | `PATH_NOT_FOUND`, `READ_TOO_LARGE`, `PATTERN_INVALID`, `SEARCH_TOO_BROAD` | 20 |
+| Output | `EXIT_BENIGN`, `OUTPUT_SAVED`, `ERRORS_IN_OUTPUT`, `MOJIBAKE` | 22 |
+| Internal | `GUARD_ERROR`, `REWRITE_CONFLICT`, `BUDGET_EXCEEDED` | 07, in `CODES` |
+| Internal | `SERVER_DOWN`, `HANDLE_EXPIRED`, `CANCELLED` | 23 |
+| Internal | `RULE_DENIED`, `RULE_ASKED` | 25 |
 
 ### Decision and Rewrite
 
@@ -398,11 +438,13 @@ class Cost(Enum):
     EXPENSIVE = 500    # runs a subprocess
 
 @dataclass(frozen=True)
-class ConfigKey:
+class ConfigKey:                             # in lib.config, which validates it and cannot import checks
     type: type
     default: Any
     doc: str
     project_may_set: bool = True
+    choices: tuple = ()                      # the values it takes, or () for any of its type
+    project_forbids: tuple = ()              # values a project file may not set
 
 @dataclass(frozen=True)
 class CheckMeta:
@@ -448,18 +490,24 @@ class Registry:
     def select(self, event: Event, ctx: Context) -> tuple[Check, ...]: ...
     def ids(self) -> tuple[str, ...]: ...
 
+CHECKS: tuple[type[Check], ...] = (SessionProbe, Location, TransportBody, ShellWrites, Lint, WinPaths,
+                                   ConformWrite, ConformEdit, VerifyWrite, Touched, ReadProfile,
+                                   Diagnose, CommandResults, CommitPolicy)
+
 def default_registry() -> Registry:
     registry = Registry()
-    for check_class in (SessionProbe, Location, TransportBody, ShellWrites, Lint, WinPaths,
-                        ConformWrite, ConformEdit, VerifyWrite, Touched, ReadProfile,
-                        Diagnose, CommandResults, CommitPolicy):
+    for check_class in CHECKS:
         registry.register(check_class)
     return registry
 ```
 
-`register` validates at import: a unique id, every code in `CODES`, every `after` id known, every config key
-typed, and `writes` empty when the check declares no rewrite. A test registers one class into an empty
-registry to test a check alone. No import-time discovery, no decorators, one list.
+`register` validates as each check joins: a unique id, at least one event and one platform, every code a
+member of `Code`, every `after` id already registered, and every config key with a readable type and a default
+of that type, none of them named `enabled`, which every check gets. A check that runs after another joins
+`CHECKS` after it, so the order has no cycle by construction. `writes` is enforced when the check runs: a
+rewrite whose fields are not all in `writes` is a bug, and the pipeline fails open around it. Each check joins
+`CHECKS` in the task that builds it. A test registers one class into an empty registry to test a check alone.
+No import-time discovery, no decorators, one list.
 
 ### The pipeline
 
@@ -522,7 +570,7 @@ Each module lists its public functions. Every one takes values and returns value
 # bytesio.py
 def read_bytes(path: Path, limit: Optional[int] = None) -> bytes
 def write_atomic(path: Path, data: bytes, retries: int = 5) -> WriteReport
-def would_collapse(before: int, after: int) -> bool
+def would_collapse(before: int, after: int) -> bool          # task 18, with its policy key
 
 # profile.py
 def profile(data: bytes) -> Profile
@@ -562,13 +610,15 @@ def same_file(a: Path, b: Path, platform: Platform) -> bool
 class Git(GitPort): ...                                     # every call: -c core.quotepath=false, -z, timeout
 def parse_status(raw: bytes) -> GitStatus
 def parse_ranges(raw: bytes) -> tuple[LineRange, ...]
+def parse_attributes(raw: bytes) -> dict[str, str]
 
 # locks.py
 def holders(path: Path, platform: Platform) -> tuple[Process, ...]
 def file_lock(path: Path, data_dir: Path, wait_s: float = 5.0) -> ContextManager[None]  # across processes
 
 # proc.py
-def run(argv: Sequence[str], cwd: Path, env: Mapping[str, str], timeout_s: float) -> RunResult
+def run(argv: Sequence[str], cwd: Path, env: Optional[Mapping[str, str]] = None,
+        timeout_s: float = 10.0) -> RunResult                # a timeout or a missing program is a result
 def background(argv: Sequence[str], cwd: Path, env: Mapping[str, str], log: Path) -> Pump
 def interpreter_for(lang: str, probe: Probe) -> Optional[Sequence[str]]
 
@@ -578,13 +628,16 @@ def render(result: Result) -> str
 def render_many(results: Sequence[Result]) -> str
 
 # config.py
-def defaults() -> Config
-def load(layers: Sequence[Path], registry_keys: Mapping[str, Mapping[str, ConfigKey]]) -> LoadReport
-def validate(raw: Mapping[str, Any], scope: Scope) -> tuple[ConfigError, ...]
-def merge(base: Config, over: Config) -> Config
+def defaults(check_keys: Optional[Mapping[str, Mapping[str, ConfigKey]]] = None) -> Config
+def load(layers: Sequence[ConfigLayer], check_keys: Mapping[str, Mapping[str, ConfigKey]]) -> LoadReport
+def validate(raw: Any, scope: Scope, keys: Mapping[str, ConfigKey],
+             file: Optional[Path] = None) -> tuple[ConfigError, ...]
+def merge(base: Mapping[str, Any], over: Mapping[str, Any]) -> dict[str, Any]   # on dotted keys
 
 # decisions.py
 def compose(rewrites: Sequence[Rewrite], tool_input: Mapping[str, Any]) -> ComposeResult
+def conflict_with(rewrite: Rewrite, applied: Sequence[Rewrite]) -> Optional[Rewrite]
+def apply_one(rewrite: Rewrite, tool_input: Mapping[str, Any]) -> dict   # RewriteError on an undeclared field
 
 # telemetry.py
 class Telemetry:
@@ -643,7 +696,9 @@ Four layers merge in this order, and a later layer overrides an earlier one key 
 | Project local | `<project>/.claude/io-guard.local.json`, gitignored | no |
 
 **Every policy value is a key here, with its default in code (D16).** A number that decides behaviour and has no
-key is a defect. The values above are the defaults the lead set on 2026-09-27.
+key is a defect. The values above are the defaults the lead set on 2026-09-27. A key enters `lib.config` with
+the code that reads it, because a key nothing reads is a validation error in waiting. Task 07 defined
+`schema`, `pipeline.*`, `transport.rewrite_mode.*` and `telemetry.*`, and each other key arrives with its check.
 
 **The rewrite mode is the user's (D12).** For each permission mode the user layer sets `refuse`, `ask` or `allow`.
 In `refuse` the call is refused and the reason carries the corrected command, so the model reruns it and the
@@ -651,10 +706,12 @@ auto-mode classifier judges it. In `ask` the user sees the corrected command. In
 classifier sees it. `/plugin configure io-guard` cannot set nested keys, so the user edits `config.json`, calls
 `io.config`, or uses the dashboard page, and the README shows each.
 
-A project file restricts and never widens. It disables a check, adds `skip_trees`, `verify` commands and
-`noise_patterns`, and narrows `budget_bytes`. It cannot add `write_roots.extra`, set `rewrite_mode` to
+A project file restricts and never widens. It disables a check, adds `skip_trees` and `noise_patterns`, and
+narrows `budget_bytes`. It cannot add `write_roots.extra`, set `verify` commands, set `rewrite_mode` to
 `allow`, or turn telemetry off. `ConfigKey.project_may_set` marks each check key. The scope rule exists
-because a cloned repository must not be able to point writes outside itself or approve commands.
+because a cloned repository must not be able to point writes outside itself, approve commands, or make io-guard
+run a program (D24). A `verify` command is a program io-guard starts, so only the user's own `config.json` names
+one, and a command for one project is keyed there by the project's root (task 18).
 
 Loading happens once per process and fails loudly. `validate` reports an unknown key with the file, the key
 and the nearest known key, a type mismatch with the expected type, and a scope violation with the layer that
@@ -1079,8 +1136,9 @@ Claude Code version and the date of the last confirmation. Task 04 owns it.
 
 Three kinds of extension, with a different answer each.
 
-- **Policy in config.** Every project sets patterns, verify commands, skip trees, noise patterns and check
-  options in `io-guard.json`. This is the intended extension point and it needs no code.
+- **Policy in config.** Every project sets patterns, skip trees, noise patterns and check options in
+  `io-guard.json`, and the user sets verify commands in `config.json` (D24). This is the intended extension
+  point and it needs no code.
 - **User-scope checks.** A directory `${CLAUDE_PLUGIN_DATA}/checks/` holds modules that subclass `Check` and
   declare `CHECK_API = 1`. The registry loads them only when the user config sets
   `extensions.user_checks: true`, and a module declaring another `CHECK_API` is skipped with a warning. The
