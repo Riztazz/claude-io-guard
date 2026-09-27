@@ -87,6 +87,10 @@ becomes a path under Git's install folder, a lone `/F` becomes `F:/`, and `/p:x`
 `MSYS2_ARG_CONV_EXCL` keeps the prefixes it names while `/c/...` and `/tmp/...` still convert, and
 `MSYS_NO_PATHCONV=1` stops all of them. `cmd /c` runs nothing, and `2>nul` writes a real file named `nul`.
 
+Task 16's `live-read-profile` probe passed on the desktop's 2.1.281 and the CLI 2.1.283: after a Read of a
+BOM and CRLF file, the model quoted "PostToolUse:Read hook additional context: io-guard: CRLF, BOM, UTF-8,
+tabs, 2 lines". The check adds 12.8 ms after a Read of a 1 MB file.
+
 Rules through a junction, checked on 2026-09-27 with Claude Code 2.1.281 and 2.1.283:
 
 - **Claude Code loads a rule, or an `@` import, only when its real path is inside the project.** A junction's real

@@ -42,7 +42,7 @@ reference names no version for that, so the floor rests on the probes instead. O
 | PreToolUse `updatedInput` with `allow` runs the new input, byte-exact for Write | 2.1.281 | `rewrite-allow`, `write-bytes`, `edit-extend` | Refuse, with the fixed call in the reason |
 | `updatedInput` with `ask` puts the new input in the permission prompt | 2.1.281 | `ask-prompt`, the desktop check | Refuse instead of asking |
 | A hook's `allow` skips the auto-mode classifier | 2.1.281 | `auto-control`, `auto-allow` | Nothing changes. `refuse` is already the auto-mode default (D12) |
-| PostToolUse `additionalContext` reaches the model | 2.1.281 | `read-context` | The file's profile only in `io.read` (task 16) |
+| PostToolUse `additionalContext` reaches the model | 2.1.281 | `read-context`, `live-read-profile` | The file's profile only in `io.read` (task 16) |
 | PreToolUse `additionalContext` reaches the model, with or without a permission decision | 2.1.281 | `live-answers` | Say it after the call, in PostToolUse |
 | `${tool_response}` and `${error}` substitute into an `mcp_tool` hook's map as JSON text and plain text | 2.1.281 | `guard-fields` | PostToolUse checks see no output (tasks 18, 21, 22) |
 | A 145,599-byte Write arrives whole in `${tool_input}` | 2.1.283 | `guard-large` | A large Write goes unchecked |

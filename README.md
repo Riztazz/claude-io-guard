@@ -3,9 +3,10 @@
 A Claude Code plugin that checks what an agent sends to the file and shell tools, fixes what it safely can, and
 returns a structured error for the rest. One codebase runs on Windows and macOS.
 
-**Status: in build.** The plugin installs, and its hooks answer every file and shell call. Five checks run so
-far: the session probe, the Bash body move, the shell-write refusal, the quoting and dialect lint, and the Git
-Bash path fix. The build plan is in `.claude/tasks/`, and this page describes the plugin the plan builds.
+**Status: in build.** The plugin installs, and its hooks answer every file and shell call. Six checks run so
+far: the session probe, the Bash body move, the shell-write refusal, the quoting and dialect lint, the Git Bash
+path fix, and the profile line after a Read. The build plan is in `.claude/tasks/`, and this page describes the
+plugin the plan builds.
 
 ## Five fixes, by example
 
@@ -70,6 +71,7 @@ The numbers come from 110,379 file and shell tool calls in 738 transcripts of re
 |---|---|---|
 | On Windows, a Bash command longer than about 7.8 KB fails with "unexpected EOF", and a `\\` that no double quote follows loses a backslash | 122 failed commands, about 262k tokens | Moves a heredoc or `python -c` body into a file, byte-exact, and runs the file. Warns about a halved `\\` it cannot move |
 | Write turns a CRLF file into LF and drops its BOM, and Edit trims trailing spaces from the new text | 328 "LF will be replaced by CRLF" warnings | Rewrites the input in the file's own endings, BOM and indent before it runs |
+| Read shows a CRLF file, an LF file and a file with a BOM the same way | Agents ran a script of their own 107 times to find out | Adds one line after each Read, such as `io-guard: CRLF, BOM, UTF-8, tabs, 1,284 lines`, and a warning for mixed endings, invalid UTF-8, NUL or private-use bytes |
 | A failed Edit says "not found" and nothing else | 67 anchor misses, 112 stale reads | Returns the closest match, the file's endings and a corrected call |
 | `sed -i`, redirects and scripts write files around the edit tools, so no check and no rewind sees them | 2,876 shell writes | Refuses a write to a file git tracks, names the tool that does it safely, and warns about a script created inside the repository |
 | Bash reads a command differently from what was meant: a Windows path's last backslash escapes its quote, a backtick inside double quotes runs as a command, PowerShell syntax goes to the Bash tool, a Python body doesn't compile | 29 failed commands, and 11 more that ran and did the wrong thing | Rewrites the path with forward slashes, and refuses the rest with the fix |

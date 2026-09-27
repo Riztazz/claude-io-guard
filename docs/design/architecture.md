@@ -57,7 +57,7 @@ plugins/io-guard/
         conform_edit.py            TRAILING_WS_STRIPPED avoidance, INDENT_MISMATCH
         verify_write.py            profile drift after Edit and Write
         touched.py                 TOUCHED_BY_SHELL, new files
-        read_profile.py            the profile line after Read
+        read_profile.py            read.profile: the profile line after Read, and the hash in read_hashes
         diagnose.py                PostToolUseFailure branches
         command_results.py         EXIT_BENIGN, ERRORS_IN_OUTPUT, OUTPUT_SAVED, MOJIBAKE
         commit_policy.py           task 29
@@ -755,7 +755,8 @@ the code that reads it, because a key nothing reads is a validation error in wai
 whose exit code a pipe hides, each as its first words, such as `make` or `npm test`. A project names its own
 builds there, and its list replaces the default one. Task 14 added `checks.win.paths.posix_roots`,
 `msys_programs` and `prefixes`. The check finds the slash arguments Git Bash would convert on its own, so
-`prefixes` is only for a name that looks like a POSIX root. Each other key arrives with its check. A key marked
+`prefixes` is only for a name that looks like a POSIX root. Task 16 added `checks.read.profile.max_bytes`, 16 MB,
+the largest file that gets a profile line after a Read. Each other key arrives with its check. A key marked
 `project_narrows`, such as the budget, takes a lower number from a project file and refuses a higher one.
 
 **The rewrite mode is the user's (D12).** For each permission mode the user layer sets `refuse`, `ask` or `allow`.

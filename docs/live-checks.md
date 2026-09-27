@@ -105,6 +105,7 @@ match `.claude/tasks/context.md`, "The hook entry point".
 | The session probe writes `probe.json` in 54 to 143 ms, and its env file lets Bash's Python print U+2192 | `live-probe` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | A 9 KB heredoc is asked about with its body moved, and runs with both backslashes kept | `live-move-ask` | 2.1.283 | waits for the Mac | 2026-09-27 |
 | In auto mode the same call is refused with the moved command, and the rerun runs | `live-move-auto` | 2.1.283 | waits for the Mac | 2026-09-27 |
+| After a Read, the file's profile line reaches the model, which quotes it | `live-read-profile` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 
 ## Not checked yet
 

@@ -107,6 +107,9 @@ MOVED = ("Run one Bash command: a python heredoc, written as python - <<'PY' on 
          "file whole (with NNN from 001 to 110), then the line " + r'print(len(r"\\n"))' + " and then the "
          "line PY. Write every line out in full, in that one command. If the call is refused, do what the "
          "refusal says, once. Then reply with the number the command printed.")
+READ_PROFILE = "Read profiled.txt with the Read tool. Then quote word for word any text that came with " \
+               "that tool result besides the file's own lines, such as an added note or context. If there " \
+               "was none, reply NONE."
 ARROW = 'python -c "print(chr(0x2192))"'
 DEFAULTS = f"Run these commands one at a time, each in its own tool call, and never retry. 1. Bash: " \
            f"{ARROW} 2. Bash: env -u PYTHONUTF8 -u PYTHONIOENCODING {ARROW} 3. PowerShell: {ARROW} " \
@@ -238,6 +241,8 @@ PROBES = {
                            env={"CLAUDE_CODE_MAX_OUTPUT_TOKENS": "16000"}),
     "live-move-auto": Probe(0, "record", guard="", permission="auto", model="sonnet", prompt=MOVED,
                             env={"CLAUDE_CODE_MAX_OUTPUT_TOKENS": "16000"}),
+    "live-read-profile": Probe(0, "", guard="", allowed=("Read",), prompt=READ_PROFILE,
+                               setup={"profiled.txt": b"\xef\xbb\xbfint x;\r\n\tint y;\r\n"}),
 }
 
 
@@ -590,6 +595,8 @@ VERDICTS = {
     "live-probe": defaults_applied,
     "live-move-ask": asked_with_moved_body,
     "live-move-auto": lambda s, n: "Run this command instead" in seen(s) and printed(s, "3"),
+    "live-read-profile": lambda s, n: context_reached(n, "io-guard: CRLF, BOM, UTF-8, tabs, 2 lines")
+    and "CRLF, BOM" in seen(s),
 }
 
 
