@@ -102,6 +102,11 @@ ANSWERS = "Do these in order, one tool call each, and never retry. 1. Run the Ba
           "tool result."
 REFUSE_MODE = "Run this exact Bash command: echo IOGUARD_ORIGINAL\nIf it is refused, do what the refusal " \
               "says, once. Then quote word for word the refusal and the output."
+MOVED = ("Run one Bash command: a python heredoc, written as python - <<'PY' on the first line, then 110 "
+         "comment lines, each exactly: # io-guard transport check, padding line NNN of 110, carried to the "
+         "file whole (with NNN from 001 to 110), then the line " + r'print(len(r"\\n"))' + " and then the "
+         "line PY. Write every line out in full, in that one command. If the call is refused, do what the "
+         "refusal says, once. Then reply with the number the command printed.")
 ARROW = 'python -c "print(chr(0x2192))"'
 DEFAULTS = f"Run these commands one at a time, each in its own tool call, and never retry. 1. Bash: " \
            f"{ARROW} 2. Bash: env -u PYTHONUTF8 -u PYTHONIOENCODING {ARROW} 3. PowerShell: {ARROW} " \
@@ -229,6 +234,10 @@ PROBES = {
                           setup={"s.txt": b"one\n"}, prompt=ANSWERS),
     "live-refuse": Probe(0, "", guard="rewrite", permission="dontAsk", allowed=("Bash",), prompt=REFUSE_MODE),
     "live-probe": Probe(0, "", guard="", allowed=("Bash", "PowerShell"), prompt=DEFAULTS),
+    "live-move-ask": Probe(0, "record", guard="", server=True, extra_args=PERMIT, prompt=MOVED,
+                           env={"CLAUDE_CODE_MAX_OUTPUT_TOKENS": "16000"}),
+    "live-move-auto": Probe(0, "record", guard="", permission="auto", model="sonnet", prompt=MOVED,
+                            env={"CLAUDE_CODE_MAX_OUTPUT_TOKENS": "16000"}),
 }
 
 
@@ -380,17 +389,20 @@ def run(name: str) -> Path:
     probe = PROBES[name]
     out = OUT / name / time.strftime("%Y%m%d-%H%M%S")
     plugin, work, log = out / "plugin", out / "work", out / "probe.jsonl"
-    settings, env = probe.settings, probe.env
+    settings, env, helper = probe.settings, probe.env, ()
     if probe.guard is None:
         assemble(name, probe, plugin, log)
     else:
+        if probe.server:        # io-probe rides along for its probe_permit tool, and records what it approves
+            assemble(name, probe, plugin, out / "permit.jsonl")
+            helper = ("--plugin-dir", str(plugin))
         plugin = GUARD
         settings, extra = guarded(probe)
         env = {**env, **extra}
     prepare_work(probe, work)
     claude = os.environ.get("IOPROBE_CLAUDE", "claude")
-    argv = [claude, "-p", probe.prompt, "--plugin-dir", str(plugin), "--output-format", "stream-json",
-            "--verbose", "--include-hook-events", "--debug-file", str(out / "debug.txt"),
+    argv = [claude, "-p", probe.prompt, "--plugin-dir", str(plugin), *helper, "--output-format",
+            "stream-json", "--verbose", "--include-hook-events", "--debug-file", str(out / "debug.txt"),
             "--permission-mode", probe.permission, "--model", probe.model,
             "--max-turns", str(probe.max_turns), *probe.extra_args]
     if probe.allowed:
@@ -494,6 +506,19 @@ def defaults_applied(summary: dict, name: str) -> bool:
             and probe.get("claude_code_version") is not None)
 
 
+def printed(summary: dict, text: str) -> bool:
+    return any(str(result["content"]).strip() == text for result in summary["results"])
+
+
+def asked_with_moved_body(summary: dict, name: str) -> bool:
+    """The permission prompt carried the moved command, and the approved command printed 3."""
+    folder, _ = latest(name)
+    permit = folder / "permit.jsonl"
+    lines = permit.read_bytes().decode("utf-8").splitlines() if permit.is_file() else []
+    shown = any("probe_permit" in line and "python - < " in line for line in lines)
+    return shown and printed(summary, "3")
+
+
 def every_call_denied(summary: dict) -> bool:
     """Every probe tool the model called was denied for want of permission, and it called at least one."""
     called = {tool["name"] for tool in summary["tools"] if tool["name"].startswith(MCP)}
@@ -563,6 +588,8 @@ VERDICTS = {
     and context_reached(n, "IOGUARD-TEST-NOTE PostToolUse Read"),
     "live-refuse": lambda s, n: "Run this command instead" in seen(s) and "IOGUARD_REWRITTEN" in seen(s),
     "live-probe": defaults_applied,
+    "live-move-ask": asked_with_moved_body,
+    "live-move-auto": lambda s, n: "Run this command instead" in seen(s) and printed(s, "3"),
 }
 
 

@@ -38,6 +38,9 @@ A PreToolUse check on Bash and PowerShell:
    - `Set-Content`, `Add-Content`, `Out-File` and `[IO.File]::Write*`
    - `cp`, `mv` or `Copy-Item` onto a tracked file
    - `open(..., 'w')`, `write_text` or `write_bytes` in an inline or moved body
+   - `cat > out <<'EOF'` in both forms: as written, and as task 11 moves it when it is long,
+     `cat > out < "<scratchpad>/io-guard/body-<hash>.txt"`. Task 11's check runs first, in the transport layer,
+     and moves any quoted heredoc over the budget, whatever it feeds
 2. **Tracked or not:** ask git once per path and cache the answer for the session. Writes to the scratchpad, and
    to paths outside any repository, pass.
 3. **Refuse with `SHELL_WRITE`.** The refusal names the target and the reason, and gives the fix:

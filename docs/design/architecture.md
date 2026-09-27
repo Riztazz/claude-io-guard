@@ -265,7 +265,11 @@ parallel, and a `ToolVersion` carries a `stamp`, the file's size and mtime, so a
 version without running again. The Claude Code version comes from the hook's `AI_AGENT`, then from
 `CLAUDE_CODE_EXECPATH`. On Windows `transport_budget` is the Bash tool's cut, 7,807 bytes with each apostrophe
 counted as four, and `halving` is true, until `FIXED_IN` names the release that fixes #92543. The policy margin
-below the cut, `transport.budget_bytes`, is task 11's key. The probe then appends `export` lines for the shell
+below the cut, `transport.budget_bytes`, is task 11's key. The halving takes half the backslashes of a run
+that a double quote does not follow: 4 become 2 and 3 become 2, while a run before `"` arrives whole
+(`context.md`, row 25). `shell.scan` flags a pair as a hazard only where that changes what bash reads, and
+`transport_body` moves a quoted heredoc or `python -c` body byte-exact when the command is over the budget or the
+body holds a hazard (D25). The probe then appends `export` lines for the shell
 defaults to `CLAUDE_ENV_FILE`, which reaches Bash calls and not PowerShell ones (`context.md`, row 23). A
 session's first probe took 143 ms on Windows, and one that keeps every version about 55 ms.
 
@@ -339,7 +343,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Layer | Codes | Task |
 |---|---|---|
 | Location | `OUTSIDE_WRITE_ROOT`, `LINKED_PATH`, `READ_ONLY`, `FILE_LOCKED` | 19 |
-| Transport | `BODY_MOVED_TO_FILE`, `TRANSPORT_BUDGET`, `BACKSLASH_TRANSPORT` | 11 |
+| Transport | `BODY_MOVED_TO_FILE`, `TRANSPORT_BUDGET`, `BACKSLASH_TRANSPORT`, the last a warning (D25) | 11, in `CODES` |
 | Transport | `SHELL_WRITE` | 12 |
 | Transport | `BACKTICK_IN_DOUBLE_QUOTES`, `TRAILING_BACKSLASH_QUOTE`, `DIALECT_MISMATCH`, `PIPE_HIDES_EXIT`, `INLINE_SCRIPT_INVALID` | 13 |
 | Transport | `MSYS_PATH`, `RESERVED_NAME` | 14 |
@@ -605,15 +609,16 @@ def closest(data: bytes, anchor: bytes, limit: int = 3) -> tuple[Candidate, ...]
 def unique_anchor(data: bytes, offset: int, minimum: int = 1) -> bytes
 def extend_right(data: bytes, offset: int, length: int) -> int   # bytes to the next non-space
 
-# shell.py
+# shell.py, task 11
+def scan(command: str) -> Scan              # heredocs, python -c bodies, halving hazards, quoting states
+def budget_length(command: str) -> int      # UTF-8 bytes, apostrophes count four
+def moved(command: str, heredocs: Mapping[Heredoc, str], bodies: Mapping[InlineBody, str]) -> str
+def shell_path(path: str) -> str            # a path as a double-quoted bash word
+def exec_file(path: str) -> str             # the python -c argument that runs a file as -c ran its body
+# shell.py, tasks 12 and 13
 def split(command: str) -> tuple[Subcommand, ...]           # by && || ; | and newlines
-def heredocs(command: str) -> tuple[Heredoc, ...]           # quoted flag, delimiter, body, span
-def inline_bodies(command: str) -> tuple[InlineBody, ...]   # python -c, node -e, bash -c
 def redirects(command: str) -> tuple[Redirect, ...]         # target, append, fd, is_device
 def dialect(command: str) -> Dialect                        # BASH, POWERSHELL, MIXED
-def budget_length(command: str) -> int                      # apostrophes count four
-def move_body(command: str, body: Heredoc, file: Path) -> str
-def has_halving_hazard(command: str) -> bool
 
 # pwsh.py
 def parse(command: str, pwsh: Optional[Path]) -> PwshParse  # errors, commands, arguments
@@ -718,7 +723,9 @@ Four layers merge in this order, and a later layer overrides an earlier one key 
 **Every policy value is a key here, with its default in code (D16).** A number that decides behaviour and has no
 key is a defect. The values above are the defaults the lead set on 2026-09-27. A key enters `lib.config` with
 the code that reads it, because a key nothing reads is a validation error in waiting. Task 07 defined
-`schema`, `pipeline.*`, `transport.rewrite_mode.*` and `telemetry.*`, and each other key arrives with its check.
+`schema`, `pipeline.*`, `transport.rewrite_mode.*` and `telemetry.*`, task 10 `checks.session.probe.env` and
+`env_windows`, and task 11 `transport.budget_bytes`. Each other key arrives with its check. A key marked
+`project_narrows`, such as the budget, takes a lower number from a project file and refuses a higher one.
 
 **The rewrite mode is the user's (D12).** For each permission mode the user layer sets `refuse`, `ask` or `allow`.
 In `refuse` the call is refused and the reason carries the corrected command, so the model reruns it and the

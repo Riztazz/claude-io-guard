@@ -49,6 +49,16 @@ CODES: tuple[CodeSpec, ...] = (
     CodeSpec("BUDGET_EXCEEDED", Layer.INTERNAL, Severity.WARNING,
              "io-guard ran out of time on this call and skipped its remaining checks.",
              "Nothing to do, because the call went ahead without those checks.", "0.1"),
+    CodeSpec("BODY_MOVED_TO_FILE", Layer.TRANSPORT, Severity.FIXED,
+             "The command's body was written to a file, and the command reads that file.",
+             "Nothing to do.", "0.1"),
+    CodeSpec("TRANSPORT_BUDGET", Layer.TRANSPORT, Severity.REFUSED,
+             "The command is longer than the Bash tool carries on this platform.",
+             "Write the script to a file with the Write tool, then run the file.", "0.1"),
+    CodeSpec("BACKSLASH_TRANSPORT", Layer.TRANSPORT, Severity.WARNING,
+             "The Bash tool on Windows halves a pair of backslashes in this command.",
+             "If the command needs both, put the text in a file with the Write tool and read it from there.",
+             "0.1"),
 )
 Code = Enum("Code", {spec.code: spec.code for spec in CODES})
 SPECS: dict[Code, CodeSpec] = {Code[spec.code]: spec for spec in CODES}

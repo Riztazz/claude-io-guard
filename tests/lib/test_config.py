@@ -99,6 +99,19 @@ class ProjectsNeverWiden(ConfigFiles):
         self.assertIn("A project file may not set this key", report.errors[0].message,
                       "a key marked project_may_set=False is refused in a project file")
 
+    def test_a_project_may_lower_the_transport_budget(self):
+        report = self.load(self.layer(Scope.PROJECT, "p.json", {"transport": {"budget_bytes": 4000}}))
+        self.assertEqual(report.config.get("transport.budget_bytes"), 4000,
+                         "narrowing is what a project may do")
+
+    def test_a_project_may_not_raise_it_past_the_layers_below(self):
+        report = self.load(self.layer(Scope.USER, "u.json", {"transport": {"budget_bytes": 5000}}),
+                           self.layer(Scope.PROJECT, "p.json", {"transport": {"budget_bytes": 5500}}))
+        self.assertEqual(report.config.get("transport.budget_bytes"), 5000,
+                         "the user's 5,000 holds against the project's 5,500")
+        self.assertIn("may lower this number and not raise it past 5000", report.errors[0].message,
+                      "the error names the value the project may not pass")
+
 
 class BadFilesAreDroppedWhole(ConfigFiles):
     def test_an_unknown_key_drops_the_file_and_names_the_nearest_key(self):

@@ -11,11 +11,12 @@ import re
 import time
 from collections import Counter, defaultdict
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import Registry
+from ioguard.checks.session_probe import WINDOWS_CUT, cut_applies
 from ioguard.cli.corpus import Record
 from ioguard.lib.config import defaults
 from ioguard.lib.context import Context, Probe, SessionState
@@ -30,6 +31,7 @@ SAMPLE = 20
 KINDS = ("fix", "refuse", "warn")
 DRIVE = re.compile(r"^[A-Za-z]:")
 WINDOWS = Platform("win32", True)
+REPLAY_DATA = Path("replay-data")      # a data folder that exists only in the in-memory file system
 
 
 def kind_of(decision: Decision) -> str | None:
@@ -74,10 +76,15 @@ class Replay:
         self.random = random.Random(seed)
 
     def context(self, record: Record) -> Context:
+        """The context the recorded session would have had, with the probe's transport facts for its
+        platform and Claude Code version, and every port in memory."""
         platform = WINDOWS if DRIVE.match(record.cwd) else detect()
+        cut = cut_applies(platform.windows, record.version)
+        probe = replace(Probe.unprobed(platform), transport_budget=WINDOWS_CUT if cut else None,
+                        halving=True if cut else None)
         session = self.sessions.setdefault(record.session, SessionState())
-        return Context.fake(config=self.config, platform=platform, probe=Probe.unprobed(platform),
-                            session=session, telemetry=Telemetry(None, enabled=False))
+        return Context.fake(config=self.config, platform=platform, probe=probe, session=session,
+                            telemetry=Telemetry(None, enabled=False), data_dir=REPLAY_DATA)
 
     def events(self, record: Record) -> Iterable[Event]:
         raw = {"session_id": record.session, "cwd": record.cwd, "tool_name": record.tool,

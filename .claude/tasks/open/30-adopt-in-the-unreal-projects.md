@@ -25,6 +25,8 @@ File one kit ticket for each change below, in `UNREAL-SHARED/tasks/open/`:
 3. The kit's `.clang-format` sets `LineEnding: DeriveLF` in place of `CRLF`. All 74 kit C++ files are LF (BYT-3).
 4. io-guard is installed on the lead's machine and enabled for the four projects and this repository.
 5. Each project gets its own `.claude/io-guard.json`, holding the LFS-heavy trees the guard should skip.
+6. The kit's rule on the Bash tool's backslash halving is corrected and says a body io-guard moves arrives
+   byte-exact (D25). Task 11 filed it as `UNREAL-SHARED/tasks/open/correct-the-bash-backslash-halving-rule.md`.
 
    The lead's own config holds two things a project file cannot set: the kit as an extra write root, and each
    project's verify command per file extension, keyed by the project's root (D24).

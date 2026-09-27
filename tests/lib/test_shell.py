@@ -1,0 +1,175 @@
+"""lib.shell reads a Bash command as bash does: heredocs, python -c bodies, and the backslash pairs whose
+halving changes what bash reads. A moved command runs the same as the original."""
+import shutil
+import subprocess
+import sys
+import unittest
+from pathlib import Path
+
+from ioguard.lib import shell
+from tests.support.project import TemporaryProject
+
+BASH = shutil.which("bash")
+PYTHON = Path(sys.executable).as_posix()
+
+
+def only_heredoc(command: str) -> shell.Heredoc:
+    found = shell.scan(command).heredocs
+    assert len(found) == 1, found
+    return found[0]
+
+
+class HeredocsAreFound(unittest.TestCase):
+    def test_every_quoting_of_the_delimiter_means_no_expansion(self):
+        for operator in ("<<'PY'", '<<"PY"', "<<\\PY", "<< 'PY'", "<<P'Y'"):
+            with self.subTest(operator=operator):
+                heredoc = only_heredoc(f"python - {operator}\nprint(1)\nPY\n")
+                self.assertEqual((heredoc.quoted, heredoc.terminated, heredoc.body),
+                                 (True, True, "print(1)\n"),
+                                 "any quote in the word makes the body literal, and the body is read whole")
+
+    def test_an_unquoted_delimiter_expands(self):
+        heredoc = only_heredoc("cat <<EOF\nhello $HOME\nEOF")
+        self.assertEqual((heredoc.quoted, heredoc.body), (False, "hello $HOME\n"),
+                         "bash expands this body, so it is marked unquoted")
+
+    def test_a_dash_strips_leading_tabs_from_the_body_and_the_delimiter(self):
+        heredoc = only_heredoc("cat <<-'EOF'\n\tone\n\t\ttwo\n\tEOF\n")
+        self.assertEqual((heredoc.body, heredoc.terminated), ("one\ntwo\n", True),
+                         "<<- drops the leading tabs, as bash does")
+
+    def test_two_heredocs_on_one_line_read_in_order(self):
+        found = shell.scan("paste <<A <<'B'\none\nA\ntwo\nB\necho done").heredocs
+        self.assertEqual([(heredoc.delimiter, heredoc.body) for heredoc in found],
+                         [("A", "one\n"), ("B", "two\n")], "the second body starts after the first delimiter")
+
+    def test_a_heredoc_inside_command_substitution_in_double_quotes(self):
+        heredoc = only_heredoc("git commit -m \"$(cat <<'EOF'\nsubject\nEOF\n)\"")
+        self.assertEqual(heredoc.body, "subject\n", "the commit-message shape is a heredoc too")
+
+    def test_text_that_only_looks_like_a_heredoc_is_not_one(self):
+        for command in ('echo "a << b"', "echo 'a << b'", "x=$((1 << 2))", "cat <<<word", "# <<EOF\nls"):
+            with self.subTest(command=command):
+                self.assertEqual(shell.scan(command).heredocs, (), "quotes, arithmetic, here-strings and "
+                                                                   "comments hold no heredoc")
+
+    def test_a_body_with_no_delimiter_line_is_unterminated(self):
+        self.assertFalse(only_heredoc("cat <<'EOF'\none\n").terminated, "a missing delimiter is marked")
+
+
+class HalvingHazards(unittest.TestCase):
+    def hazards(self, command: str) -> int:
+        return len(shell.scan(command).hazards)
+
+    def test_a_pair_bash_reads_differently_after_halving_is_a_hazard(self):
+        for command in (r"sed 's/\\n/x/' f", r"cp C:\\a b", r"echo $'a\\n'", r'echo "a\\$x"',
+                        "python - <<'PY'\nprint(r\"\\\\n\")\nPY\n"):
+            with self.subTest(command=command):
+                self.assertEqual(self.hazards(command), 1, "the halved command reads differently")
+
+    def test_a_pair_bash_reads_the_same_either_way_is_not(self):
+        for command in (r'echo "C:\\Users"', "cat <<EOF\n\\\\n\nEOF\n", r"# a \\ comment", r"echo a\b"):
+            with self.subTest(command=command):
+                self.assertEqual(self.hazards(command), 0,
+                                 "double quotes and an expanding body read \\\\x and \\x the same")
+
+    def test_every_pair_in_a_run_counts(self):
+        self.assertEqual(self.hazards(r"echo 'a\\\\b'"), 2, "four backslashes are two pairs")
+
+    def test_a_run_before_a_double_quote_arrives_whole(self):
+        for command in ("cat <<'EOF'\np.split(\"\\\\\")\nEOF\n", r"""printf '%s' 'a\\"b'""",
+                        r'echo "{\\\"k\\\": 1}"', "cat <<'EOF'\nB\\\\\\\\\"\nEOF\n"):
+            with self.subTest(command=command):
+                self.assertEqual(self.hazards(command), 0,
+                                 "measured on 2.1.281: backslashes before a double quote are not halved")
+
+
+class InlineBodiesAreFound(unittest.TestCase):
+    def body(self, command: str) -> shell.InlineBody | None:
+        found = shell.scan(command).bodies
+        return found[0] if found else None
+
+    def test_single_and_double_quoted_python_c(self):
+        self.assertEqual(self.body("python -c 'print(1)'").body, "print(1)",
+                         "a single-quoted body is literal")
+        double = self.body('python3 -u -c "print(\\"x\\")" arg')
+        self.assertEqual((double.body, double.expands), ('print("x")', False),
+                         "a double-quoted body loses bash's escapes")
+
+    def test_a_body_with_a_dollar_or_backtick_expands(self):
+        self.assertTrue(self.body('python -c "print($HOME)"').expands, "bash expands $ in double quotes")
+
+    def test_programs_by_path_and_after_assignments(self):
+        for command in ("/c/Python314/python.exe -c 'x'", "PYTHONUTF8=1 python -c 'x'", "ls && py -3 -c 'x'",
+                        '"C:/Python314/python.exe" -c \'x\''):
+            with self.subTest(command=command):
+                self.assertIsNotNone(self.body(command), "the program is found where a command starts")
+
+    def test_what_is_not_one_whole_quoted_body(self):
+        for command in ("python -c 'a'\"b\"", "echo \"python -c 'x'\"", "python -c code", "mypython -c 'x'"):
+            with self.subTest(command=command):
+                self.assertIsNone(self.body(command), "a mixed word, a quoted mention or a bare word is left")
+
+
+class TheBudgetLength(unittest.TestCase):
+    def test_bytes_and_apostrophes(self):
+        self.assertEqual(shell.budget_length("a'b"), 6, "each apostrophe counts as four")
+        self.assertEqual(shell.budget_length("za" + chr(0x17C)), 4, "a length is in UTF-8 bytes")
+
+
+@unittest.skipIf(BASH is None, "no bash on this machine to run the commands")
+class AMovedCommandRunsTheSame(unittest.TestCase):
+    def run_bash(self, command: str, cwd: Path) -> bytes:
+        """Run the command from a script file. On Windows an argument to bash -c crosses the same argv
+        quoting that halves backslashes in the Bash tool, so it would not be the command as written."""
+        script = cwd / "command.sh"
+        script.write_bytes(command.encode("utf-8"))
+        done = subprocess.run([BASH, str(script)], cwd=cwd, capture_output=True, timeout=60)
+        return done.stdout + done.stderr
+
+    def moved(self, command: str, folder: Path) -> str:
+        found = shell.scan(command)
+        heredocs, bodies = {}, {}
+        for number, heredoc in enumerate(found.heredocs):
+            path = folder / f"h{number}.txt"
+            path.write_bytes(heredoc.body.encode("utf-8"))
+            heredocs[heredoc] = path.as_posix()
+        for number, body in enumerate(found.bodies):
+            path = folder / f"b{number}.py"
+            path.write_bytes(body.body.encode("utf-8"))
+            bodies[body] = path.as_posix()
+        return shell.moved(command, heredocs, bodies)
+
+    def test_a_moved_heredoc_prints_the_same(self):
+        script = ("import sys\nprint(sys.argv, repr(sys.path[0]), sys.stdin.read() == '')\n"
+                  "print(len(r'\\\\n'))\n")
+        command = f'"{PYTHON}" - a b <<\'PY\'\n{script}PY\necho after'
+        with TemporaryProject() as root:
+            rewritten = self.moved(command, root)
+            self.assertNotIn("<<", rewritten, "the heredoc is gone from the command")
+            self.assertEqual(self.run_bash(rewritten, root), self.run_bash(command, root),
+                             "the moved command prints exactly what the original printed")
+
+    def test_a_moved_python_c_prints_the_same(self):
+        command = f"\"{PYTHON}\" -c 'import sys; print(sys.argv, repr(sys.path[0]), __name__)' a b"
+        with TemporaryProject() as root:
+            rewritten = self.moved(command, root)
+            self.assertIn("exec(compile(open(", rewritten, "the body now runs from its file")
+            self.assertEqual(self.run_bash(rewritten, root), self.run_bash(command, root),
+                             "argv, sys.path[0] and __name__ are what -c gave the original")
+
+    def test_everything_around_the_heredoc_stays_as_written(self):
+        with TemporaryProject() as root:
+            rewritten = self.moved("cat <<'EOF' | grep -c x\nx\ny\nx\nEOF\necho done", root)
+        self.assertEqual(rewritten, f'cat < "{(root / "h0.txt").as_posix()}" | grep -c x\necho done',
+                         "only the operator and the body change")
+
+
+class PathsAreQuotedForBash(unittest.TestCase):
+    def test_the_four_characters_bash_reads_in_double_quotes_are_escaped(self):
+        self.assertEqual(shell.shell_path('a"b$c`d\\e'), '"a\\"b\\$c\\`d\\\\e"',
+                         "the path arrives as written")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -20,7 +20,7 @@ publishes it.
 
 | Fact | Windows | macOS | Confirmed |
 |---|---|---|---|
-| The Bash tool halves every `\\`, even inside a quoted heredoc | 2.1.281 | waits for the Mac | 2026-09-27 |
+| The Bash tool halves a `\\` that no double quote follows, even inside a quoted heredoc | 2.1.281 | waits for the Mac | 2026-09-27 |
 | A Bash command over about 7.8 KB fails with "unexpected EOF" | 2.1.281 | waits for the Mac | 2026-09-27 |
 | The PowerShell tool and the Write tool keep backslashes, and PowerShell takes a 9 KB here-string | 2.1.281 | waits for the Mac | 2026-09-27 |
 | Edit keeps CRLF and a BOM, and strips trailing whitespace from `new_string` | 2.1.281 | waits for the Mac | 2026-09-27 |
@@ -75,6 +75,7 @@ Confirmed with `tools/probes/run_probe.py`, whose `verdicts` command rechecks ev
 | 22. PreToolUse `additionalContext` reaches the model, with or without a permission decision | `live-answers` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | 23. `CLAUDE_ENV_FILE` reaches Bash calls and not PowerShell calls | `live-probe` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | 24. A hook's environment names the Claude Code version in `AI_AGENT` | `live-probe` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+| 25. The Bash tool halves a run of backslashes unless a double quote follows it | this session's Bash tool | 2.1.281 | waits for the Mac | 2026-09-27 |
 
 ## io-guard itself
 
@@ -88,6 +89,8 @@ match `.claude/tasks/context.md`, "The hook entry point".
 | A rewrite in `allow` mode runs the new command, and a refusal's fix reaches the model | `live-answers` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | A rewrite in `refuse` mode gives the model the command to run instead, and it runs it | `live-refuse` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | The session probe writes `probe.json` in 54 to 143 ms, and its env file lets Bash's Python print U+2192 | `live-probe` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+| A 9 KB heredoc is asked about with its body moved, and runs with both backslashes kept | `live-move-ask` | 2.1.283 | waits for the Mac | 2026-09-27 |
+| In auto mode the same call is refused with the moved command, and the rerun runs | `live-move-auto` | 2.1.283 | waits for the Mac | 2026-09-27 |
 
 ## Not checked yet
 

@@ -18,7 +18,7 @@ The numbers come from 738 transcripts of real agent sessions, 2026-06-20 to 2026
 
 | What goes wrong | How often | What io-guard does |
 |---|---|---|
-| On Windows, a Bash command longer than about 7.8 KB fails with "unexpected EOF", and every `\\` loses a backslash | 241 failed commands, about 531k tokens | Moves the script body into a file and runs the file |
+| On Windows, a Bash command longer than about 7.8 KB fails with "unexpected EOF", and a `\\` that no double quote follows loses a backslash | 241 failed commands, about 531k tokens | Moves a heredoc or `python -c` body into a file, byte-exact, and runs the file. Warns about a halved `\\` it cannot move |
 | Write turns a CRLF file into LF and drops its BOM, and Edit trims trailing spaces from the new text | 432 "LF will be replaced by CRLF" warnings | Rewrites the input in the file's own endings, BOM and indent before it runs |
 | A failed Edit says "not found" and nothing else | 71 anchor misses, 137 stale reads | Returns the closest match, the file's endings and a corrected call |
 | `sed -i`, redirects and scripts write files around the edit tools, so no check and no rewind sees them | 6,217 shell writes | Refuses the write and names the tool that does it safely |
@@ -99,6 +99,10 @@ places to write to or approve commands.
 
 **The time budget:** past 300 ms, the checks that start a subprocess are skipped. Past 2 s, every remaining check is
 skipped and the call goes ahead. Both are settings.
+
+**The Bash budget, on Windows:** a Bash command longer than 6,000 bytes, each apostrophe counted as four, gets
+its heredoc or `python -c` body moved into a file, or is refused when there is no body to move. The Bash tool
+cuts commands near 7,800 bytes. The setting is `transport.budget_bytes`, and a project file may lower it.
 
 **Shell defaults:** at session start, io-guard gives every later Bash call `PYTHONUTF8=1` and
 `PYTHONIOENCODING=utf-8`, so a Python print of a non-ASCII character works through a cp1252 console. On Windows

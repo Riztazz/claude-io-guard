@@ -2,8 +2,9 @@
 
 Every policy value is a key with its default in code (D16). A later layer overrides an earlier one key by
 key. Dictionaries merge, lists replace, and a list key that ends in "extra" appends. A project file restricts
-and never widens: it cannot set a key marked project_may_set=False, or a value in project_forbids. A file
-with any error is dropped whole, and the guard runs on the layers that loaded.
+and never widens: it cannot set a key marked project_may_set=False, set a value in project_forbids, or raise a
+number marked project_narrows above the layers below it. A file with any error is dropped whole, and the guard
+runs on the layers that loaded.
 """
 import difflib
 import json
@@ -37,6 +38,7 @@ class ConfigKey:
     project_may_set: bool = True
     choices: tuple = ()              # the values it takes, or () for any of its type
     project_forbids: tuple = ()      # values a project file may not set
+    project_narrows: bool = False    # a project file may lower this number and never raise it
 
 
 @dataclass(frozen=True)
@@ -96,6 +98,9 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
     "pipeline.soft_ms": ConfigKey(int, 300,
                                   "Milliseconds after which checks that start a program are skipped."),
     "pipeline.hard_ms": ConfigKey(int, 2000, "Milliseconds after which every remaining check is skipped."),
+    "transport.budget_bytes": ConfigKey(int, 6000, "Bytes of Bash command, each apostrophe counted as four, "
+                                        "past which a body moves to a file or the call is refused.",
+                                        project_narrows=True),
     "telemetry.enabled": ConfigKey(bool, True, "Record each decision in the plugin data folder.",
                                    project_forbids=(False,)),
     "telemetry.retention_days": ConfigKey(int, 90, "Days a telemetry file is kept."),
@@ -166,6 +171,15 @@ def validate(raw: Any, scope: Scope, keys: Mapping[str, ConfigKey], file: Path |
     return tuple(errors)
 
 
+def widened(flat: Mapping[str, Any], keys: Mapping[str, ConfigKey], below: Mapping[str, Any],
+            file: Path | None) -> tuple[ConfigError, ...]:
+    """A project file's raises of a key it may only lower, against the layers loaded below it."""
+    return tuple(ConfigError(file, key, f"A project file may lower this number and not raise it past "
+                                        f"{below[key]}. {USER_FILE}")
+                 for key, value in flat.items()
+                 if key in keys and keys[key].project_narrows and value > below[key])
+
+
 def merge(base: Mapping[str, Any], over: Mapping[str, Any]) -> dict[str, Any]:
     """over's keys win, except that a dict merges into the base dict and a list ending in "extra" appends."""
     merged = dict(base)
@@ -202,6 +216,8 @@ def load(layers: Sequence[ConfigLayer], check_keys: Mapping[str, Mapping[str, Co
             continue
         raw, unreadable = read_file(layer.path)
         found = (unreadable,) if unreadable else validate(raw, layer.scope, keys, layer.path)
+        if not found and layer.scope.project:
+            found = widened(flatten(raw, keys), keys, values, layer.path)
         errors.extend(found)
         if any(not error.warning for error in found):
             dropped.append(layer.path)
