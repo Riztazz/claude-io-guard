@@ -50,6 +50,9 @@ def main() -> int:
 
     if name == "SessionStart" and mode == "envfile":
         line["env_file_written"] = write_env_file(nonce)
+    response = event.get("tool_response")
+    if isinstance(response, dict) and response.get("persistedOutputPath"):
+        line["persisted_exists"] = Path(response["persistedOutputPath"]).is_file()
     reply = answers.answer(mode, event, nonce)
     line["answer"] = reply
     line["finished_ns"] = time.time_ns()

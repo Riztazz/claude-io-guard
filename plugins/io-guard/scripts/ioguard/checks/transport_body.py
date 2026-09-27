@@ -21,9 +21,9 @@ from ioguard.lib.results import Code, Fix, Layer, Result, Severity
 
 
 def budget_for(ctx: Context) -> int | None:
-    """The smallest of the budget key, the Bash tool's cut and the budget learned this session. None where no
-    cut exists, and then no budget applies."""
-    if ctx.probe.transport_budget is None:
+    """The smallest of the budget key, the Bash tool's cut and the budget learned this session. None where the
+    probe found no cut and the session learned none, and then no budget applies."""
+    if ctx.probe.transport_budget is None and ctx.session.budget_override is None:
         return None
     limits = (ctx.config.get("transport.budget_bytes"), ctx.probe.transport_budget,
               ctx.session.budget_override)

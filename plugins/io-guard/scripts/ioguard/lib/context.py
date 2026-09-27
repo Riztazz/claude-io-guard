@@ -151,7 +151,7 @@ class SessionState:
     warned: set[str] = field(default_factory=set)                 # one user warning per key per session
     budget_override: int | None = None                            # learned from an EOF failure
     tracked: dict[Path, bool] = field(default_factory=dict)       # git's answer per path, asked once
-    last_failed_build: datetime | None = None
+    last_failed_build: str | None = None                          # the words of the build that last failed
     lock: threading.RLock = field(default_factory=threading.RLock)
 
     def first_time(self, key: str) -> bool:

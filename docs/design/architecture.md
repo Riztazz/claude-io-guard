@@ -30,7 +30,8 @@ plugins/io-guard/
         drift.py                   drift, edited, changed_lines, restored: what a write changed in a file's bytes
         verify.py                  shape_problem, command_for: the user's verify commands per extension
         anchors.py                 find, blind, closest, unique_anchor: where an old_string is, or nearly is
-        shell.py                   scan, commands, budget_length, moved, the hazards bash reads differently
+        shell.py                   scan, commands, budget_length, moved, pipelines, exit_candidates, the hazards
+                                   bash reads differently
         pwsh.py                    commands, blanked, file_calls
         python_source.py           compile_report: a Python body's syntax error or warning, without running it
         paths.py                   normalise, msys_prefix, reserved, link_target, inside, same_file
@@ -47,6 +48,7 @@ plugins/io-guard/
         probing.py                 tool_version, find, claude_version, console_encoding, case_insensitive
         text.py                    visible, snippet, head
         transcript.py              refusals: the calls Claude Code refused before any hook, from the transcript
+        output.py                  exit_code, saved_path, error_lines, mojibake, excerpt: what a shell result says
         rules.py                   permission rules: load, match_argv
       checks/                      policy, one module per check
         base.py                    Check, CheckMeta, Cost
@@ -66,7 +68,8 @@ plugins/io-guard/
         touched.py                 shell.touched: TOUCHED_BY_SHELL, the files a shell command changed or made
         read_profile.py            read.profile: the profile line after Read, and the profile in read_profiles
         diagnose.py                diagnose.failure after a failed call, diagnose.refused at the next hook
-        command_results.py         EXIT_BENIGN, ERRORS_IN_OUTPUT, OUTPUT_SAVED, MOJIBAKE
+        command_results.py         shell.results: EXIT_BENIGN, ERRORS_IN_OUTPUT, OUTPUT_SAVED, MOJIBAKE,
+                                   STALE_BINARY, PIPE_HIDES_EXIT after the run, and the learned budget
         commit_policy.py           task 29
       hooks/
         entry.py                   run_event: an event in, the answer dict out, never raising
@@ -255,7 +258,7 @@ class SessionState:
     warned: MutableSet[str]                      # one user warning per key per session
     budget_override: Optional[int]               # learned from an EOF failure
     tracked: MutableMapping[Path, bool]          # whether git tracks a path, asked once by shell.writes
-    last_failed_build: Optional[datetime]
+    last_failed_build: Optional[str]             # the words of the build that last failed, task 22
     lock: RLock                                  # guards every field
 
     def first_time(self, key: str) -> bool: ...  # True once per key, for a once-per-session warning
@@ -299,7 +302,9 @@ parallel, and a `ToolVersion` carries a `stamp`, the file's size and mtime, so a
 version without running again. The Claude Code version comes from the hook's `AI_AGENT`, then from
 `CLAUDE_CODE_EXECPATH`. On Windows `transport_budget` is the Bash tool's cut, 7,807 bytes with each apostrophe
 counted as four, and `halving` is true, until `FIXED_IN` names the release that fixes #92543. The policy margin
-below the cut, `transport.budget_bytes`, is task 11's key. The halving takes half the backslashes of a run
+below the cut, `transport.budget_bytes`, is task 11's key. A well-formed command over 5 KB that bash still reads
+as ending inside a quote sets the session's `budget_override` below its length (task 22), and a budget learned
+that way applies on a platform whose probe found no cut. The halving takes half the backslashes of a run
 that a double quote does not follow: 4 become 2 and 3 become 2, while a run before `"` arrives whole
 (`context.md`, row 25). `shell.scan` flags a pair as a hazard only where that changes what bash reads, and
 `transport_body` moves a quoted heredoc or `python -c` body byte-exact when the command is over the budget or the
@@ -387,7 +392,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Stale | `NOT_READ`, not built: the tool's own "not read yet" error already names the Read to make | - |
 | Stale | `TOUCHED_BY_SHELL`, a warning | 21, in `CODES` |
 | Read | `PATH_NOT_FOUND`, `READ_TOO_LARGE`, `PATTERN_INVALID`, `SEARCH_TOO_BROAD`, all warnings | 20, in `CODES` |
-| Output | `EXIT_BENIGN`, `OUTPUT_SAVED`, `ERRORS_IN_OUTPUT`, `MOJIBAKE` | 22 |
+| Output | `EXIT_BENIGN`, `OUTPUT_SAVED`, `ERRORS_IN_OUTPUT`, `MOJIBAKE`, `STALE_BINARY` | 22, in `CODES` |
 | Internal | `GUARD_ERROR`, `REWRITE_CONFLICT`, `BUDGET_EXCEEDED` | 07, in `CODES` |
 | Internal | `SERVER_DOWN`, `HANDLE_EXPIRED`, `CANCELLED` | 23 |
 | Internal | `RULE_DENIED`, `RULE_ASKED` | 25 |
@@ -696,6 +701,10 @@ def forward_slashed(command: str, spans: Sequence[tuple[int, int]]) -> str
 def piped(command: str, simple: SimpleCommand) -> bool      # its output goes into | or |&
 def python_reads_stdin(simple: SimpleCommand) -> bool       # python or python -, with no script, -c or -m
 def body_files(command: str) -> tuple[str, ...]             # the moved body files the command reads
+# shell.py, task 22
+def matching(simple: SimpleCommand, entries: Sequence[str]) -> Optional[str]   # the words of the entry it runs
+def pipelines(command: str) -> Optional[tuple[Pipeline, ...]]   # with &&, || or ; before each, None when grouped
+def exit_candidates(command: str) -> tuple[SimpleCommand, ...]  # those that can have set the exit code, last first
 
 # pwsh.py, task 12
 def commands(command: str) -> tuple[SimpleCommand, ...]     # split at ; | && || and newlines, here-strings whole
@@ -766,6 +775,13 @@ def head(text: str, limit: int) -> str        # cut, with the count of what was 
 # transcript.py, task 20
 def refusals(tail: bytes) -> tuple[Refusal, ...]   # the refused calls after the last call that ran
 
+# output.py, task 22
+def exit_code(error: str) -> Optional[int]                     # from a failed call's first line, Exit code N
+def saved_path(response: Mapping[str, Any]) -> Optional[str]   # persistedOutputPath, or the path its notice names
+def error_lines(text: str, patterns: Mapping[str, Pattern]) -> tuple[ErrorLine, ...]   # matched from line start
+def mojibake(text: str, code_pages: Sequence[str]) -> Mojibake # U+FFFD, and UTF-8 a console read in a code page
+def excerpt(text: str, head: int, tail: int, marked: Sequence[ErrorLine], width: int) -> str   # numbered lines
+
 # rules.py
 def load_rules(user_settings: Path, project_settings: Sequence[Path]) -> Rules
 def match_argv(rules: Rules, argv: Sequence[str], tool: Tool) -> RuleMatch  # deny, ask, allow, none
@@ -820,8 +836,11 @@ the largest file that gets a profile line after a Read. Task 18 added `verify`, 
 16 MB, and `checks.verify.command.timeout_ms` of 10 s and `output_chars` of 2,000. `verify` and `ascii_only`
 default to empty, so io-guard runs no program and accepts non-ASCII until a user or a project names them. The
 example above shows them set. Task 20 added `checks.diagnose.*.find_limit`, `part_bytes` and `tail_bytes`, and
-task 21 `skip_trees`, empty by default, and `checks.shell.touched.listed`. Each other key arrives with its
-check. A key marked `project_narrows`, such as
+task 21 `skip_trees`, empty by default, and `checks.shell.touched.listed`. Task 22 added
+`checks.shell.results.error_patterns` and `benign_exits`, both merged key by key with a project's own,
+`readers`, `builds`, `runs`, `short_lines` of 50, `head_lines` and `tail_lines` of 20, `shown_errors`,
+`line_chars`, `max_bytes` of 16 MB, `code_pages` and `learn_from_bytes` of 5,000. Each other key arrives with
+its check. A key marked `project_narrows`, such as
 the budget, takes a lower number from a project file and refuses a higher one. A key with a `shape`, such as
 `verify`, has its inner values checked too, and a wrong one drops the file like any other error.
 
@@ -893,9 +912,13 @@ lost, through `write_atomic`, and its answer tells the agent to read the file ag
 such a repair succeeded without a new Read on 2.1.281 and 2.1.283 (`context.md`, "Hooks and MCP", row 29).
 
 PostToolUse answers carry `additionalContext`, `classifierContext` and `updatedToolOutput`. An
-`updatedToolOutput` has the tool's own output shape: for Bash, the `tool_response` object with `stdout`
-replaced. A plain string there fails the harness's schema check and changes nothing. PostToolUseFailure answers
-carry `additionalContext`. SessionStart answers carry `additionalContext` and write `CLAUDE_ENV_FILE`. The
+`updatedToolOutput` has the tool's own output shape: for Bash and PowerShell, the `tool_response` object with
+`stdout` replaced. A plain string there fails the harness's schema check and changes nothing. `shell.results`
+replaces a saved output with its first and last lines and its error lines, and drops `persistedOutputPath` and
+`persistedOutputSize` from it, because with them Claude Code shows the replacement only as the 2 KB preview of
+the saved file (`context.md`, "Hooks and MCP", row 32). A failed Bash or PowerShell call brings no
+`tool_response`, and its output follows the `Exit code N` line in `error`. PostToolUseFailure answers carry
+`additionalContext`. SessionStart answers carry `additionalContext` and write `CLAUDE_ENV_FILE`. The
 user's `systemMessage` is the outcome's `user_message` on every event. PreToolUse `additionalContext` reaches
 the model with and without a permission decision, as a `hook_additional_context` attachment in the transcript
 (`context.md`, "Hooks and MCP", row 22).
@@ -1307,11 +1330,13 @@ in several files: each tool use id enters once, and `index.json` counts the skip
 leaves the machine (D8).
 
 `python tools/replay.py` runs each record as a PreToolUse event, then as PostToolUse or PostToolUseFailure with
-the recorded result, through `default_registry()`. Each session gets an in-memory context: an empty file system,
-a clock that stands still, telemetry off, and a git that answers from each repository's files as git tracks
-them now. Nothing runs but one `git ls-files` per repository, nothing is written, and the budget never skips a
-check. A file created in a session and committed later reads as tracked, so a refusal of a write that created
-it is a replay artifact. The report goes to `reports/replay-<time>.json`, and its shape is fixed at schema 1:
+the recorded result, through `default_registry()`. A shell call recorded without its structured response
+carries its result text as `stdout`. Each session gets an in-memory context: a file system that holds only the
+output Claude Code saved for the call, read from disk while the file is still there, a clock that stands still,
+telemetry off, and a git that answers from each repository's files as git tracks them now. Nothing runs but
+one `git ls-files` per repository, nothing is written, and the budget never skips a check. A file created in a
+session and committed later reads as tracked, so a refusal of a write that created it is a replay artifact.
+The report goes to `reports/replay-<time>.json`, and its shape is fixed at schema 1:
 
 ```json
 {"schema": 1, "corpus": "corpus", "projects": ["myproject"], "checks_run": ["transport.body"],

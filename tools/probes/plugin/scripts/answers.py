@@ -70,6 +70,20 @@ def answer(mode: str, event: dict, nonce: str) -> dict | None:
             updated = {**response, "stdout": marker} if isinstance(response, dict) else marker
             return post_output("PostToolUse", updatedToolOutput=updated,
                                classifierContext=f"IOPROBE-CLASSIFIER-CONTEXT-{nonce}")
+        case ("command_output", "PostToolUse", "Bash" | "PowerShell"):
+            response = event.get("tool_response")
+            if not isinstance(response, dict):
+                return None
+            stdout = str(response.get("stdout", ""))
+            saved = response.get("persistedOutputPath")
+            if saved or len(stdout) > 20_000 or "IOPROBE_SHAPE" in stdout:
+                lines = stdout.splitlines()
+                summary = "\n".join((f"IOPROBE-SUMMARY-{nonce} {tool} saved={saved}", *lines[-600:],
+                                     "IOPROBE-END"))
+                kept = {key: value for key, value in response.items()
+                        if key not in ("persistedOutputPath", "persistedOutputSize")}
+                return post_output("PostToolUse", updatedToolOutput={**kept, "stdout": summary})
+            return None
         case ("allow_all", "PreToolUse", _):
             return pre_tool_use("allow", f"io-probe allows ({nonce})")
         case ("mcp_gate_deny", "PreToolUse", _):

@@ -122,6 +122,18 @@ into LF, `EOL_MISMATCH: This command changed conv.txt from CRLF to LF line endin
 `shell.touched` adds 128 ms to a command on CLICKER at p50, 71 ms before it and 57 ms after, 143 ms on
 OrbitalDrift and 92 ms on SmartTablesHost (10 commands each). `git status` alone takes 37 to 64 ms there.
 
+Task 22's `live-results` passed on both releases. `seq 1 8000` and PowerShell's `1..8000` came back as their
+first and last 20 lines under the saved file's path, and the model read no file. `grep -c nomatch s.txt && echo
+IOPROBE_AFTER` got `EXIT_BENIGN`, and a traceback behind `| tail -3` got `PIPE_HIDES_EXIT`. `shell.results` took
+4.8 ms on a saved 38 KB output and 0.3 to 0.4 ms on the others. Replayed over the corpus's 62,100 shell calls it
+took 0.4 ms at p50, 1.4 ms at p99 and 121 ms on a 10.4 MB saved output. It replaced the 102 saved outputs whose
+files still exist, of 147, and the other 45 were deleted with their sessions. It labelled 47 of the 870 failures
+with exit code 1, and a sample of 40 held no wrong label. It named 562 outputs that report an error behind a
+pipe's exit code 0, 12 long outputs with errors, and 59 outputs with U+FFFD. Of the 26 read, 25 stood for a
+dash or a middot a program printed in cp1252, and 1 for the bytes of a binary asset. All 98 unexpected-EOF
+commands over 5 KB were well formed and 7,807 bytes or more as the budget counts them, so each lowered its
+session's budget, and none of the 27 under 5 KB did.
+
 Rules through a junction, checked on 2026-09-27 with Claude Code 2.1.281 and 2.1.283:
 
 - **Claude Code loads a rule, or an `@` import, only when its real path is inside the project.** A junction's real
@@ -242,6 +254,7 @@ denied, and the rerun denied all three. Ten calls each took:
 | 29 | An Edit straight after io-guard put back a file's endings and BOM succeeds with no new Read | `live-verify-direct`, `live-verify`, task 18 | Yes. A Write dropped keep.txt's BOM and CRLF, `verify.write` wrote both back, and the next Edit, with no Read between, ran and left `EF BB BF` then `GAMMA\r\ndelta`. `live-verify` read the file first and landed the same. The model saw the `EOL_CONVERTED` line both times. 2.1.281 and 2.1.283 |
 | 30 | Which failed file calls reach a hook | `edit-refusals`, `other-refusals`, task 20 | An Edit or Write that Claude Code rejects as a `<tool_use_error>` fires no hook at all, neither PreToolUse nor PostToolUseFailure: not read yet, `String to replace not found`, `Found 2 matches`, `No changes to make` and a missing file for Edit, and not read yet for Write. A Read over 256 KB, a pattern ripgrep rejects, a Grep path and a Glob folder that do not exist all fire PreToolUse and then PostToolUseFailure. 2.1.281 and 2.1.283 |
 | 31 | `${transcript_path}` substitutes in an `mcp_tool` map, and the transcript holds a refused call | `live-diagnose`, `guard-fields`, task 20 | Yes. The transcript records the refused call's `tool_use` and a `tool_result` with `is_error` and its text in `<tool_use_error>`. At the next hook, io-guard read the end of the transcript and its diagnosis reached the model as a `hook_additional_context` attachment, for each of seven failures. 2.1.281 and 2.1.283 |
+| 32 | What a shell result brings to a hook, and what a replaced output shows | `command-output`, task 22 | A failed Bash call's PostToolUseFailure has no `tool_response`, and its `error` is `Exit code 1\nIOPROBE_OUT\nIOPROBE_ERR`: the exit code line, then stdout, then stderr. `seq 1 8000` reached PostToolUse with `stdout` cut to 30,000 characters, `persistedOutputSize` 38,893 and `persistedOutputPath` naming a file that already existed. An `updatedToolOutput` that kept those two fields was shown as the 2 KB preview inside Claude Code's `<persisted-output>` notice. Without them, a 3.8 KB replacement reached the model whole, and the model read no file. PowerShell's shape is `{stdout, stderr, interrupted, isImage}`, and its replacement works the same way. A lone `grep` that matches nothing is a success, with `returnCodeInterpretation` "No matches found". 2.1.281 and 2.1.283 |
 
 ## Doc facts, checked on 2026-09-27
 

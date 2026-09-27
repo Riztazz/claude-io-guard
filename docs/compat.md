@@ -27,7 +27,8 @@ the desktop app's bundled 2.1.281 passed all 28 verdicts, and so did the CLI at 
 probes the same day. Five passed on both releases, and `guard-large`, which costs about 33,000 output tokens,
 ran on 2.1.283 only. Task 17 added `write-quiet`, `edit-trailing` and `live-conform`, task 18
 `live-verify` and `live-verify-direct`, task 19 `live-read-only` and `live-locked`, task 20 `edit-refusals`,
-`other-refusals` and `live-diagnose`, and task 21 `live-touched`, all of which passed on both.
+`other-refusals` and `live-diagnose`, task 21 `live-touched`, and task 22 `command-output` and
+`live-results`, all of which passed on both.
 
 The design review named 2.1.281 as the first release whose `mcp_tool` hooks wait for their server. Today's hooks
 reference names no version for that, so the floor rests on the probes instead. Older releases aren't tested.
@@ -54,7 +55,9 @@ reference names no version for that, so the floor rests on the probes instead. O
 | A 145,599-byte Write arrives whole in `${tool_input}` | 2.1.283 | `guard-large` | A large Write goes unchecked |
 | PostToolUseFailure fires for a failed Read, Grep, Glob or Bash call, with `error` and `additionalContext` | 2.1.281 | `failures`, `other-refusals`, `live-diagnose` | No diagnosis after the call (task 20) |
 | `bashEditDiff` in a Bash result, with `bashEditDiffEnabled: true` | 2.1.281 | `bash-diff-on`, `bash-diff-off` | git status and modification times only (task 21) |
-| `updatedToolOutput` in the tool's own output shape, and `classifierContext` | 2.1.281 | `updated-output` | `additionalContext` only (task 22) |
+| `updatedToolOutput` in the tool's own output shape, Bash's and PowerShell's, and `classifierContext`. Without `persistedOutputPath` and `persistedOutputSize`, the new output reaches the model whole | 2.1.281 | `updated-output`, `command-output`, `live-results` | Claude Code's own 2 KB preview of a saved output, and the model reads the file again (task 22) |
+| A failed Bash or PowerShell call's `error` holds `Exit code N`, then the call's stdout and stderr | 2.1.281 | `command-output` | The exit code alone, so no error line is found and no exit code is labelled (task 22) |
+| An output over 30,000 characters reaches PostToolUse cut to 30,000, with `persistedOutputPath` naming the whole, already saved | 2.1.281 | `command-output`, `live-results` | io-guard reads the first 30,000 characters only (task 22) |
 | `CLAUDE_ENV_FILE` for a SessionStart hook, reaching Bash calls and not PowerShell ones | 2.1.281 | `env-file`, `live-probe` | Bash runs without io-guard's UTF-8 settings (task 10) |
 | A hook's environment names the Claude Code version in `AI_AGENT` | 2.1.281 | `live-probe` | `probe.json` has no version, and the Windows transport rules stay on |
 | On Windows the Bash tool cuts a command near 7.8 KB and halves a run of backslashes that no double quote follows (#92543) | every release probed | this session's Bash tool, `live-move-ask` | Setting `FIXED_IN` in `checks/session_probe.py` to the fixing release turns both rules off for it (task 11) |

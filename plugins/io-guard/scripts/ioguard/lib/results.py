@@ -150,6 +150,22 @@ CODES: tuple[CodeSpec, ...] = (
     CodeSpec("UNINTENDED_CHANGE", Layer.BYTES, Severity.WARNING,
              "Lines changed that the call did not ask to change.",
              "Read the lines the message names, and put back any change the call did not make.", "0.1"),
+    CodeSpec("EXIT_BENIGN", Layer.OUTPUT, Severity.INFO,
+             "The exit code is an answer the program gives, such as grep's 1 for no match, not a failure.",
+             "Put || true after that program when its answer is expected.", "0.1"),
+    CodeSpec("ERRORS_IN_OUTPUT", Layer.OUTPUT, Severity.WARNING,
+             "The output has lines that report errors.",
+             "Fix the first one, then run the command again.", "0.1"),
+    CodeSpec("OUTPUT_SAVED", Layer.OUTPUT, Severity.INFO,
+             "The output was too long to show, so io-guard shows its first and last lines and its errors.",
+             "Read the saved file with offset and limit for the rest.", "0.1"),
+    CodeSpec("MOJIBAKE", Layer.OUTPUT, Severity.WARNING,
+             "The output holds text that went through the wrong code page.",
+             "Copy none of that text into a file, and run the command again with UTF-8 input and output.",
+             "0.1"),
+    CodeSpec("STALE_BINARY", Layer.OUTPUT, Severity.WARNING,
+             "The last build in this session failed, so this run used what an earlier build made.",
+             "Fix the build and build again before trusting this result.", "0.1"),
 )
 Code = Enum("Code", {spec.code: spec.code for spec in CODES})
 SPECS: dict[Code, CodeSpec] = {Code[spec.code]: spec for spec in CODES}

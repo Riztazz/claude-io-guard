@@ -8,7 +8,7 @@ from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import Registry
 from ioguard.checks.session_probe import WINDOWS_CUT
 from ioguard.checks.shell_writes import ShellWrites
-from ioguard.checks.transport_body import TransportBody
+from ioguard.checks.transport_body import TransportBody, budget_for
 from ioguard.hooks.answer import answer
 from ioguard.lib.config import Config, defaults
 from ioguard.lib.context import Context, Probe
@@ -155,6 +155,14 @@ class TheBudget(unittest.TestCase):
         self.assertEqual((narrowed.verdict, learned.verdict, default.verdict),
                          (Verdict.DENY, Verdict.DENY, Verdict.OBSERVE),
                          "2,000 from the key and 1,000 learned both refuse what 6,000 lets through")
+
+    def test_a_budget_learned_where_the_probe_found_no_cut_applies(self):
+        ctx = context(MACOS)
+        self.assertIsNone(budget_for(ctx), "no cut probed and none learned, so no budget")
+        ctx.session.budget_override = 9000
+        self.assertEqual(budget_for(ctx), 6000, "a learned cut brings the budget key's margin with it")
+        ctx.session.budget_override = 4000
+        self.assertEqual(budget_for(ctx), 4000, "and a lower learned cut wins")
 
 
 class TheAnswerFollowsTheMode(unittest.TestCase):

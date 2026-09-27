@@ -1,11 +1,13 @@
 """Replay runs each recorded call through the pipeline, offline, and counts what each check would do."""
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 from ioguard.checks.registry import Registry
 from ioguard.cli import replay
 from ioguard.cli.corpus import Record
 from tests.support import injected
+from tests.support.project import TemporaryProject
 
 CORPUS = Path("corpus")
 
@@ -86,6 +88,24 @@ class TheReportHasOneShape(unittest.TestCase):
         ctx = replayed.context(record(1, "ls"))
         self.assertEqual((ctx.fs.writes, ctx.telemetry.enabled), ([], False),
                          "the file system is in memory and telemetry is off")
+
+
+class AShellResultIsReplayedAsTheModelSawIt(unittest.TestCase):
+    def test_a_call_recorded_without_a_response_carries_its_result_as_stdout(self):
+        recorded = replace(record(1, "ls"), response=None, result="a.txt\nb.txt")
+        after = list(replay.Replay(Registry()).events(recorded))[1]
+        self.assertEqual(after.tool_response, {"stdout": "a.txt\nb.txt"},
+                         "an older release kept only the text the model read")
+
+    def test_the_saved_output_is_read_from_disk_while_it_is_there(self):
+        with TemporaryProject({"tool-results/b1.txt": b"1\n2\n"}) as root:
+            saved = root / "tool-results" / "b1.txt"
+            notice = f"<persisted-output>\nOutput too large (1KB). Full output saved to: {saved}"
+            recorded = replace(record(1, "seq 2"), response=None, result=notice)
+            ctx = replay.Replay(Registry()).context(recorded)
+            self.assertEqual(ctx.fs.read_bytes(saved), b"1\n2\n", "the check reads the file as it would live")
+        gone = replay.Replay(Registry()).context(recorded)
+        self.assertEqual(gone.fs.files, {}, "a file deleted since leaves the file system empty")
 
 
 if __name__ == "__main__":

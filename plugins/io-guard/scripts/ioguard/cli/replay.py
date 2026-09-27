@@ -1,11 +1,13 @@
 """Replay the corpus through the check pipeline, offline, and report what each check would have done.
 
 Each record runs as a PreToolUse event, then as a PostToolUse or PostToolUseFailure event carrying its
-recorded result. Every session gets its own in-memory context: an empty file system, a clock that stands
-still, telemetry turned off, and a git that answers from each repository's files as git tracks them now.
-Nothing runs but one git ls-files per repository, nothing is written, and no check is skipped for time. A
-refusal of a call that succeeded is a false-positive candidate, and the report keeps a sample of them.
-docs/design/architecture.md, section 11, fixes the report's shape, which task 31 reads.
+recorded result. A shell call recorded without a structured response carries its result text as stdout.
+Every session gets its own in-memory context: a file system that holds only the output Claude Code saved for
+the call, read from disk while the file is still there, a clock that stands still, telemetry turned off, and
+a git that answers from each repository's files as git tracks them now. Nothing runs but one git ls-files per
+repository, nothing is written, and no check is skipped for time. A refusal of a call that succeeded is a
+false-positive candidate, and the report keeps a sample of them. docs/design/architecture.md, section 11,
+fixes the report's shape, which task 31 reads.
 """
 import random
 import re
@@ -19,6 +21,8 @@ from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import Registry
 from ioguard.checks.session_probe import WINDOWS_CUT, cut_applies
 from ioguard.cli.corpus import Record
+from ioguard.cli.labels import SHELLS
+from ioguard.lib import bytesio, output
 from ioguard.lib.config import defaults
 from ioguard.lib.context import Context, Probe, SessionState
 from ioguard.lib.decisions import Decision, Verdict
@@ -132,8 +136,9 @@ class Replay:
         probe = replace(Probe.unprobed(platform), transport_budget=WINDOWS_CUT if cut else None,
                         halving=True if cut else None)
         session = self.sessions.setdefault(record.session, SessionState())
-        return Context.fake(config=self.config, platform=platform, probe=probe, session=session, git=self.git,
-                            telemetry=Telemetry(None, enabled=False), data_dir=REPLAY_DATA)
+        return Context.fake(saved_output(record), config=self.config, platform=platform, probe=probe,
+                            session=session, git=self.git, telemetry=Telemetry(None, enabled=False),
+                            data_dir=REPLAY_DATA)
 
     def events(self, record: Record) -> Iterable[Event]:
         raw = {"session_id": record.session, "cwd": record.cwd, "tool_name": record.tool,
@@ -144,9 +149,8 @@ class Replay:
             failure = {**raw, "hook_event_name": "PostToolUseFailure", "error": record.result}
             yield Event.from_hook_json(failure, Surface.CLI)
         else:
-            response = record.response if isinstance(record.response, dict) else {}
-            yield Event.from_hook_json({**raw, "hook_event_name": "PostToolUse", "tool_response": response},
-                                       Surface.CLI)
+            yield Event.from_hook_json({**raw, "hook_event_name": "PostToolUse",
+                                        "tool_response": response_of(record)}, Surface.CLI)
 
     def run(self, record: Record) -> None:
         outcome_key = "failed" if record.failed else "ok"
@@ -198,6 +202,21 @@ class Replay:
             "by_label": dict(self.labels.most_common()),
             "checks": {check_id: tally.to_json() for check_id, tally in sorted(self.checks.items())},
         }
+
+
+def response_of(record: Record) -> dict:
+    """The recorded tool response, or a shell call's result text as its stdout when none was recorded."""
+    if isinstance(record.response, dict):
+        return record.response
+    return {"stdout": record.result} if record.tool in SHELLS else {}
+
+
+def saved_output(record: Record) -> dict[Path, bytes]:
+    """The file Claude Code saved a shell call's long output to, while it is still on disk, by its path."""
+    path = output.saved_path(response_of(record)) if record.tool in SHELLS and not record.failed else None
+    if path is None or not Path(path).is_file():
+        return {}
+    return {Path(path): bytesio.read_bytes(Path(path))}
 
 
 def head(record: Record) -> str:

@@ -473,6 +473,101 @@ def piped(command: str, simple: SimpleCommand) -> bool:
     return command[end:end + 1] == "|" and command[end + 1:end + 2] != "|"
 
 
+def matching(simple: SimpleCommand, entries: Sequence[str]) -> str | None:
+    """The command simple runs, as the first entry of entries its words start with, such as make or
+    python -m pytest. Case and a folder or .exe on the program are ignored. None when no entry fits."""
+    for entry in entries:
+        words = entry.lower().split()
+        head = re.split(r"[\\/]", words[0])[-1].removesuffix(".exe")
+        named = PYTHON.match(simple.name) if head == "python" else simple.name == head
+        if named and [word.lower() for word in simple.words[1:len(words)]] == words[1:]:
+            return " ".join(simple.words[:len(words)])
+    return None
+
+
+@dataclass(frozen=True)
+class Pipeline:
+    commands: tuple[SimpleCommand, ...]
+    joined_by: str               # "&&", "||" or ";" to the pipeline before, "" for the first
+
+
+GROUPING = frozenset({"if", "then", "else", "elif", "fi", "case", "esac", "{", "}", "!", "(", ")"})
+JOINS = re.compile(r"&&|\|\||\||[;&\n(){}]|[^\s;&|(){}]+")
+OPERATORS = frozenset({"&&", "||", "|", ";", "&", "\n"})
+LOOP_WORDS = frozenset({"do", "done"})
+
+
+def pipelines(command: str, found: Scan | None = None) -> tuple[Pipeline, ...] | None:
+    """The pipelines of a Bash command in order, each with the operator that joins it to the one before. None
+    when parentheses, braces, if, case or ! group its commands, or when a command made only of assignments
+    ends the command or joins the next with &&, || or |, because the order alone then no longer says which
+    command ran last."""
+    found = found or scan(command)
+    simples = commands(command, found)
+    if not simples:
+        return ()
+    top = structure(command, found.states)
+
+    def normal(start: int, end: int) -> str:
+        return "".join(command[at] if top[at] else " " for at in range(start, end))
+
+    bounds = [0, *(point for simple in simples for point in simple.span), len(command)]
+    joins = [JOINS.findall(normal(start, end)) for start, end in zip(bounds[::2], bounds[1::2])]
+    firsts = [normal(*simple.span).split(None, 1)[:1] for simple in simples]
+    if any(GROUPING & set(tokens) for tokens in joins) or any(GROUPING & set(first) for first in firsts):
+        return None
+    for tokens in joins:
+        words = [index for index, token in enumerate(tokens) if token not in OPERATORS | LOOP_WORDS]
+        after = next((token for token in tokens[words[-1]:] if token in OPERATORS), None) if words else ";"
+        if after in (None, "&&", "||", "|"):
+            return None
+    found_lines, current, joined = [], [simples[0]], ""
+    for simple, tokens in zip(simples[1:], joins[1:-1]):
+        kind = next((mark for mark in ("&&", "||", "|") if mark in tokens), ";")
+        if kind == "|":
+            current.append(simple)
+            continue
+        found_lines.append(Pipeline(tuple(current), joined))
+        current, joined = [simple], kind
+    found_lines.append(Pipeline(tuple(current), joined))
+    return tuple(found_lines)
+
+
+def structure(command: str, states: bytes) -> bytearray:
+    """1 for each character bash reads as the command's own structure: outside quotes, comments, heredoc
+    bodies and every $( ) or ${ } expansion."""
+    top, depth, at = bytearray(len(command)), 0, 0
+    while at < len(command):
+        char = command[at]
+        if states[at] != NORMAL:
+            at += 1
+            continue
+        if command.startswith(("$(", "${"), at):
+            depth, at = depth + 1, at + 2
+            continue
+        if depth and char in "({":
+            depth += 1
+        elif depth and char in ")}":
+            depth -= 1
+        elif not depth:
+            top[at] = 1
+        at += 1
+    return top
+
+
+def exit_candidates(command: str, found: Scan | None = None) -> tuple[SimpleCommand, ...]:
+    """The simple commands whose exit code can be the whole command's, the last to run first: the last command
+    of each pipeline in the && chain that ends the command, or every command of those pipelines under
+    pipefail. () when pipelines cannot say."""
+    lines = pipelines(command, found)
+    chosen: list[SimpleCommand] = []
+    for line in reversed(lines or ()):
+        chosen += reversed(line.commands) if "pipefail" in command else [line.commands[-1]]
+        if line.joined_by != "&&":
+            break
+    return tuple(chosen)
+
+
 def call_operators(command: str, states: bytes) -> tuple[int, ...]:
     """The offsets of each & that starts a command, as PowerShell's call operator does. Bash reads one as a
     syntax error. The & of &&, |&, 2>&1 and &> is never one."""

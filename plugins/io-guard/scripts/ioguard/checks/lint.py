@@ -149,23 +149,12 @@ def python(bodies: list[str], findings: Findings) -> None:
             return
 
 
-def build_label(simple: shell.SimpleCommand, builds: list[str]) -> str | None:
-    """The build or test command simple runs, as its entry in builds names it, or None."""
-    for entry in builds:
-        words = entry.lower().split()
-        head = re.split(r"[\\/]", words[0])[-1].removesuffix(".exe")
-        named = shell.PYTHON.match(simple.name) if head == "python" else simple.name == head
-        if named and [word.lower() for word in simple.words[1:len(words)]] == words[1:]:
-            return " ".join(simple.words[:len(words)])
-    return None
-
-
 def hidden_exit(command: str, simples: tuple[shell.SimpleCommand, ...], builds: list[str],
                 findings: Findings) -> None:
     if re.search(r"pipefail|PIPESTATUS", command):
         return
     for index, simple in enumerate(simples[:-1]):
-        label = build_label(simple, builds)
+        label = shell.matching(simple, builds)
         if label and shell.piped(command, simple):
             into = simples[index + 1].name
             findings.add(Code.PIPE_HIDES_EXIT, f"This command pipes {label} into {into}, so the exit code "

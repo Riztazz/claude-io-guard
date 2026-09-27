@@ -3,12 +3,12 @@
 A Claude Code plugin that checks what an agent sends to the file and shell tools, fixes what it safely can, and
 returns a structured error for the rest. One codebase runs on Windows and macOS.
 
-**Status: in build.** The plugin installs, and its hooks answer every file and shell call. Fifteen checks run
+**Status: in build.** The plugin installs, and its hooks answer every file and shell call. Sixteen checks run
 so far: the session probe, where a write lands, what holds a locked file, the Bash body move, the shell-write
 refusal, the quoting and dialect lint, the Git Bash path fix, the endings and BOM fix for Write, the indent fix
 for Edit, the check of each written file against the file before it, your own verify command after a write, the
-files a shell command changed, the profile line after a Read, and the diagnosis of a failed file call, both
-after it fails and after Claude Code refuses it. The build plan is in
+files a shell command changed, the profile line after a Read, the diagnosis of a failed file call, both after it
+fails and after Claude Code refuses it, and what a shell command's result means. The build plan is in
 `.claude/tasks/`, and this page describes the plugin the plan builds.
 
 ## Five fixes, by example
@@ -55,12 +55,14 @@ With       Refused. SHELL_WRITE: This command writes C:/work/app/src/client.py, 
            to change it, or the Write tool to replace it whole.
 ```
 
-**A search that finds nothing.** grep exits with 1 when no line matches.
+**A search that finds nothing, inside a chain.** grep exits with 1 when no line matches, and `&&` stops there.
 
 ```
-The call   Bash: grep -rn "legacy_api" src/
-Without    Exit code 1, and the model reports that the search failed.
-With       EXIT_BENIGN: exit code 1 from grep means no line matched. The search worked and found nothing.
+The call   Bash: grep -q "legacy_api" src/client.py && echo still used
+Without    Exit code 1, and the model reports that the command failed.
+With       EXIT_BENIGN: Exit code 1 is the answer grep gives when no line matches, not a failure. The
+           commands after it in the && chain did not run. Join them with ; instead of &&, or put || true
+           after grep, when that answer is expected.
 ```
 
 <a href="https://riztazz.github.io/claude-io-guard/architecture.svg"><img src="docs/architecture.svg" alt="io-guard's architecture: Claude Code's tools on top, the plugin's io server, checks and lib in the middle, and the files on disk at the bottom, with four numbered flows" width="100%"></a>
@@ -86,7 +88,7 @@ The numbers come from 110,379 file and shell tool calls in 738 transcripts of re
 | `sed -i`, redirects and scripts write files around the edit tools, so no check and no rewind sees them | 2,876 shell writes | Refuses a write to a file git tracks, names the tool that does it safely, and warns about a script created inside the repository |
 | Bash reads a command differently from what was meant: a Windows path's last backslash escapes its quote, a backtick inside double quotes runs as a command, PowerShell syntax goes to the Bash tool, a Python body doesn't compile | 29 failed commands, and 11 more that ran and did the wrong thing | Rewrites the path with forward slashes, and refuses the rest with the fix |
 | On Windows, Git Bash turns an argument such as `/Name/X` or `/F` into a path before a Windows program sees it, and `2>nul` writes a file named `nul` | 17 results show a converted path, 163 commands pass such an argument, 3 redirect to `nul` | Names those arguments in `MSYS2_ARG_CONV_EXCL`, and writes `cmd //c` and `/dev/null` |
-| Long output is cut, and exit code 1 from grep stops a chain | 148 cut results | Labels the exit code and summarises the errors |
+| A long output is saved to a file the model reads again, grep's exit code 1 stops a chain, a pipe into `tail` hides a failure, and a console loses characters as U+FFFD | 147 saved outputs, 870 failures with exit code 1, 562 outputs that report an error behind exit code 0, 59 outputs with U+FFFD | Shows a saved output's first and last 20 lines and its error lines in its place, labels an exit code that is an answer, names the errors a pipe hid, and gives the encoding fix |
 
 ## How it works
 
@@ -169,7 +171,9 @@ skipped and the call goes ahead. Both are settings.
 
 **The Bash budget, on Windows:** a Bash command longer than 6,000 bytes, each apostrophe counted as four, gets
 its heredoc or `python -c` body moved into a file, or is refused when there is no body to move. The Bash tool
-cuts commands near 7,800 bytes. The setting is `transport.budget_bytes`, and a project file may lower it.
+cuts commands near 7,800 bytes. The setting is `transport.budget_bytes`, and a project file may lower it. When
+a well-formed command over 5,000 bytes still fails with "unexpected EOF", your machine's Bash tool cuts sooner,
+so io-guard holds the rest of the session's commands below that command's length, on macOS too.
 
 **Shell defaults:** at session start, io-guard gives every later Bash call `PYTHONUTF8=1` and
 `PYTHONIOENCODING=utf-8`, so a Python print of a non-ASCII character works through a cp1252 console. On Windows
@@ -181,6 +185,14 @@ because a variable such as `PYTHONSTARTUP` can run a program.
 io-guard warns before it runs. It knows common builds such as `make`, `npm test` and `pytest`. To name your own,
 list each by its first words in `checks.shell.lint.build_commands`, in your project's `.claude/io-guard.json`.
 Your list replaces the default one.
+
+**What a result means:** after each Bash and PowerShell call, io-guard labels an exit code that is an answer,
+such as grep's 1 for no match, and quotes the lines that report errors. A project can add its own. In
+`checks.shell.results.benign_exits`, map a command's first words to its answer codes, such as
+`{"lint-check": {"3": "the files need formatting"}}`. In `checks.shell.results.error_patterns`, add a group of
+regular expressions for its error lines, such as `{"log": ["^Log\\w+: Error: "]}`. A run of what a failed
+build made gets a warning. `checks.shell.results.builds` and `runs` name those commands, and by default
+`ctest` runs what `cmake --build` makes.
 
 **After each write:** io-guard compares the file with the file before the call. A BOM or line endings the
 write lost go back on, and the model is told to read the file again. Turn that off with

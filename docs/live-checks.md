@@ -95,6 +95,7 @@ Confirmed with `tools/probes/run_probe.py`, whose `verdicts` command rechecks ev
 | 29. An Edit straight after io-guard put back a file's endings and BOM succeeds with no new Read | `live-verify-direct` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | 30. An Edit or Write rejected as a `<tool_use_error>` fires no hook. A failed Read, Grep or Glob fires PostToolUseFailure | `edit-refusals`, `other-refusals` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | 31. `${transcript_path}` substitutes in an `mcp_tool` map, and the transcript holds a refused call and its error | `live-diagnose`, `guard-fields` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+| 32. A failed Bash call's `error` holds its exit code line, then its stdout and stderr. An output over 30,000 characters reaches PostToolUse cut to 30,000, with `persistedOutputPath` naming the saved whole, already on disk. An `updatedToolOutput` without the two `persistedOutput` fields reaches the model whole, for Bash and for PowerShell | `command-output` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 
 ## io-guard itself
 
@@ -117,6 +118,7 @@ match `.claude/tasks/context.md`, "The hook entry point".
 | An Edit of a read-only file that git marks lockable is refused with the `git lfs lock` step | `live-read-only` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | An Edit of a file another process holds, sharing reads only, fails with EPERM, and the model learns the holder's name and process id | `live-locked` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | With `conform.write` off, a Write that drops a BOM and CRLF gets both put back after it, the model sees `EOL_CONVERTED`, and the next Edit lands in the file's own bytes | `live-verify`, `live-verify-direct` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+| A saved Bash or PowerShell output comes back as its first and last 20 lines with the file's path, and the model reads no file. grep's exit code 1 that stopped an `&&` chain is labelled as its answer, and a traceback behind `\| tail` is named with tail's exit code | `live-results` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 
 ## Not checked yet
 

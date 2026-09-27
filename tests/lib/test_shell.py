@@ -243,5 +243,50 @@ class QuotingBashReadsDifferently(unittest.TestCase):
                          "only a file the move wrote is a body file")
 
 
+def names(simples) -> list[str]:
+    return [simple.name for simple in simples]
+
+
+class ACommandIsNamedByItsFirstWords(unittest.TestCase):
+    def test_an_entry_matches_by_its_first_words_without_case_folder_or_exe(self):
+        for command, expected in (("make all", "make"), ('"C:/bin/MAKE.exe" all', "C:/bin/MAKE.exe"),
+                                  ("git grep -n x", "git grep"), ("py -m pytest -q", "py -m pytest"),
+                                  ("git log", None), ("maker", None)):
+            with self.subTest(command=command):
+                simple = shell.commands(command)[0]
+                self.assertEqual(shell.matching(simple, ["make", "git grep", "python -m pytest"]), expected,
+                                 "the label is the command's own words, and python matches py and python3")
+
+
+class PipelinesAndTheExitCode(unittest.TestCase):
+    def test_pipelines_are_joined_by_the_operator_before_them(self):
+        lines = shell.pipelines("cd a && make 2>&1 | tail -5; grep x f || echo none")
+        self.assertEqual([(line.joined_by, names(line.commands)) for line in lines],
+                         [("", ["cd"]), ("&&", ["make", "tail"]), (";", ["grep"]), ("||", ["echo"])],
+                         "a pipe joins commands into one pipeline, and the rest join pipelines")
+
+    def test_the_exit_code_comes_from_the_and_chain_that_ends_the_command(self):
+        for command, expected in (("cd a && grep -q x f && echo yes", ["echo", "grep", "cd"]),
+                                  ("make; grep x log", ["grep"]), ("make || grep x log", ["grep"]),
+                                  ("make | tail -3", ["tail"]),
+                                  ("set -o pipefail; make | tail", ["tail", "make"]),
+                                  ("for f in *.md; do grep -c x $f; done", ["grep"])):
+            with self.subTest(command=command):
+                self.assertEqual(names(shell.exit_candidates(command)), expected,
+                                 "the last command of each pipeline an && joins can have set the exit code")
+
+    def test_grouped_commands_leave_the_exit_code_unknown(self):
+        for command in ("(cd a && make)", "if grep x f; then echo y; fi", "{ make; } && echo ok",
+                        "! grep x f", "x=$(false) && grep a b", "grep a b; y=$(make)"):
+            with self.subTest(command=command):
+                self.assertIsNone(shell.pipelines(command), "the order alone no longer says what ran last")
+                self.assertEqual(shell.exit_candidates(command), (), "so no command is named")
+
+    def test_an_assignment_a_semicolon_ends_does_not_hide_the_order(self):
+        command = "for f in $(ls | sort); do s=$(cat $f | wc -l); [ -n \"$s\" ] && echo $f; done"
+        self.assertEqual(names(shell.exit_candidates(command)), ["echo", "["],
+                         "pipes and parentheses inside $( ) belong to their word")
+
+
 if __name__ == "__main__":
     unittest.main()

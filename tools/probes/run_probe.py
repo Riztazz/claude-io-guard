@@ -149,6 +149,18 @@ TOUCHED = ("Do these in order, one tool call each, and never retry. 1. Read a.cp
 TOUCHED_FILES = {"a.cpp": b"int   main( ){return 0;}\n", "conv.txt": b"one\r\ntwo\r\n",
                  "conv.py": b"import pathlib\npath = pathlib.Path('conv.txt')\n"
                             b"path.write_bytes(path.read_bytes().replace(b'\\r\\n', b'\\n'))\n"}
+OUTPUT = ("Do these in order, one tool call each, and never retry a failed step. 1. Run the Bash command: "
+          "seq 1 8000 2. Run the Bash command: echo IOPROBE_OUT; echo IOPROBE_ERR >&2; exit 1 3. Run the "
+          "Bash command: grep -c nomatch s.txt && echo IOPROBE_AFTER 4. Run the Bash command: grep nomatch "
+          "s.txt 5. Run the PowerShell command: Write-Output IOPROBE_SHAPE 6. Run the PowerShell command: "
+          "1..8000 Then quote word for word the first line of each tool result.")
+RESULTS = ("Do these in order, one tool call each, and never retry. 1. Run the Bash command: seq 1 8000 "
+           "2. Run the Bash command: grep -c nomatch s.txt && echo IOPROBE_AFTER 3. Run the Bash command: "
+           "python -c \"raise ValueError('boom')\" 2>&1 | tail -3 4. Run the PowerShell command: 1..8000 "
+           "Then reply DONE.")
+RESULTS_SEEN = ("OUTPUT_SAVED: The output was",
+                "EXIT_BENIGN: Exit code 1 is the answer grep gives when no line matches",
+                "PIPE_HIDES_EXIT: The output has 1 line that reports errors (1 exception)")
 CONFORM_OFF = json.dumps({"checks": {"conform.write": {"enabled": False}}}).encode("ascii")
 READ_ONLY = "Read Hero.uasset. Then use the Edit tool once on Hero.uasset to replace v1 with v2, and use " \
             "no other tool. Then quote word for word the error or note that came back."
@@ -230,6 +242,9 @@ PROBES = {
     "updated-output": Probe(8, "updated_output", hooks=(("PostToolUse", "Bash", "exec"),), allowed=("Bash",),
                             prompt="Run this exact Bash command: echo IOPROBE_REAL_OUTPUT\n"
                                    "Then reply with the exact output you saw, word for word."),
+    "command-output": Probe(0, "command_output", allowed=("Bash", "PowerShell"), max_turns=12, prompt=OUTPUT,
+                            hooks=(("PostToolUse", "", "exec"), ("PostToolUseFailure", "", "exec")),
+                            setup={"s.txt": b"one\ntwo\n"}),
     "time-exec": Probe(9, "record", hooks=BASH_PRE, allowed=("Bash",), prompt=TEN_ECHOES, max_turns=14),
     "time-shell": Probe(9, "record", hooks=(("PreToolUse", "Bash", "shell"),), allowed=("Bash",),
                         prompt=TEN_ECHOES, max_turns=14),
@@ -325,6 +340,8 @@ PROBES = {
                                                       for n in range(9000))}),
     "live-touched": Probe(0, "", guard="", allowed=("Read", "Bash"), git=True, prompt=TOUCHED,
                           check=("a.cpp", "conv.txt"), setup=TOUCHED_FILES),
+    "live-results": Probe(0, "", guard="", allowed=("Bash", "PowerShell"), prompt=RESULTS, max_turns=10,
+                          setup={"s.txt": b"one\ntwo\n"}),
     "live-verify-direct": Probe(0, "", guard="", permission="acceptEdits", allowed=("Read", "Write", "Edit"),
                                 prompt=VERIFY_DIRECT, check=("keep.txt",), max_turns=10,
                                 setup={"keep.txt": b"\xef\xbb\xbfalpha\r\nbeta\r\n",
@@ -667,6 +684,16 @@ def repaired_then_edited(summary: dict, name: str, calls: list[str]) -> bool:
             and [tool["name"] for tool in summary["tools"]] == calls
             and not any(result["is_error"] for result in summary["results"])
             and context_reached(name, "EOL_CONVERTED: The Write tool left keep.txt"))
+
+
+def results_shown(summary: dict, name: str) -> bool:
+    """Both saved outputs came back as io-guard's view of them, and each shell.results line reached the
+    model."""
+    views = sum("[io-guard: the whole output is in" in str(result["content"])
+                for result in summary["results"])
+    return views == 2 and all(context_reached(name, needle) for needle in RESULTS_SEEN)
+
+
 VERDICTS = {
     "rewrite-allow": lambda s, n: "IOPROBE_REWRITTEN" in seen(s),
     "write-bytes": lambda s, n: s["files"]["probe.txt"] == BOM_CRLF,
@@ -727,6 +754,10 @@ VERDICTS = {
     "live-touched": lambda s, n: all(context_reached(n, needle) for needle in (
         "TOUCHED_BY_SHELL: This command changed a.cpp, read before it",
         "EOL_MISMATCH: This command changed conv.txt from CRLF to LF line endings.")),
+    "live-results": results_shown,
+    "command-output": lambda s, n: logged(s, '"error": "Exit code 1\\nIOPROBE_OUT\\nIOPROBE_ERR"')
+    and sum("IOPROBE-SUMMARY" in str(result["content"]) and "persisted-output" not in str(result["content"])
+            for result in s["results"]) == 3,
     "edit-refusals": lambda s, n: hooks_started(s, "Edit") == set() and all(
         text in seen(s) for text in ("File has not been read yet", "String to replace not found",
                                      "Found 2 matches", "No changes to make")),
