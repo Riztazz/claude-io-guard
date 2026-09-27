@@ -5,6 +5,7 @@ from ioguard.checks.base import Check, CheckMeta
 from ioguard.checks.conform_edit import ConformEdit
 from ioguard.checks.conform_write import ConformWrite
 from ioguard.checks.lint import Lint
+from ioguard.checks.location import Location, LockHolders
 from ioguard.checks.read_profile import ReadProfile
 from ioguard.checks.session_probe import SessionProbe
 from ioguard.checks.shell_writes import ShellWrites
@@ -78,8 +79,9 @@ class Registry:
                      if check.options.get("enabled", True) and check.applies(event, ctx))
 
 
-CHECKS: tuple[type[Check], ...] = (SessionProbe, ShellWrites, TransportBody, Lint, WinPaths, ConformWrite,
-                                   ConformEdit, VerifyWrite, VerifyCommand, ReadProfile)
+CHECKS: tuple[type[Check], ...] = (SessionProbe, Location, LockHolders, ShellWrites, TransportBody, Lint,
+                                   WinPaths, ConformWrite, ConformEdit, VerifyWrite, VerifyCommand,
+                                   ReadProfile)
 
 
 def default_registry() -> Registry:

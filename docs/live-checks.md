@@ -110,6 +110,8 @@ match `.claude/tasks/context.md`, "The hook entry point".
 | In auto mode the same call is refused with the moved command, and the rerun runs | `live-move-auto` | 2.1.283 | waits for the Mac | 2026-09-27 |
 | After a Read, the file's profile line reaches the model, which quotes it | `live-read-profile` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | A Write of LF text over a BOM and CRLF file lands with the BOM and CRLF | `live-conform` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+| An Edit of a read-only file that git marks lockable is refused with the `git lfs lock` step | `live-read-only` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+| An Edit of a file another process holds, sharing reads only, fails with EPERM, and the model learns the holder's name and process id | `live-locked` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | With `conform.write` off, a Write that drops a BOM and CRLF gets both put back after it, the model sees `EOL_CONVERTED`, and the next Edit lands in the file's own bytes | `live-verify`, `live-verify-direct` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 
 ## Not checked yet

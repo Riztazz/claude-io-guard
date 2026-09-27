@@ -16,9 +16,10 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Protocol
 
-from ioguard.lib import bytesio
+from ioguard.lib import bytesio, locks, paths
 from ioguard.lib.config import Config, ConfigKey, ConfigLayer, LoadReport, Scope, defaults, load
 from ioguard.lib.git import Git, GitStatus, LineRange
+from ioguard.lib.locks import Process
 from ioguard.lib.platform import Platform, detect
 from ioguard.lib.profile import Profile
 from ioguard.lib.telemetry import Telemetry
@@ -29,12 +30,6 @@ class FileStat:
     size: int
     mtime_ns: int
     readonly: bool
-
-
-@dataclass(frozen=True)
-class Process:
-    pid: int
-    name: str
 
 
 @dataclass(frozen=True)
@@ -60,9 +55,10 @@ class FsPort(Protocol):
     def write_atomic(self, path: Path, data: bytes) -> bytesio.WriteReport: ...
     def stat(self, path: Path) -> FileStat | None: ...
     def exists(self, path: Path) -> bool: ...
-    def holders(self, path: Path) -> tuple[Process, ...]: ...
+    def holders(self, path: Path) -> tuple[Process, ...]: ...  # OSError when the platform cannot answer
     def make_folders(self, path: Path) -> None: ...
     def list_dir(self, path: Path) -> tuple[Path, ...]: ...    # the files in a folder, sorted, () when none
+    def link_target(self, path: Path) -> Path | None: ...      # where a path through a link really is
 
 
 class Clock(Protocol):
@@ -194,7 +190,7 @@ class LiveFs:
         return path.exists()
 
     def holders(self, path: Path) -> tuple[Process, ...]:
-        raise NotImplementedError("Finding the process that holds a file arrives with lib.locks in task 19.")
+        return locks.holders(path, detect())
 
     def make_folders(self, path: Path) -> None:
         path.mkdir(parents=True, exist_ok=True)
@@ -205,6 +201,9 @@ class LiveFs:
                 return tuple(sorted(Path(entry.path) for entry in entries if entry.is_file()))
         except OSError:
             return ()
+
+    def link_target(self, path: Path) -> Path | None:
+        return paths.link_target(path)
 
 
 def plugin_data(env: Mapping[str, str]) -> Path | None:

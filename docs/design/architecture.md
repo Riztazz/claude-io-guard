@@ -52,7 +52,8 @@ plugins/io-guard/
         registry.py                Registry, default_registry
         pipeline.py                Pipeline, Outcome, Budget
         session_probe.py           SessionStart
-        location.py                OUTSIDE_WRITE_ROOT, LINKED_PATH, RESERVED_NAME, READ_ONLY
+        location.py                write.location: RESERVED_NAME, READ_ONLY, LINKED_PATH, dirty files.
+                                   write.locks: FILE_LOCKED after a failed write
         transport_body.py          BODY_MOVED_TO_FILE, TRANSPORT_BUDGET, BACKSLASH_TRANSPORT
         shell_writes.py            SHELL_WRITE, scratch script warning
         lint.py                    shell.lint: quoting, escapes, dialect, Python bodies, PIPE_HIDES_EXIT
@@ -201,9 +202,10 @@ class FsPort(Protocol):
     def write_atomic(self, path: Path, data: bytes) -> WriteReport: ...
     def stat(self, path: Path) -> Optional[FileStat]: ...
     def exists(self, path: Path) -> bool: ...
-    def holders(self, path: Path) -> tuple[Process, ...]: ...
+    def holders(self, path: Path) -> tuple[Process, ...]: ...     # OSError when the platform cannot answer
     def make_folders(self, path: Path) -> None: ...
     def list_dir(self, path: Path) -> tuple[Path, ...]: ...   # the files in a folder, sorted, () when none
+    def link_target(self, path: Path) -> Optional[Path]: ...  # where a path through a link really is
 
 class Clock(Protocol):
     def now(self) -> datetime: ...
@@ -362,7 +364,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 
 | Layer | Codes | Task |
 |---|---|---|
-| Location | `OUTSIDE_WRITE_ROOT`, `LINKED_PATH`, `READ_ONLY`, `FILE_LOCKED` | 19 |
+| Location | `LINKED_PATH`, `READ_ONLY`, `FILE_LOCKED`. `OUTSIDE_WRITE_ROOT` was dropped with the write-roots rule (D27) | 19, in `CODES` |
 | Transport | `BODY_MOVED_TO_FILE`, `TRANSPORT_BUDGET`, `BACKSLASH_TRANSPORT`, the last a warning (D25) | 11, in `CODES` |
 | Transport | `SHELL_WRITE`, a warning for a new script inside a repository (GIT-1) | 12, in `CODES` |
 | Transport | `BACKTICK_IN_DOUBLE_QUOTES`, `TRAILING_BACKSLASH_QUOTE`, `DIALECT_MISMATCH`, `POWERSHELL_TRAP`, `PIPE_HIDES_EXIT`, `INLINE_SCRIPT_INVALID` | 13, in `CODES` |
@@ -542,9 +544,9 @@ class Registry:
     def select(self, event: Event, ctx: Context) -> tuple[Check, ...]: ...
     def ids(self) -> tuple[str, ...]: ...
 
-CHECKS: tuple[type[Check], ...] = (SessionProbe, Location, ShellWrites, TransportBody, Lint, WinPaths,
-                                   ConformWrite, ConformEdit, VerifyWrite, VerifyCommand, Touched, ReadProfile,
-                                   Diagnose, CommandResults, CommitPolicy)
+CHECKS: tuple[type[Check], ...] = (SessionProbe, Location, LockHolders, ShellWrites, TransportBody, Lint,
+                                   WinPaths, ConformWrite, ConformEdit, VerifyWrite, VerifyCommand, Touched,
+                                   ReadProfile, Diagnose, CommandResults, CommitPolicy)
 
 def default_registry() -> Registry:
     registry = Registry()
@@ -692,8 +694,8 @@ def compile_report(source: str) -> Optional[CompileReport]  # the SyntaxError, o
 # paths.py
 def normalise(raw: str, cwd: Path, platform: Platform) -> Path   # a Windows path with forward slashes
 def msys_prefix(word: str, posix_roots: Collection[str]) -> Optional[str]   # task 14: what Git Bash must keep
-def reserved(path: Path) -> Optional[str]                   # "nul", "com1"
-def link_target(path: Path) -> Optional[Path]               # junction or symlink
+def reserved(path: Path) -> Optional[str]                   # "nul" for nul.txt, the name before the first dot
+def link_target(path: Path) -> Optional[Path]               # through a junction or symlink, None through none
 def inside(path: Path, roots: Collection[Path], platform: Platform) -> Optional[Path]   # the deepest root
 def same_file(a: Path, b: Path, platform: Platform) -> bool
 
@@ -704,7 +706,8 @@ def parse_ranges(raw: bytes) -> tuple[LineRange, ...]
 def parse_attributes(raw: bytes) -> dict[str, str]
 
 # locks.py
-def holders(path: Path, platform: Platform) -> tuple[Process, ...]
+def holders(path: Path, platform: Platform) -> tuple[Process, ...]   # task 19: Restart Manager or lsof
+def parse_lsof(raw: bytes) -> tuple[Process, ...]
 def file_lock(path: Path, data_dir: Path, wait_s: float = 5.0) -> ContextManager[None]  # across processes
 
 # proc.py
@@ -768,7 +771,6 @@ Policy data lives in `io-guard.json`. The file carries no comments, so its keys 
                      "auto": "refuse", "dontAsk": "refuse", "bypassPermissions": "allow"}
   },
   "pipeline": {"soft_ms": 300, "hard_ms": 2000},
-  "write_roots": {"extra": ["C:/Users/me/projs/shared-lib"]},
   "skip_trees": ["Content/**", "Binaries/**"],
   "verify": {".py": ["python", "-m", "py_compile", "{file}"], ".cpp": ["clang-format", "--dry-run", "{file}"]},
   "noise_patterns": ["^LogTemp: Display:"],
@@ -810,12 +812,12 @@ classifier sees it. `/plugin configure io-guard` cannot set nested keys, so the 
 `io.config`, or uses the dashboard page, and the README shows each.
 
 A project file restricts and never widens. It disables a check, adds `skip_trees` and `noise_patterns`, and
-narrows `budget_bytes`. It cannot add `write_roots.extra`, set `verify` commands, set `rewrite_mode` to
-`allow`, or turn telemetry off. `ConfigKey.project_may_set` marks each check key. The scope rule exists
-because a cloned repository must not be able to point writes outside itself, approve commands, or make io-guard
-run a program (D24). A `verify` command is a program io-guard starts, so only the user's own `config.json` names
-one. The key maps an extension to a command, such as `".py": ["python", "-m", "py_compile", "{file}"]`, and an
-absolute project root to its own map of extensions, which wins for that project's files (task 18).
+narrows `budget_bytes`. It cannot set `verify` commands, set `rewrite_mode` to `allow`, or turn telemetry
+off. `ConfigKey.project_may_set` marks each check key. The scope rule exists because a cloned repository must
+not be able to approve commands or make io-guard run a program (D24). A `verify` command is a program io-guard
+starts, so only the user's own `config.json` names one. The key maps an extension to a command, such as
+`".py": ["python", "-m", "py_compile", "{file}"]`, and an absolute project root to its own map of extensions,
+which wins for that project's files (task 18).
 
 Loading happens once per process and fails loudly. `validate` reports an unknown key with the file, the key
 and the nearest known key, a type mismatch with the expected type, and a scope violation with the layer that

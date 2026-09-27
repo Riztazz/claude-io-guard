@@ -26,6 +26,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import threading
@@ -122,6 +123,14 @@ VERIFY_DIRECT = "Do these in order, one tool call each, and never read keep.txt 
                 "Edit tool on keep.txt to replace gamma with GAMMA. If a step fails, quote its error word " \
                 "for word and stop. Then reply DONE."
 CONFORM_OFF = json.dumps({"checks": {"conform.write": {"enabled": False}}}).encode("ascii")
+READ_ONLY = "Read Hero.uasset. Then use the Edit tool once on Hero.uasset to replace v1 with v2, and use " \
+            "no other tool. Then quote word for word the error or note that came back."
+LOCKED = "Read keep.txt. Then use the Edit tool once on keep.txt to replace alpha with beta. If it fails, " \
+         "do not retry and use no other tool. Then quote word for word the error and every note that came " \
+         "with it."
+# GENERIC_READ, sharing reads only, as an editor or a build holds a file
+HOLD = ("import sys, _winapi; handle = _winapi.CreateFile(sys.argv[1], 0x80000000, 1, 0, 3, 0, 0); "
+        "print('open', flush=True); sys.stdin.read()")
 ARROW = 'python -c "print(chr(0x2192))"'
 DEFAULTS = f"Run these commands one at a time, each in its own tool call, and never retry. 1. Bash: " \
            f"{ARROW} 2. Bash: env -u PYTHONUTF8 -u PYTHONIOENCODING {ARROW} 3. PowerShell: {ARROW} " \
@@ -269,6 +278,11 @@ PROBES = {
                          prompt=VERIFY, check=("keep.txt",), max_turns=10,
                          setup={"keep.txt": b"\xef\xbb\xbfalpha\r\nbeta\r\n",
                                 ".claude/io-guard.json": CONFORM_OFF}),
+    "live-read-only": Probe(0, "", guard="", permission="acceptEdits", allowed=("Read", "Edit"), git=True,
+                            prompt=READ_ONLY, check=("Hero.uasset",), extra={"readonly": ("Hero.uasset",)},
+                            setup={".gitattributes": b"*.uasset lockable\n", "Hero.uasset": b"hero v1\n"}),
+    "live-locked": Probe(0, "", guard="", permission="acceptEdits", allowed=("Read", "Edit"), prompt=LOCKED,
+                         check=("keep.txt",), extra={"hold": "keep.txt"}, setup={"keep.txt": b"alpha\n"}),
     "live-verify-direct": Probe(0, "", guard="", permission="acceptEdits", allowed=("Read", "Write", "Edit"),
                                 prompt=VERIFY_DIRECT, check=("keep.txt",), max_turns=10,
                                 setup={"keep.txt": b"\xef\xbb\xbfalpha\r\nbeta\r\n",
@@ -339,12 +353,21 @@ def prepare_work(probe: Probe, work: Path) -> None:
     if probe.extra.get("outside_dir"):
         (work.parent / "outside").mkdir()
         (work.parent / "outside" / "keep.txt").write_bytes(b"keep\n")
-    if not probe.git:
-        return
-    identity = ("-c", "user.name=io-probe", "-c", "user.email=probe@localhost")
-    git(work, "init", "-q", "-b", "main")
-    git(work, *identity, "add", "-A")
-    git(work, *identity, "commit", "-q", "-m", "probe")
+    if probe.git:
+        identity = ("-c", "user.name=io-probe", "-c", "user.email=probe@localhost")
+        git(work, "init", "-q", "-b", "main")
+        git(work, *identity, "add", "-A")
+        git(work, *identity, "commit", "-q", "-m", "probe")
+    for rel in probe.extra.get("readonly", ()):
+        os.chmod(work / rel, stat.S_IREAD)
+
+
+def hold(path: Path) -> subprocess.Popen:
+    """A Python child that holds path open until its stdin closes, as an editor or a build holds a file."""
+    child = subprocess.Popen([sys.executable, "-c", HOLD, str(path)], stdin=subprocess.PIPE,
+                             stdout=subprocess.PIPE)
+    child.stdout.readline()
+    return child
 
 
 def hook_durations(lines: list[bytes], arrivals: list[int]) -> list[dict]:
@@ -436,6 +459,7 @@ def run(name: str) -> Path:
         settings, extra = guarded(probe)
         env = {**env, **extra}
     prepare_work(probe, work)
+    holder = hold(work / probe.extra["hold"]) if "hold" in probe.extra else None
     claude = os.environ.get("IOPROBE_CLAUDE", "claude")
     argv = [claude, "-p", probe.prompt, "--plugin-dir", str(plugin), *helper, "--output-format",
             "stream-json", "--verbose", "--include-hook-events", "--debug-file", str(out / "debug.txt"),
@@ -457,6 +481,8 @@ def run(name: str) -> Path:
             lines.append(line)
         exit_code = session.wait()
         killer.cancel()
+    if holder is not None:
+        holder.communicate(b"", timeout=30)
     (out / "stream.jsonl").write_bytes(b"".join(lines))
     if probe.guard is not None:
         copy_telemetry(lines, log)
@@ -645,6 +671,10 @@ VERDICTS = {
     "live-conform": lambda s, n: s["files"]["keep.txt"] == KEPT_CONFORMED,
     "live-verify": lambda s, n: repaired_then_edited(s, n, ["Read", "Write", "Read", "Edit"]),
     "live-verify-direct": lambda s, n: repaired_then_edited(s, n, ["Read", "Write", "Edit"]),
+    "live-read-only": lambda s, n: s["files"]["Hero.uasset"] == "hero v1\n"
+    and "READ_ONLY: Hero.uasset is read-only. Lock it with git lfs lock Hero.uasset" in seen(s),
+    "live-locked": lambda s, n: s["files"]["keep.txt"] == "alpha\n"
+    and context_reached(n, "FILE_LOCKED: Python (process"),
 }
 
 

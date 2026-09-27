@@ -1,9 +1,15 @@
 """normalise turns a path as the agent wrote it into one absolute form on each platform."""
+import os
+import sys
 import unittest
 from pathlib import Path
 
-from ioguard.lib.paths import inside, msys_prefix, normalise
+from ioguard.lib.paths import inside, link_target, msys_prefix, normalise, reserved
 from ioguard.lib.platform import Platform, detect
+from tests.support.project import TemporaryProject
+
+if sys.platform == "win32":
+    import _winapi
 
 WINDOWS = Platform("win32", True)
 MACOS = Platform("darwin", True)
@@ -26,6 +32,24 @@ class PathsNormalise(unittest.TestCase):
         decomposed = "cafe" + chr(0x301) + ".txt"
         self.assertEqual(normalise(decomposed, Path("/w"), MACOS).name, "caf" + chr(0xE9) + ".txt",
                          "on macOS a decomposed name is normalised to NFC, the form a user types")
+
+    def test_reserved_reads_the_name_before_the_first_dot(self):
+        names = ["nul", "NUL.txt", "con .log", "com1.tar.gz", "console.txt", "com10", "lpt0", "a.nul"]
+        self.assertEqual([reserved(Path("C:/w") / name) for name in names],
+                         ["nul", "nul", "con", "com1", None, None, None, None],
+                         "Windows reads a device name before the first dot, spaces dropped, without case")
+
+    def test_link_target_follows_a_linked_folder_and_leaves_a_plain_path(self):
+        with TemporaryProject({"real/a.txt": b"x", "plain/b.txt": b"y"}) as root:
+            link = root / "linked"
+            if sys.platform == "win32":
+                _winapi.CreateJunction(str(root / "real"), str(link))
+            else:
+                os.symlink(root / "real", link)
+            found = (link_target(link / "a.txt"), link_target(link / "new.txt"),
+                     link_target(root / "plain" / "b.txt"))
+        self.assertEqual(found, (root / "real" / "a.txt", root / "real" / "new.txt", None),
+                         "a file through a linked folder is where the link points, even one not written yet")
 
     def test_inside_finds_the_deepest_root_that_holds_a_path(self):
         roots = [Path("C:/Work"), Path("C:/work/app"), Path("C:/other")]

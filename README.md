@@ -3,10 +3,11 @@
 A Claude Code plugin that checks what an agent sends to the file and shell tools, fixes what it safely can, and
 returns a structured error for the rest. One codebase runs on Windows and macOS.
 
-**Status: in build.** The plugin installs, and its hooks answer every file and shell call. Ten checks run so
-far: the session probe, the Bash body move, the shell-write refusal, the quoting and dialect lint, the Git Bash
-path fix, the endings and BOM fix for Write, the indent fix for Edit, the check of each written file against the
-file before it, your own verify command after a write, and the profile line after a Read. The build plan is in
+**Status: in build.** The plugin installs, and its hooks answer every file and shell call. Twelve checks run so
+far: the session probe, where a write lands, what holds a locked file, the Bash body move, the shell-write
+refusal, the quoting and dialect lint, the Git Bash path fix, the endings and BOM fix for Write, the indent fix
+for Edit, the check of each written file against the file before it, your own verify command after a write, and
+the profile line after a Read. The build plan is in
 `.claude/tasks/`, and this page describes the plugin the plan builds.
 
 ## Five fixes, by example
@@ -74,6 +75,7 @@ The numbers come from 110,379 file and shell tool calls in 738 transcripts of re
 | On Windows, a Bash command longer than about 7.8 KB fails with "unexpected EOF", and a `\\` that no double quote follows loses a backslash | 122 failed commands, about 262k tokens | Moves a heredoc or `python -c` body into a file, byte-exact, and runs the file. Warns about a halved `\\` it cannot move |
 | Write turns a CRLF file into LF and drops its BOM, and an Edit's new text comes indented with spaces in a file indented with tabs, or the other way round | 328 "LF will be replaced by CRLF" warnings | Rewrites Write content in the file's own endings, BOM and final newline, and an Edit's new text in the indent of the lines around it, before either runs. A new file takes its endings from `.editorconfig`, `.gitattributes` or the files beside it |
 | A write leaves damage no tool reports: letters a code page lost as U+FFFD, control bytes, lines changed outside the edit, a file cut short | Never reported, so the transcripts can't count it | Compares each written file with the file before it, puts back a lost BOM or line endings, and names the rest with its lines. An optional git pre-commit hook checks the staged files the same way |
+| An Edit fails with EPERM because a program holds the file, or a write hits a read-only file | 3 EPERM failures | Names the program and its process id after the failure. Refuses a read-only file before the write, with `git lfs lock` when the file is lockable |
 | Read shows a CRLF file, an LF file and a file with a BOM the same way | Agents ran a script of their own 107 times to find out | Adds one line after each Read, such as `io-guard: CRLF, BOM, UTF-8, tabs, 1,284 lines`, and a warning for mixed endings, invalid UTF-8, NUL or private-use bytes |
 | A failed Edit says "not found" and nothing else | 67 anchor misses, 112 stale reads | Returns the closest match, the file's endings and a corrected call |
 | `sed -i`, redirects and scripts write files around the edit tools, so no check and no rewind sees them | 2,876 shell writes | Refuses a write to a file git tracks, names the tool that does it safely, and warns about a script created inside the repository |
@@ -143,8 +145,8 @@ Until 1.0, installs follow the latest commit. From 1.0 on, releases are tagged.
 ## Configure it
 
 Every setting has a default, and every default is a setting. Your settings live in `config.json` in the plugin's data
-folder, and a project can add `.claude/io-guard.json`. A project file can only make io-guard stricter: it can't add
-places to write to or approve commands.
+folder, and a project can add `.claude/io-guard.json`. A project file can only make io-guard stricter: it can't
+approve commands or make io-guard run a program.
 
 **What happens to a rewritten command** is yours to choose, per permission mode:
 

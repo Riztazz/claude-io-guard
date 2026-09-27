@@ -5,7 +5,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ioguard.lib.bytesio import WriteReport
-from ioguard.lib.context import FileStat, Process
+from ioguard.lib.context import FileStat
+from ioguard.lib.locks import Process
 from ioguard.lib.git import GitStatus, LineRange
 
 START = datetime(2026, 9, 27, 12, 0, tzinfo=timezone.utc)
@@ -28,10 +29,12 @@ class FakeClock:
 
 class FakeFs:
     def __init__(self, files: Mapping[Path, bytes], readonly: frozenset[Path] = frozenset(),
-                 holders: Mapping[Path, tuple[Process, ...]] | None = None) -> None:
+                 holders: Mapping[Path, tuple[Process, ...]] | None = None,
+                 links: Mapping[Path, Path] | None = None) -> None:
         self.files = dict(files)
         self.readonly = readonly
         self.held = dict(holders or {})
+        self.links = dict(links or {})             # a linked folder to the folder it points at
         self.writes: list[Path] = []
         self.folders: set[Path] = set()
 
@@ -63,14 +66,20 @@ class FakeFs:
     def list_dir(self, path: Path) -> tuple[Path, ...]:
         return tuple(sorted(file for file in self.files if file.parent == path))
 
+    def link_target(self, path: Path) -> Path | None:
+        return next((target / path.relative_to(link) for link, target in self.links.items()
+                     if path == link or link in path.parents), None)
+
 
 class FakeGit:
     def __init__(self, root: Path | None = None, tracked: frozenset[Path] = frozenset(),
                  status: GitStatus = GitStatus(()),
                  ranges: Mapping[Path, tuple[LineRange, ...]] | None = None,
                  attributes: Mapping[Path, Mapping[str, str]] | None = None,
-                 staged_paths: tuple[str, ...] = (), blobs: Mapping[str, bytes] | None = None) -> None:
+                 staged_paths: tuple[str, ...] = (), blobs: Mapping[str, bytes] | None = None,
+                 other_roots: tuple[Path, ...] = ()) -> None:
         self.repo_root = root
+        self.other_roots = other_roots             # more repositories, each the root of the paths under it
         self.staged_paths = staged_paths
         self.blobs = dict(blobs or {})             # by spec, such as HEAD:a.py or :a.py
         self.tracked = tracked
@@ -79,7 +88,8 @@ class FakeGit:
         self.attrs = dict(attributes or {})
 
     def root(self, path: Path) -> Path | None:
-        return self.repo_root
+        return next((root for root in self.other_roots if root == path or root in path.parents),
+                    self.repo_root)
 
     def is_tracked(self, path: Path) -> bool:
         return path in self.tracked

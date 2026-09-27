@@ -38,6 +38,7 @@ which it answers, is `docs/design/review.md`. Both reviews use the task numbers 
 | D24 | A project's `io-guard.json` never makes io-guard run a program. `verify` commands come only from the user's `config.json`, where a command for one project is keyed by the project's root. Set on 2026-09-27, when the lead asked for the security issue raised in task 07 to be handled | A cloned repository must not execute code through the guard (`architecture.md`, section 12), and the design's first draft let a project file add `verify` commands, which io-guard would run on every write |
 | D25 | A body io-guard moves into a file arrives byte-exact, with no backslash halved. A halving pair left outside a moved body is a `BACKSLASH_TRANSPORT` warning, and the call runs. Set on 2026-09-27 by the lead during task 11, choosing the plan's exact bytes over keeping the halving | Replay over 180,464 calls: refusing a pair outside a body would stop 971 calls that ran, 1.0%, because agents double backslashes to survive the halving. Of 20 sampled passing calls an exact move changes, 12 had been silently corrupted by the halving and are fixed, 4 had doubled on purpose and break, and 4 read the same. Anthropic's fix to #92543 breaks the doubling anyway |
 | D26 | A rewrite of an Edit or Write input answers `updatedInput` with no `permissionDecision`, so the harness asks or approves as it would have for the original call. A check's own ask or deny still outranks it. Set on 2026-09-27 in task 17, which asked for this answer once the harness was shown to keep its own decision ("Hooks and MCP", row 27) | An `allow` would skip the prompt for a write outside the working directory, or in default mode, that nobody approved. The rewrite restores only the file's own endings, BOM and indent, and the prompt shows the input as it will land |
+| D27 | io-guard has no write-roots rule, and refuses no Edit or Write for landing outside the project. `OUTSIDE_WRITE_ROOT` and `write_roots.extra` left the plan. Chosen by the lead on 2026-09-27 in task 19, over refusing only another checkout of the same repository, refusing with an extra root in the lead's config, and warning on every such write | Replay over 23,734 recorded Edit and Write calls: 880 (3.7%) landed in another repository or in a folder outside any, 610 of them in auto mode, and almost all on purpose, such as a kit task filed from a game project. Another checkout of the same repository (PTH-3) came to 13, all from a session whose folder was a junction. Claude Code already prompts for a write outside the working folder in default and acceptEdits modes |
 
 ## Surfaces
 
@@ -100,6 +101,13 @@ Task 18's `live-verify` and `live-verify-direct` passed on both releases ("Hooks
 `live-empty` and `live-conform` still pass with `verify.write` and `verify.command` loaded. `verify.write`
 takes 0.8 ms before and 6.4 ms after an Edit of a 0.1 MB file, 8.1 and 66.9 ms at 1 MB, and 15.4 and 32.0 ms
 at 2.15 MB, where the file is past `snapshot_bytes` and only the profiles are compared (p50 of 5).
+
+Task 19's `live-read-only` and `live-locked` passed on both releases. An Edit of a read-only file that git marks
+lockable was refused with `READ_ONLY: Hero.uasset is read-only. Lock it with git lfs lock Hero.uasset from the
+repository root, then call Edit again.` An Edit of a file another process held open, sharing reads only, failed
+with the baseline's `EPERM: operation not permitted, rename '<file>.tmp.<n>' -> '<file>'`, and the model saw
+`FILE_LOCKED: Python (process 42544) holds keep.txt open`. The same Edit succeeded while the holder shared reads
+and writes, which is how Python's `open` holds a file. The Restart Manager names a holder in 95 to 104 ms.
 
 Rules through a junction, checked on 2026-09-27 with Claude Code 2.1.281 and 2.1.283:
 
@@ -314,8 +322,8 @@ listings.
 
 Classes: **data** leaves a file or result wrong, **time** costs retries and tokens, **noise** is friction. Scope:
 **win** happens on Windows only, **all** everywhere. "-" means not planned, because it is outside file and shell
-IO. ANC-4 is the exception: the space is gone from the model's own call before any hook sees it ("Hooks and MCP",
-row 28).
+IO. Two are exceptions. ANC-4's space is gone from the model's own call before any hook sees it ("Hooks and
+MCP", row 28). PTH-3 went with the write-roots rule the lead dropped (D27).
 
 | Id | Title | Class | Scope | Task |
 |---|---|---|---|---|
@@ -354,7 +362,7 @@ row 28).
 | VFY-7 | The result came from an old binary | data | all | 22 |
 | PTH-1 | Guessed path does not exist | time | all | 20 |
 | PTH-2 | The working directory resets after cd | noise | all | 14 |
-| PTH-3 | A write lands in another checkout | data | all | 19 |
+| PTH-3 | A write lands in another checkout | data | all | - |
 | PTH-4 | Git Bash rewrites arguments that start with a slash | time | win | 14 |
 | PTH-5 | Reserved Windows names | data | win | 14, 19 |
 | SHL-1 | Shell dialect sent to the wrong tool | time | win | 13 |

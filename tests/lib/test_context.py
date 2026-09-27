@@ -2,6 +2,7 @@
 import json
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -102,9 +103,11 @@ class LiveContexts(unittest.TestCase):
         self.assertEqual((LiveFs().read_bytes(target), LiveFs().stat(target).size),
                          (b"\xef\xbb\xbfone\r\n", 8), "the live file port writes and reads exact bytes")
 
-    def test_asking_for_lock_holders_says_it_is_not_built_yet(self):
-        with self.assertRaisesRegex(NotImplementedError, "task 19"):
-            LiveFs().holders(self.project)
+    @unittest.skipUnless(sys.platform in ("win32", "darwin"), "the Restart Manager and lsof answer there")
+    def test_a_file_nobody_holds_has_no_holder(self):
+        (self.project / "free.txt").write_bytes(b"x")
+        self.assertEqual(LiveFs().holders(self.project / "free.txt"), (),
+                         "the live file port asks the platform, and a free file has no holder")
 
     def test_an_unprobed_probe_knows_this_python(self):
         import sys

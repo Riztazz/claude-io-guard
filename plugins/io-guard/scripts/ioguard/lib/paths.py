@@ -1,6 +1,7 @@
 """Paths as the agent names them, turned into one absolute form, and the arguments Git Bash rewrites as
 paths."""
 import ntpath
+import os
 import posixpath
 import re
 import unicodedata
@@ -10,6 +11,8 @@ from pathlib import Path
 from ioguard.lib.platform import Platform
 
 SLASH_ARGUMENT = re.compile(r"^(--?[\w-]+[=:])?(/(?!/)[^/;]*)(/)?")
+DEVICE_NAMES = frozenset({"con", "prn", "aux", "nul", *(f"com{n}" for n in range(1, 10)),
+                          *(f"lpt{n}" for n in range(1, 10))})
 
 
 def normalise(raw: str, cwd: Path, platform: Platform) -> Path:
@@ -26,6 +29,20 @@ def normalise(raw: str, cwd: Path, platform: Platform) -> Path:
     if platform.macos:
         folded = unicodedata.normalize("NFC", folded)
     return Path(folded)
+
+
+def reserved(path: Path) -> str | None:
+    """The Windows device name path's file name stands for, such as nul for nul.txt, or None. Windows reads
+    the name before the first dot, trailing spaces dropped, without case."""
+    stem = path.name.split(".", 1)[0].rstrip(" ").lower()
+    return stem if stem in DEVICE_NAMES else None
+
+
+def link_target(path: Path) -> Path | None:
+    """Where path really is when it, or a folder above it, is a junction or a symbolic link, or None. A path
+    that does not exist yet resolves through the folders that do."""
+    real = os.path.realpath(path)
+    return None if os.path.normcase(real) == os.path.normcase(os.path.abspath(path)) else Path(real)
 
 
 def inside(path: Path, roots: Collection[Path], platform: Platform) -> Path | None:
