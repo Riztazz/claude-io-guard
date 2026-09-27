@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ioguard.lib.context import Context, LiveFs, Probe, SessionState
+from ioguard.lib.context import SNAPSHOTS_KEPT, Context, LiveFs, Probe, SessionState, Snapshot
 from ioguard.lib.fakes import FakeClock, FakeFs
 from ioguard.lib.git import Git
 from ioguard.lib.platform import detect
@@ -45,6 +45,14 @@ class SessionStateOnce(unittest.TestCase):
         session = SessionState()
         self.assertEqual([session.first_time("w"), session.first_time("w"), session.first_time("v")],
                          [True, False, True], "each warning key is fresh once per session")
+
+    def test_a_snapshot_is_taken_once_and_the_oldest_goes_past_the_limit(self):
+        session = SessionState()
+        for number in range(SNAPSHOTS_KEPT + 1):
+            session.keep_snapshot(f"call{number}", Snapshot(Path(f"C:/p/{number}"), None, None, {}))
+        self.assertEqual((session.take_snapshot("call0"), session.take_snapshot("call1").path,
+                          session.take_snapshot("call1")), (None, Path("C:/p/1"), None),
+                         "the oldest snapshot past the limit is gone, and a snapshot is handed out once")
 
 
 class LiveContexts(unittest.TestCase):

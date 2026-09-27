@@ -114,6 +114,14 @@ CONFORM = "Do these in order, one tool call each, and never retry a failed step.
           "the Write tool on keep.txt with two lines: gamma and delta. Then reply DONE."
 TRAILING = "Read one.txt, then use the Edit tool once on one.txt to replace one = 1 with one = 9. " \
            "Then reply DONE."
+VERIFY = "Do these in order, one tool call each. 1. Read keep.txt. 2. Use the Write tool on keep.txt " \
+         "with two lines: gamma and delta. 3. Read keep.txt again. 4. Use the Edit tool on keep.txt to " \
+         "replace gamma with GAMMA. If a step fails, quote its error word for word and stop. Then reply DONE."
+VERIFY_DIRECT = "Do these in order, one tool call each, and never read keep.txt a second time. 1. Read " \
+                "keep.txt. 2. Use the Write tool on keep.txt with two lines: gamma and delta. 3. Use the " \
+                "Edit tool on keep.txt to replace gamma with GAMMA. If a step fails, quote its error word " \
+                "for word and stop. Then reply DONE."
+CONFORM_OFF = json.dumps({"checks": {"conform.write": {"enabled": False}}}).encode("ascii")
 ARROW = 'python -c "print(chr(0x2192))"'
 DEFAULTS = f"Run these commands one at a time, each in its own tool call, and never retry. 1. Bash: " \
            f"{ARROW} 2. Bash: env -u PYTHONUTF8 -u PYTHONIOENCODING {ARROW} 3. PowerShell: {ARROW} " \
@@ -257,6 +265,14 @@ PROBES = {
     "live-conform": Probe(0, "", guard="", permission="acceptEdits", allowed=("Read", "Write"),
                           prompt=CONFORM, check=("keep.txt",),
                           setup={"keep.txt": b"\xef\xbb\xbfalpha\r\nbeta\r\n"}),
+    "live-verify": Probe(0, "", guard="", permission="acceptEdits", allowed=("Read", "Write", "Edit"),
+                         prompt=VERIFY, check=("keep.txt",), max_turns=10,
+                         setup={"keep.txt": b"\xef\xbb\xbfalpha\r\nbeta\r\n",
+                                ".claude/io-guard.json": CONFORM_OFF}),
+    "live-verify-direct": Probe(0, "", guard="", permission="acceptEdits", allowed=("Read", "Write", "Edit"),
+                                prompt=VERIFY_DIRECT, check=("keep.txt",), max_turns=10,
+                                setup={"keep.txt": b"\xef\xbb\xbfalpha\r\nbeta\r\n",
+                                       ".claude/io-guard.json": CONFORM_OFF}),
 }
 
 
@@ -318,6 +334,7 @@ def git(work: Path, *args: str) -> None:
 def prepare_work(probe: Probe, work: Path) -> None:
     work.mkdir(parents=True)
     for rel, data in probe.setup.items():
+        (work / rel).parent.mkdir(parents=True, exist_ok=True)
         (work / rel).write_bytes(data)
     if probe.extra.get("outside_dir"):
         (work.parent / "outside").mkdir()
@@ -566,6 +583,16 @@ def guarded_every_call(summary: dict) -> bool:
 
 BOM_CRLF = b"\xef\xbb\xbfline one\r\nline two\r\n".decode("latin-1")
 KEPT_CONFORMED = b"\xef\xbb\xbfgamma\r\ndelta\r\n".decode("latin-1")
+KEPT_EDITED = tuple((b"\xef\xbb\xbfGAMMA\r\ndelta" + end).decode("latin-1") for end in (b"", b"\r\n"))
+
+
+def repaired_then_edited(summary: dict, name: str, calls: list[str]) -> bool:
+    """verify.write put back the BOM and CRLF a Write dropped, the calls ran in order with no error, and the
+    Edit after the repair landed in the file's own bytes. The model decides the final newline."""
+    return (summary["files"]["keep.txt"] in KEPT_EDITED
+            and [tool["name"] for tool in summary["tools"]] == calls
+            and not any(result["is_error"] for result in summary["results"])
+            and context_reached(name, "EOL_CONVERTED: The Write tool left keep.txt"))
 VERDICTS = {
     "rewrite-allow": lambda s, n: "IOPROBE_REWRITTEN" in seen(s),
     "write-bytes": lambda s, n: s["files"]["probe.txt"] == BOM_CRLF,
@@ -616,6 +643,8 @@ VERDICTS = {
     and "CRLF, BOM" in seen(s),
     "edit-trailing": lambda s, n: s["files"]["one.txt"] == "one = \ntwo = 2\n",
     "live-conform": lambda s, n: s["files"]["keep.txt"] == KEPT_CONFORMED,
+    "live-verify": lambda s, n: repaired_then_edited(s, n, ["Read", "Write", "Read", "Edit"]),
+    "live-verify-direct": lambda s, n: repaired_then_edited(s, n, ["Read", "Write", "Edit"]),
 }
 
 

@@ -3,10 +3,11 @@
 A Claude Code plugin that checks what an agent sends to the file and shell tools, fixes what it safely can, and
 returns a structured error for the rest. One codebase runs on Windows and macOS.
 
-**Status: in build.** The plugin installs, and its hooks answer every file and shell call. Eight checks run so
+**Status: in build.** The plugin installs, and its hooks answer every file and shell call. Ten checks run so
 far: the session probe, the Bash body move, the shell-write refusal, the quoting and dialect lint, the Git Bash
-path fix, the endings and BOM fix for Write, the indent fix for Edit, and the profile line after a Read. The
-build plan is in `.claude/tasks/`, and this page describes the plugin the plan builds.
+path fix, the endings and BOM fix for Write, the indent fix for Edit, the check of each written file against the
+file before it, your own verify command after a write, and the profile line after a Read. The build plan is in
+`.claude/tasks/`, and this page describes the plugin the plan builds.
 
 ## Five fixes, by example
 
@@ -72,6 +73,7 @@ The numbers come from 110,379 file and shell tool calls in 738 transcripts of re
 |---|---|---|
 | On Windows, a Bash command longer than about 7.8 KB fails with "unexpected EOF", and a `\\` that no double quote follows loses a backslash | 122 failed commands, about 262k tokens | Moves a heredoc or `python -c` body into a file, byte-exact, and runs the file. Warns about a halved `\\` it cannot move |
 | Write turns a CRLF file into LF and drops its BOM, and an Edit's new text comes indented with spaces in a file indented with tabs, or the other way round | 328 "LF will be replaced by CRLF" warnings | Rewrites Write content in the file's own endings, BOM and final newline, and an Edit's new text in the indent of the lines around it, before either runs. A new file takes its endings from `.editorconfig`, `.gitattributes` or the files beside it |
+| A write leaves damage no tool reports: letters a code page lost as U+FFFD, control bytes, lines changed outside the edit, a file cut short | Never reported, so the transcripts can't count it | Compares each written file with the file before it, puts back a lost BOM or line endings, and names the rest with its lines. An optional git pre-commit hook checks the staged files the same way |
 | Read shows a CRLF file, an LF file and a file with a BOM the same way | Agents ran a script of their own 107 times to find out | Adds one line after each Read, such as `io-guard: CRLF, BOM, UTF-8, tabs, 1,284 lines`, and a warning for mixed endings, invalid UTF-8, NUL or private-use bytes |
 | A failed Edit says "not found" and nothing else | 67 anchor misses, 112 stale reads | Returns the closest match, the file's endings and a corrected call |
 | `sed -i`, redirects and scripts write files around the edit tools, so no check and no rewind sees them | 2,876 shell writes | Refuses a write to a file git tracks, names the tool that does it safely, and warns about a script created inside the repository |
@@ -92,8 +94,8 @@ model expects them. Before each call it checks the input, and after each call it
    them, chains their fixes and stops at the first refusal.
 4. **The answer goes back to Claude Code:** let it run with a note, run a fixed version, or refuse with a code and
    the corrected call.
-5. **After the call, the result is checked too:** the bytes on disk against the file's profile, the files a shell
-   command touched, and the errors in the output.
+5. **After the call, the result is checked too:** the bytes on disk against the file before the call, with a lost
+   BOM or line endings put back, the files a shell command touched, and the errors in the output.
 
 Every disk read and write goes through one library, `lib`, so the same code protects the hooks, the io tools and the
 tests.
@@ -172,6 +174,38 @@ because a variable such as `PYTHONSTARTUP` can run a program.
 io-guard warns before it runs. It knows common builds such as `make`, `npm test` and `pytest`. To name your own,
 list each by its first words in `checks.shell.lint.build_commands`, in your project's `.claude/io-guard.json`.
 Your list replaces the default one.
+
+**After each write:** io-guard compares the file with the file before the call. A BOM or line endings the
+write lost go back on, and the model is told to read the file again. Turn that off with
+`checks.verify.write.repair`. To have non-ASCII flagged in some files, list their extensions in
+`checks.verify.write.ascii_only`, such as `[".py", ".md"]`. It's empty by default.
+
+**Your verify commands:** io-guard can run a command of yours on each file the model writes, and hand its output
+to the model. Name them by extension in your own `config.json`, and add a project's own under its folder:
+
+```json
+{
+  "verify": {
+    ".py": ["python", "-m", "py_compile", "{file}"],
+    "C:/work/app": {".js": ["node", "--check", "{file}"]}
+  }
+}
+```
+
+`{file}` becomes the file's path, and the command runs with no shell, stopped after 10 seconds. A project's
+`.claude/io-guard.json` can't name one, because a repository you clone must not make io-guard run its programs.
+
+**The pre-commit hook**, optional: it checks each staged file against its last commit, and stops a commit that
+changes a file's line endings, BOM or indent, or adds control bytes, U+FFFD, or non-ASCII where
+`ascii_only` names the file. Point your repository's `.git/hooks/pre-commit` at the script in the plugin's
+folder, or in a clone of this repository:
+
+```sh
+#!/bin/sh
+exec python "<plugin folder>/scripts/precommit.py"
+```
+
+`git commit --no-verify` skips it for one commit.
 
 **Recommended Claude Code settings**, proposed until the release confirms them:
 

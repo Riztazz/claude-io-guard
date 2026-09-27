@@ -53,7 +53,8 @@ class AnExistingFileKeepsItsConvention(unittest.TestCase):
 
     def test_a_mixed_file_keeps_the_content_with_a_warning(self):
         outcome = write("x\ny\n", {"a.txt": fixture("mixed.txt")})
-        self.assertEqual((outcome.rewrites, outcome.decisions[-1].results[0].code), ((), Code.EOL_MISMATCH),
+        own = next(decision for decision in outcome.decisions if decision.check_id == "conform.write")
+        self.assertEqual((outcome.rewrites, own.results[0].code), ((), Code.EOL_MISMATCH),
                          "no one ending is the file's own, so nothing is guessed")
 
     def test_binary_empty_and_matching_files_are_left_alone(self):

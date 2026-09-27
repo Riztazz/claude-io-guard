@@ -2,16 +2,18 @@
 
     corpus NAME=FOLDER [NAME=FOLDER ...] [--out corpus]
     replay [--corpus corpus] [--project NAME ...] [--out FILE]
+    precommit
 """
 import argparse
 import json
+import os
 import sys
 import time
 from collections.abc import Sequence
 from pathlib import Path
 
 from ioguard.checks.registry import default_registry
-from ioguard.cli import corpus, replay
+from ioguard.cli import corpus, precommit, replay
 
 
 def source(text: str) -> tuple[str, Path]:
@@ -35,6 +37,8 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--corpus", type=Path, default=Path("corpus"))
     run.add_argument("--project", action="append", default=[], help="replay only this project, repeatable")
     run.add_argument("--out", type=Path, help="the JSON report, reports/replay-<time>.json by default")
+    commands.add_parser("precommit", help="check the staged files' bytes against their last commit, exit 1 "
+                                          "on a finding")
     return top
 
 
@@ -59,4 +63,9 @@ def main(argv: Sequence[str]) -> int:
             out.write_bytes((json.dumps(report, indent=1, ensure_ascii=True) + "\n").encode("ascii"))
             print(replay.render(report))
             print(f"The full report is {out}.")
+        case "precommit":
+            code, text = precommit.run(Path.cwd(), os.environ)
+            if text:
+                print(text)
+            return code
     return 0

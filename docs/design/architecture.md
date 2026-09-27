@@ -20,12 +20,15 @@ plugins/io-guard/
     hook.sh                        POSIX launcher for command hooks, Git Bash on Windows, sh on macOS
     hook.py                        command-hook entry point
     server.py                      MCP server entry point
+    precommit.py                   the optional git pre-commit hook, which runs the cli's precommit command
     ioguard/
       __init__.py                  PLUGIN_VERSION, CONFIG_SCHEMA, CHECK_API, TELEMETRY_SCHEMA
       lib/                         mechanism, functions and frozen dataclasses only
         bytesio.py                 read_bytes, write_atomic, size guard
         profile.py                 Profile, profile, target_profile, convert_eol, with_bom, with_final_newline
         editorconfig.py            parse, matches, properties: the .editorconfig properties for one file
+        drift.py                   drift, edited, changed_lines, restored: what a write changed in a file's bytes
+        verify.py                  shape_problem, command_for: the user's verify commands per extension
         anchors.py                 find, closest, unique_anchor
         shell.py                   scan, commands, budget_length, moved, the hazards bash reads differently
         pwsh.py                    commands, blanked, file_calls
@@ -56,7 +59,8 @@ plugins/io-guard/
         win_paths.py               win.paths: MSYS_PATH for slash arguments and cmd /c, RESERVED_NAME for nul
         conform_write.py           conform.write: EOL_CONVERTED, BOM_RESTORED, EOL_MISMATCH for a mixed file
         conform_edit.py            conform.edit: INDENT_MISMATCH, new_string in the indent around the match
-        verify_write.py            profile drift after Edit and Write
+        verify_write.py            verify.write: the file after an Edit or Write against its snapshot, repairs
+        verify_command.py          verify.command: the user's verify command on the written file
         touched.py                 TOUCHED_BY_SHELL, new files
         read_profile.py            read.profile: the profile line after Read, and the hash in read_hashes
         diagnose.py                PostToolUseFailure branches
@@ -85,6 +89,7 @@ plugins/io-guard/
         labels.py                  the baseline's labels for a recorded call's result and command shape
         corpus.py                  Record, build, load: transcripts -> corpus/<project>.jsonl
         replay.py                  Replay, replay, render: the corpus through the pipeline, offline
+        precommit.py               staged_results, run: each staged file against HEAD, for the git hook
 tests/                             mirrors ioguard, plus fixtures/, support/, mcp/, replay/
 tools/                             ioguard.py, corpus.py, replay.py, measure.py, report.py, probes/
 ```
@@ -188,6 +193,8 @@ class GitPort(Protocol):
     def ls_files(self, root: Path) -> tuple[Path, ...]: ...
     def changed_ranges(self, path: Path) -> tuple[LineRange, ...]: ...
     def attributes(self, path: Path) -> Mapping[str, str]: ...
+    def staged(self, root: Path) -> tuple[str, ...]: ...           # added, changed or renamed, from root
+    def blob(self, root: Path, spec: str) -> Optional[bytes]: ...  # "HEAD:a.py", or ":a.py" for the staged one
 
 class FsPort(Protocol):
     def read_bytes(self, path: Path, limit: Optional[int] = None) -> bytes: ...
@@ -223,9 +230,16 @@ class Probe:
     def from_json(cls, raw: Mapping[str, Any]) -> "Probe": ...
     def to_json(self) -> dict: ...
 
+@dataclass(frozen=True)
+class Snapshot:
+    path: Path
+    profile: Optional[Profile]                   # None for a file that does not exist yet
+    data: Optional[bytes]                        # the bytes too, up to verify.write's snapshot_bytes
+    tool_input: Mapping[str, Any]                # the input the tool runs with, after io-guard's rewrites
+
 class SessionState:
     read_hashes: MutableMapping[Path, str]      # sha256 of the bytes the agent last saw
-    snapshots: MutableMapping[Path, Snapshot]    # profile and bytes before a write
+    snapshots: MutableMapping[str, Snapshot]     # by tool_use_id, from PreToolUse to PostToolUse, 16 at most
     warned: MutableSet[str]                      # one user warning per key per session
     budget_override: Optional[int]               # learned from an EOF failure
     tracked: MutableMapping[Path, bool]          # whether git tracks a path, asked once by shell.writes
@@ -233,6 +247,8 @@ class SessionState:
     lock: RLock                                  # guards every field
 
     def first_time(self, key: str) -> bool: ...  # True once per key, for a once-per-session warning
+    def keep_snapshot(self, tool_use_id: str, snapshot: Snapshot) -> None: ...   # the oldest past 16 goes
+    def take_snapshot(self, tool_use_id: str) -> Optional[Snapshot]: ...         # handed out once
 
 @dataclass(frozen=True)
 class Context:
@@ -352,7 +368,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Transport | `BACKTICK_IN_DOUBLE_QUOTES`, `TRAILING_BACKSLASH_QUOTE`, `DIALECT_MISMATCH`, `POWERSHELL_TRAP`, `PIPE_HIDES_EXIT`, `INLINE_SCRIPT_INVALID` | 13, in `CODES` |
 | Transport | `MSYS_PATH`, `RESERVED_NAME` | 14, in `CODES` |
 | Bytes | `EOL_CONVERTED`, `BOM_RESTORED`, `EOL_MISMATCH`, `INDENT_MISMATCH` | 17, in `CODES` |
-| Bytes | `BOM_CHANGED`, `ENCODING_INVALID`, `NON_ASCII_ADDED`, `CONTROL_BYTES_ADDED`, `SIZE_COLLAPSED`, `UNINTENDED_CHANGE` | 18 |
+| Bytes | `BOM_CHANGED`, `ENCODING_INVALID`, `NON_ASCII_ADDED`, `CONTROL_BYTES_ADDED`, `SIZE_COLLAPSED`, `UNINTENDED_CHANGE`, all warnings | 18, in `CODES` |
 | Stale | `ANCHOR_NOT_FOUND`, `ANCHOR_AMBIGUOUS`, `STALE_VIEW`, `NOT_READ` | 20 |
 | Stale | `TOUCHED_BY_SHELL` | 21 |
 | Read | `PATH_NOT_FOUND`, `READ_TOO_LARGE`, `PATTERN_INVALID`, `SEARCH_TOO_BROAD` | 20 |
@@ -479,6 +495,8 @@ class ConfigKey:                             # in lib.config, which validates it
     project_may_set: bool = True
     choices: tuple = ()                      # the values it takes, or () for any of its type
     project_forbids: tuple = ()              # values a project file may not set
+    project_narrows: bool = False            # a project file may lower this number and never raise it
+    shape: Optional[Callable[[Any], Optional[str]]] = None   # what is wrong inside a list or dict value
 
 @dataclass(frozen=True)
 class CheckMeta:
@@ -525,7 +543,7 @@ class Registry:
     def ids(self) -> tuple[str, ...]: ...
 
 CHECKS: tuple[type[Check], ...] = (SessionProbe, Location, ShellWrites, TransportBody, Lint, WinPaths,
-                                   ConformWrite, ConformEdit, VerifyWrite, Touched, ReadProfile,
+                                   ConformWrite, ConformEdit, VerifyWrite, VerifyCommand, Touched, ReadProfile,
                                    Diagnose, CommandResults, CommitPolicy)
 
 def default_registry() -> Registry:
@@ -544,7 +562,9 @@ rewrite whose fields are not all in `writes` is a bug, and the pipeline fails op
 No import-time discovery, no decorators, one list. `transport.body` runs after `shell.writes`, so a command
 refused for its write never has a body moved into a file first. `shell.lint` runs after `transport.body`, so it
 compiles a moved body from its file, as Python will read it. `win.paths` runs after `shell.lint`, so its
-rewrite lands on a command nothing refused.
+rewrite lands on a command nothing refused. `verify.write` runs after `conform.write` and `conform.edit`, so
+its snapshot holds the input the tool runs with. `verify.command` runs after `verify.write`, so a command
+reads the file after any repair.
 
 ### The pipeline
 
@@ -608,7 +628,18 @@ Each module lists its public functions. Every one takes values and returns value
 # bytesio.py
 def read_bytes(path: Path, limit: Optional[int] = None) -> bytes
 def write_atomic(path: Path, data: bytes, retries: int = 5) -> WriteReport
-def would_collapse(before: int, after: int) -> bool          # task 18, with its policy key
+
+# drift.py, task 18
+def drift(before: Profile, after: Profile) -> Drift         # endings, BOM, encoding and odd bytes that changed
+def edited(before: str, old: str, new: str, replace_all: bool) -> Optional[Edited]   # the text and new lines
+def changed_lines(expected: str, actual: str) -> tuple[int, ...]   # endings read as LF, BOM dropped
+def lines_holding(text: str, pattern: Pattern, among: Optional[tuple[int, ...]] = None) -> tuple[int, ...]
+def would_collapse(expected: int, actual: int, percent: int) -> bool
+def restored(data: bytes, eol: Optional[Eol], bom: Bom) -> Optional[bytes]   # None when data is not UTF-8
+
+# verify.py, task 18
+def shape_problem(value: Mapping[str, Any]) -> Optional[str]            # ConfigKey.shape of the verify key
+def command_for(value: Mapping[str, Any], path: Path, platform: Platform) -> Optional[tuple[str, ...]]
 
 # profile.py
 def profile(data: bytes) -> Profile
@@ -663,7 +694,7 @@ def normalise(raw: str, cwd: Path, platform: Platform) -> Path   # a Windows pat
 def msys_prefix(word: str, posix_roots: Collection[str]) -> Optional[str]   # task 14: what Git Bash must keep
 def reserved(path: Path) -> Optional[str]                   # "nul", "com1"
 def link_target(path: Path) -> Optional[Path]               # junction or symlink
-def inside(path: Path, roots: Sequence[Path], platform: Platform) -> Optional[Path]
+def inside(path: Path, roots: Collection[Path], platform: Platform) -> Optional[Path]   # the deepest root
 def same_file(a: Path, b: Path, platform: Platform) -> bool
 
 # git.py
@@ -764,8 +795,13 @@ whose exit code a pipe hides, each as its first words, such as `make` or `npm te
 builds there, and its list replaces the default one. Task 14 added `checks.win.paths.posix_roots`,
 `msys_programs` and `prefixes`. The check finds the slash arguments Git Bash would convert on its own, so
 `prefixes` is only for a name that looks like a POSIX root. Task 16 added `checks.read.profile.max_bytes`, 16 MB,
-the largest file that gets a profile line after a Read. Each other key arrives with its check. A key marked
-`project_narrows`, such as the budget, takes a lower number from a project file and refuses a higher one.
+the largest file that gets a profile line after a Read. Task 18 added `verify`, and
+`checks.verify.write.repair`, `ascii_only`, `collapse_percent`, `snapshot_bytes` of 2 MB and `max_bytes` of
+16 MB, and `checks.verify.command.timeout_ms` of 10 s and `output_chars` of 2,000. `verify` and `ascii_only`
+default to empty, so io-guard runs no program and accepts non-ASCII until a user or a project names them. The
+example above shows them set. Each other key arrives with its check. A key marked `project_narrows`, such as
+the budget, takes a lower number from a project file and refuses a higher one. A key with a `shape`, such as
+`verify`, has its inner values checked too, and a wrong one drops the file like any other error.
 
 **The rewrite mode is the user's (D12).** For each permission mode the user layer sets `refuse`, `ask` or `allow`.
 In `refuse` the call is refused and the reason carries the corrected command, so the model reruns it and the
@@ -778,7 +814,8 @@ narrows `budget_bytes`. It cannot add `write_roots.extra`, set `verify` commands
 `allow`, or turn telemetry off. `ConfigKey.project_may_set` marks each check key. The scope rule exists
 because a cloned repository must not be able to point writes outside itself, approve commands, or make io-guard
 run a program (D24). A `verify` command is a program io-guard starts, so only the user's own `config.json` names
-one, and a command for one project is keyed there by the project's root (task 18).
+one. The key maps an extension to a command, such as `".py": ["python", "-m", "py_compile", "{file}"]`, and an
+absolute project root to its own map of extensions, which wins for that project's files (task 18).
 
 Loading happens once per process and fails loudly. `validate` reports an unknown key with the file, the key
 and the nearest known key, a type mismatch with the expected type, and a scope violation with the layer that
@@ -828,6 +865,10 @@ applies to shell rewrites. A file-tool rewrite from `conform_write` and `conform
 conformed input and asks or approves as it would have for the original call: task 17's `write-quiet` probe saw
 the permission prompt show the rewritten content, BOM and CRLF, on 2.1.281 and 2.1.283 (`context.md`, "Hooks
 and MCP", row 27). A check's own ASK or DENY still outranks it.
+
+`verify.write` is the one check that writes after a tool has. It puts back a BOM or line endings the write
+lost, through `write_atomic`, and its answer tells the agent to read the file again. An Edit straight after
+such a repair succeeded without a new Read on 2.1.281 and 2.1.283 (`context.md`, "Hooks and MCP", row 29).
 
 PostToolUse answers carry `additionalContext`, `classifierContext` and `updatedToolOutput`. An
 `updatedToolOutput` has the tool's own output shape: for Bash, the `tool_response` object with `stdout`

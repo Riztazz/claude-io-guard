@@ -28,6 +28,16 @@ def normalise(raw: str, cwd: Path, platform: Platform) -> Path:
     return Path(folded)
 
 
+def inside(path: Path, roots: Collection[Path], platform: Platform) -> Path | None:
+    """The deepest of roots that holds path, or None. Names compare without case where the platform's file
+    system ignores it. Both sides come from normalise, so neither has a . or .. left."""
+    def parts(of: Path) -> tuple[str, ...]:
+        return tuple(part.casefold() for part in of.parts) if platform.case_insensitive else of.parts
+    held = parts(path)
+    holding = [root for root in roots if held[:len(parts(root))] == parts(root)]
+    return max(holding, key=lambda root: len(root.parts), default=None)
+
+
 def msys_prefix(word: str, posix_roots: Collection[str]) -> str | None:
     """The prefix that keeps Git Bash from converting word when it passes word to a Windows program, or None
     when the conversion is wanted or never happens.

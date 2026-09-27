@@ -92,6 +92,7 @@ Confirmed with `tools/probes/run_probe.py`, whose `verdicts` command rechecks ev
 | 25. The Bash tool halves a run of backslashes unless a double quote follows it | this session's Bash tool | 2.1.281 | waits for the Mac | 2026-09-27 |
 | 27. `updatedInput` with no permission decision applies, and the harness asks or approves as it would have | `write-quiet` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | 28. The Edit tool keeps a trailing space in `new_string`. A trailing space the model is asked for is gone from its own call before any hook sees it | `edit-trailing`, the first `live-conform` run | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+| 29. An Edit straight after io-guard put back a file's endings and BOM succeeds with no new Read | `live-verify-direct` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 
 ## io-guard itself
 
@@ -109,6 +110,7 @@ match `.claude/tasks/context.md`, "The hook entry point".
 | In auto mode the same call is refused with the moved command, and the rerun runs | `live-move-auto` | 2.1.283 | waits for the Mac | 2026-09-27 |
 | After a Read, the file's profile line reaches the model, which quotes it | `live-read-profile` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | A Write of LF text over a BOM and CRLF file lands with the BOM and CRLF | `live-conform` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+| With `conform.write` off, a Write that drops a BOM and CRLF gets both put back after it, the model sees `EOL_CONVERTED`, and the next Edit lands in the file's own bytes | `live-verify`, `live-verify-direct` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 
 ## Not checked yet
 

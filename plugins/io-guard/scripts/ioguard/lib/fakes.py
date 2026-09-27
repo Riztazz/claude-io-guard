@@ -68,8 +68,11 @@ class FakeGit:
     def __init__(self, root: Path | None = None, tracked: frozenset[Path] = frozenset(),
                  status: GitStatus = GitStatus(()),
                  ranges: Mapping[Path, tuple[LineRange, ...]] | None = None,
-                 attributes: Mapping[Path, Mapping[str, str]] | None = None) -> None:
+                 attributes: Mapping[Path, Mapping[str, str]] | None = None,
+                 staged_paths: tuple[str, ...] = (), blobs: Mapping[str, bytes] | None = None) -> None:
         self.repo_root = root
+        self.staged_paths = staged_paths
+        self.blobs = dict(blobs or {})             # by spec, such as HEAD:a.py or :a.py
         self.tracked = tracked
         self.current_status = status
         self.ranges = dict(ranges or {})
@@ -92,3 +95,9 @@ class FakeGit:
 
     def attributes(self, path: Path) -> Mapping[str, str]:
         return self.attrs.get(path, {})
+
+    def staged(self, root: Path) -> tuple[str, ...]:
+        return self.staged_paths
+
+    def blob(self, root: Path, spec: str) -> bytes | None:
+        return self.blobs.get(spec)

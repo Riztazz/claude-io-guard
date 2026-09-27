@@ -2,7 +2,7 @@
 import unittest
 from pathlib import Path
 
-from ioguard.lib.paths import msys_prefix, normalise
+from ioguard.lib.paths import inside, msys_prefix, normalise
 from ioguard.lib.platform import Platform, detect
 
 WINDOWS = Platform("win32", True)
@@ -26,6 +26,16 @@ class PathsNormalise(unittest.TestCase):
         decomposed = "cafe" + chr(0x301) + ".txt"
         self.assertEqual(normalise(decomposed, Path("/w"), MACOS).name, "caf" + chr(0xE9) + ".txt",
                          "on macOS a decomposed name is normalised to NFC, the form a user types")
+
+    def test_inside_finds_the_deepest_root_that_holds_a_path(self):
+        roots = [Path("C:/Work"), Path("C:/work/app"), Path("C:/other")]
+        found = [inside(Path(path), roots, WINDOWS) for path in ("C:/work/app/a.py", "C:/work/b.py", "D:/x")]
+        self.assertEqual(found, [Path("C:/work/app"), Path("C:/Work"), None],
+                         "the deepest root wins, names match without case on Windows, and none holds D:/x")
+
+    def test_inside_keeps_case_where_the_file_system_does(self):
+        self.assertIsNone(inside(Path("/Work/a"), [Path("/work")], Platform("linux", False)),
+                          "a case-sensitive file system keeps Work and work apart")
 
     def test_git_bash_keeps_a_name_and_converts_a_path(self):
         cases = {"/Game/X/Y": "/Game/", "/PID": "/PID", "/p:Config=Debug": "/p:Config=Debug",

@@ -96,6 +96,11 @@ Task 17's probes passed on the desktop's 2.1.281 and the CLI 2.1.283. `live-conf
 `keep.txt` and wrote two lines over it in acceptEdits, with io-guard loaded, and the file landed as `EF BB BF`
 then `gamma\r\ndelta\r\n`. `write-quiet` is "Hooks and MCP", row 27, and `edit-trailing` is row 28.
 
+Task 18's `live-verify` and `live-verify-direct` passed on both releases ("Hooks and MCP", row 29), and
+`live-empty` and `live-conform` still pass with `verify.write` and `verify.command` loaded. `verify.write`
+takes 0.8 ms before and 6.4 ms after an Edit of a 0.1 MB file, 8.1 and 66.9 ms at 1 MB, and 15.4 and 32.0 ms
+at 2.15 MB, where the file is past `snapshot_bytes` and only the profiles are compared (p50 of 5).
+
 Rules through a junction, checked on 2026-09-27 with Claude Code 2.1.281 and 2.1.283:
 
 - **Claude Code loads a rule, or an `@` import, only when its real path is inside the project.** A junction's real
@@ -213,6 +218,7 @@ denied, and the rerun denied all three. Ten calls each took:
 | 26 | A moved body runs through `ask` and `refuse` | `live-move-ask`, `live-move-auto`, task 11 | Default mode, Haiku: an 8,973-character `python - <<'PY'` call was answered `ask` with `updatedInput`, the permission prompt received `python - < "<file>"`, and the approved run printed 3 for `len(r"\\n")`. Auto mode, Sonnet: the call was refused with the moved command as the fix, and the rerun printed 3. CLI 2.1.283 |
 | 27 | A PreToolUse `updatedInput` with no `permissionDecision` applies, and keeps the harness's own decision | `write-quiet`, task 17 | Yes. In default mode a Write rewritten to BOM and CRLF content reached the permission prompt as rewritten, and the approved file landed as `EF BB BF` then `line one\r\nline two\r\n`, byte for byte. 2.1.281 and 2.1.283 |
 | 28 | The Edit tool keeps a trailing space in new_string | `edit-trailing`, and the first `live-conform` run, task 17 | Yes. A hook that set new_string to `one = ` left `one = \ntwo = 2\n` in the file, on 2.1.281 and 2.1.283. Asked for `one = `, Haiku's own `tool_use` carried `one =`, so the space is lost before any hook sees the call, and io-guard cannot restore it (2.1.283) |
+| 29 | An Edit straight after io-guard put back a file's endings and BOM succeeds with no new Read | `live-verify-direct`, `live-verify`, task 18 | Yes. A Write dropped keep.txt's BOM and CRLF, `verify.write` wrote both back, and the next Edit, with no Read between, ran and left `EF BB BF` then `GAMMA\r\ndelta`. `live-verify` read the file first and landed the same. The model saw the `EOL_CONVERTED` line both times. 2.1.281 and 2.1.283 |
 
 ## Doc facts, checked on 2026-09-27
 
@@ -317,7 +323,7 @@ row 28).
 | ANC-2 | Anchor matches more than once | data | all | 20, 24 |
 | ANC-3 | A batch stops half applied | data | all | 24 |
 | ANC-4 | Trailing whitespace is cut from new_string | data | all | - |
-| ANC-5 | Private-use glyphs are invisible | data | all | 15, 18 |
+| ANC-5 | Private-use glyphs are invisible | data | all | 15, 16 |
 | STL-1 | File changed between read and write | time | all | 20, 21 |
 | STL-2 | Edit or Write before Read | noise | all | 20 |
 | STL-3 | Someone else edits the same tree | data | all | 10, 19 |

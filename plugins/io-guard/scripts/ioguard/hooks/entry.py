@@ -14,18 +14,12 @@ from typing import Any
 from ioguard.checks.pipeline import Outcome, Pipeline
 from ioguard.checks.registry import Registry, default_registry
 from ioguard.hooks.answer import answer
-from ioguard.lib.context import Context, SessionState
+from ioguard.lib.context import Context, SessionState, plugin_data
 from ioguard.lib.events import Event, Surface
 from ioguard.lib.results import Code, Result, render
 from ioguard.lib.telemetry import debug_log
 
 log = logging.getLogger("ioguard.hooks")
-
-
-def data_dir() -> Path | None:
-    """The plugin data folder: IOGUARD_DATA in the io server, CLAUDE_PLUGIN_DATA in a command hook."""
-    found = os.environ.get("IOGUARD_DATA") or os.environ.get("CLAUDE_PLUGIN_DATA")
-    return Path(found) if found else None
 
 
 class LiveContexts:
@@ -42,7 +36,7 @@ class LiveContexts:
         self.failed: set[str] = set()           # sessions already told that run_event failed
 
     def get(self, event: Event, registry: Registry) -> Context:
-        data = data_dir()
+        data = plugin_data(os.environ)
         with self.lock:
             key = (data, event.session_id, event.cwd)
             if key not in self.contexts:

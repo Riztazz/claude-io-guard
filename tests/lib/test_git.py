@@ -44,6 +44,20 @@ class LiveGitAnswers(unittest.TestCase):
             self.assertEqual(sorted(path.name for path in git.ls_files(root)), ["a.txt", "b.txt"],
                              "ls_files lists the tracked files")
 
+    def test_staged_paths_and_their_stored_bytes(self):
+        with TemporaryProject({"a.txt": b"one\r\n", "sub/b.txt": b"b\n"}, git=True) as root:
+            git = Git()
+            (root / "a.txt").write_bytes(b"one\n")
+            (root / "sub" / "n.txt").write_bytes(b"new\n")
+            (root / "sub" / "b.txt").write_bytes(b"not staged\n")
+            git.run(root, "add", "a.txt", "sub/n.txt")
+            self.assertEqual(sorted(git.staged(root)), ["a.txt", "sub/n.txt"],
+                             "staged lists what the next commit adds or changes, and nothing unstaged")
+            blobs = (git.blob(root, "HEAD:a.txt"), git.blob(root, ":a.txt"), git.blob(root, "HEAD:sub/n.txt"))
+            self.assertEqual(blobs, (b"one\r\n", b"one\n", None),
+                             "blob gives the committed and the staged bytes, and None for a file new to the "
+                             "commit")
+
     def test_outside_a_repository_root_is_none(self):
         with TemporaryProject({"a.txt": b"x"}) as root:
             self.assertIsNone(Git().root(root), "a folder outside every repository has no root")

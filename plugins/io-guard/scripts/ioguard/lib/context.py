@@ -20,6 +20,7 @@ from ioguard.lib import bytesio
 from ioguard.lib.config import Config, ConfigKey, ConfigLayer, LoadReport, Scope, defaults, load
 from ioguard.lib.git import Git, GitStatus, LineRange
 from ioguard.lib.platform import Platform, detect
+from ioguard.lib.profile import Profile
 from ioguard.lib.telemetry import Telemetry
 
 
@@ -50,6 +51,8 @@ class GitPort(Protocol):
     def ls_files(self, root: Path) -> tuple[Path, ...]: ...
     def changed_ranges(self, path: Path) -> tuple[LineRange, ...]: ...
     def attributes(self, path: Path) -> Mapping[str, str]: ...
+    def staged(self, root: Path) -> tuple[str, ...]: ...
+    def blob(self, root: Path, spec: str) -> bytes | None: ...
 
 
 class FsPort(Protocol):
@@ -119,12 +122,24 @@ class Probe:
                 "taken_at": None if self.taken_at is None else self.taken_at.isoformat()}
 
 
+@dataclass(frozen=True)
+class Snapshot:
+    """A file just before an Edit or Write, and the input the tool runs with, after io-guard's rewrites."""
+    path: Path
+    profile: Profile | None              # None for a file that does not exist yet
+    data: bytes | None                   # the bytes too, for a file small enough to keep
+    tool_input: Mapping[str, Any]
+
+
+SNAPSHOTS_KEPT = 16     # a call the user refuses leaves its snapshot, so the oldest one past this goes
+
+
 @dataclass(eq=False)
 class SessionState:
     """What io-guard learns during one session. One lock guards every field, because the io server runs
     several workers."""
     read_hashes: dict[Path, str] = field(default_factory=dict)    # sha256 of the bytes the agent last saw
-    snapshots: dict[Path, Any] = field(default_factory=dict)      # task 18 defines the snapshot
+    snapshots: dict[str, Snapshot] = field(default_factory=dict)  # by tool_use_id, until PostToolUse
     warned: set[str] = field(default_factory=set)                 # one user warning per key per session
     budget_override: int | None = None                            # learned from an EOF failure
     tracked: dict[Path, bool] = field(default_factory=dict)       # git's answer per path, asked once
@@ -138,6 +153,17 @@ class SessionState:
                 return False
             self.warned.add(key)
             return True
+
+    def keep_snapshot(self, tool_use_id: str, snapshot: Snapshot) -> None:
+        with self.lock:
+            self.snapshots[tool_use_id] = snapshot
+            while len(self.snapshots) > SNAPSHOTS_KEPT:
+                del self.snapshots[next(iter(self.snapshots))]
+
+    def take_snapshot(self, tool_use_id: str) -> Snapshot | None:
+        """The snapshot kept for this call, removed from the session, or None."""
+        with self.lock:
+            return self.snapshots.pop(tool_use_id, None)
 
 
 class SystemClock:
@@ -179,6 +205,12 @@ class LiveFs:
                 return tuple(sorted(Path(entry.path) for entry in entries if entry.is_file()))
         except OSError:
             return ()
+
+
+def plugin_data(env: Mapping[str, str]) -> Path | None:
+    """The plugin data folder: IOGUARD_DATA in the io server, CLAUDE_PLUGIN_DATA in a command hook."""
+    found = env.get("IOGUARD_DATA") or env.get("CLAUDE_PLUGIN_DATA")
+    return Path(found) if found else None
 
 
 def load_probe(data_dir: Path | None, platform: Platform) -> Probe:

@@ -8,7 +8,7 @@ runs on the layers that loaded.
 """
 import difflib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import IntEnum
 from pathlib import Path
@@ -16,7 +16,7 @@ from types import MappingProxyType
 from typing import Any
 
 from ioguard import CONFIG_SCHEMA
-from ioguard.lib import bytesio
+from ioguard.lib import bytesio, verify
 
 
 class Scope(IntEnum):
@@ -39,6 +39,7 @@ class ConfigKey:
     choices: tuple = ()              # the values it takes, or () for any of its type
     project_forbids: tuple = ()      # values a project file may not set
     project_narrows: bool = False    # a project file may lower this number and never raise it
+    shape: Callable[[Any], str | None] | None = None   # what is wrong inside a list or dict value, or None
 
 
 @dataclass(frozen=True)
@@ -105,6 +106,9 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
                                    project_forbids=(False,)),
     "telemetry.retention_days": ConfigKey(int, 90, "Days a telemetry file is kept."),
     "telemetry.debug": ConfigKey(bool, False, "Write tracebacks to the debug log."),
+    "verify": ConfigKey(dict, {}, "The command io-guard runs on a file after each Edit or Write, per file "
+                        "extension, and per project root for one project only.", project_may_set=False,
+                        shape=verify.shape_problem),
     **{f"transport.rewrite_mode.{mode}": ConfigKey(
         str, default, f"What happens to a rewritten command in the {mode} permission mode.",
         choices=REWRITE_MODES, project_forbids=("allow",)) for mode, default in REWRITE_DEFAULTS.items()},
@@ -168,6 +172,8 @@ def validate(raw: Any, scope: Scope, keys: Mapping[str, ConfigKey], file: Path |
         elif scope.project and value in spec.project_forbids:
             errors.append(ConfigError(file, key, f"A project file may not set this key to "
                                                  f"{json.dumps(value)}. {USER_FILE}"))
+        elif spec.shape is not None and (problem := spec.shape(value)):
+            errors.append(ConfigError(file, key, problem))
     return tuple(errors)
 
 

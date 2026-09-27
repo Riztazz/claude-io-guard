@@ -7,11 +7,12 @@ plugin's marketplace: github.com/Riztazz/claude-io-guard.
 ## Layout
 
 The tasks build most of this. Today the marketplace, the plugin's manifest, hooks, launcher, stub skill, the
-`ioguard` package's runtime core (`lib/` and the pipeline in `checks/`, with eight checks: the session probe,
-`shell.writes`, `transport.body`, `shell.lint`, `win.paths`, `conform.write`, `conform.edit` and
-`read.profile`), the hook entry point and bridge in `hooks/`, the corpus and replay commands in `cli/` with their
-`tools/` scripts, a stub server that serves only the hook tools, `tests/` with its fixtures and helpers,
-`tools/probes/`, `.github/workflows/ci.yml`, `.claude/`, `docs/`, `workbench/` and this file exist.
+`ioguard` package's runtime core (`lib/` and the pipeline in `checks/`, with ten checks: the session probe,
+`shell.writes`, `transport.body`, `shell.lint`, `win.paths`, `conform.write`, `conform.edit`, `verify.write`,
+`verify.command` and `read.profile`), the hook entry point and bridge in `hooks/`, the corpus, replay and
+precommit commands in `cli/` with their scripts, a stub server that serves only the hook tools, `tests/` with its
+fixtures and helpers, `tools/probes/`, `.github/workflows/ci.yml`, `.claude/`, `docs/`, `workbench/` and this
+file exist.
 
 ```
 .claude-plugin/marketplace.json   the catalog
@@ -78,6 +79,8 @@ Each line works once the task that builds it has landed.
   `python tools/probes/run_probe.py verdicts`. `IOPROBE_CLAUDE` points it at the desktop app's own `claude.exe`
 - io-guard live from this checkout, with no install: `python tools/probes/run_probe.py run live-empty`, or another
   `live-*` probe, which adds test checks through `tests/support/inject`
+- The staged files against their last commit: `python plugins/io-guard/scripts/precommit.py`, which exits 1 on a
+  finding, or the same script as a repository's `.git/hooks/pre-commit`
 - The plugin in the desktop app, which is the lead's main surface: run
   `claude plugin marketplace add <path to this clone>`, then `claude plugin install io-guard@claude-io-guard`
 

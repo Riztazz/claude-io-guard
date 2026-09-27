@@ -1,4 +1,5 @@
-"""Git through its porcelain, read-only: repository root, tracked files, status, attributes, changed lines.
+"""Git through its porcelain, read-only: repository root, tracked files, status, attributes, changed lines,
+staged paths and stored bytes.
 
 Every call passes -c core.quotepath=false, so a non-ASCII path comes back as UTF-8, uses -z wherever it
 parses paths, and has a timeout. A call that fails raises GitError, so a caller never mistakes a failure for
@@ -120,3 +121,16 @@ class Git:
 
     def attributes(self, path: Path) -> Mapping[str, str]:
         return parse_attributes(self.checked(path.parent, "check-attr", "-a", "-z", "--", path.name))
+
+    def staged(self, root: Path) -> tuple[str, ...]:
+        """The paths the next commit adds, changes or renames to, from root, with forward slashes."""
+        raw = self.checked(root, "diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR")
+        return tuple(name for name in raw.decode("utf-8").split("\0") if name)
+
+    def blob(self, root: Path, spec: str) -> bytes | None:
+        """The bytes git stores for spec, such as HEAD:src/a.py, or :src/a.py for the staged file. None when
+        git holds nothing there, such as a file new to this commit."""
+        result = self.run(root, "cat-file", "blob", spec)
+        if result.start_error or result.timed_out:
+            raise GitError(f"git cat-file blob {spec} failed: {result.start_error or 'timed out'}")
+        return result.stdout if result.ok else None

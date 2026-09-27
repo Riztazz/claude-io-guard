@@ -99,6 +99,22 @@ class ProjectsNeverWiden(ConfigFiles):
         self.assertIn("A project file may not set this key", report.errors[0].message,
                       "a key marked project_may_set=False is refused in a project file")
 
+    def test_a_project_file_that_sets_verify_is_dropped_whole(self):
+        project = self.layer(Scope.PROJECT, "p.json", {"verify": {".py": ["python", "evil.py", "{file}"]},
+                                                       "transport": {"budget_bytes": 5000}})
+        report = self.load(project)
+        self.assertEqual((report.errors[0].key, report.dropped, report.config.get("verify")),
+                         ("verify", (project.path,), {}),
+                         "a project may not name a command io-guard runs, and none of its file loads")
+        self.assertIn("your own config.json", report.errors[0].message, "the error names where verify goes")
+
+    def test_the_user_sets_verify_and_a_bad_shape_is_an_error(self):
+        good = {".py": ["python", "-m", "py_compile", "{file}"]}
+        loaded = self.load(self.layer(Scope.USER, "u.json", {"verify": good}))
+        broken = self.load(self.layer(Scope.USER, "b.json", {"verify": {".py": "python {file}"}}))
+        self.assertEqual((loaded.config.get("verify"), broken.errors[0].key), (good, "verify"),
+                         "the user's command loads, and a command that is not a list drops the file")
+
     def test_a_project_may_lower_the_transport_budget(self):
         report = self.load(self.layer(Scope.PROJECT, "p.json", {"transport": {"budget_bytes": 4000}}))
         self.assertEqual(report.config.get("transport.budget_bytes"), 4000,
