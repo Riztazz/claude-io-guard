@@ -202,19 +202,24 @@ class Diagnosis:
             fix = Fix(tool, {}, f"Call {tool} again with a path under that folder.")
             return (self.result(Code.PATH_NOT_FOUND, message, fix, nearest=folder.as_posix()),)
         nearby = self.nearby()
+        glob = Fix("Glob", {"pattern": f"**/{self.path.name}"},
+                   f"Glob for **/{self.path.name} to find where it is.")
         if nearby:
             listed = ", ".join(paths.shown(path, cwd) for path in nearby[:SHOWN])
             message = f"{where} does not exist. Paths with the same name: {listed}."
             fix = Fix(tool, {}, f"Call {tool} again with one of those paths.")
+        elif nearby is None:
+            message, fix = f"{where} does not exist.", glob
         else:
-            message = f"{where} does not exist, and no file named {self.path.name} is near it."
-            fix = Fix("Glob", {"pattern": f"**/{self.path.name}"},
-                      f"Glob for **/{self.path.name} to find where it is.")
-        return (self.result(Code.PATH_NOT_FOUND, message, fix, nearby=[path.as_posix() for path in nearby]),)
+            message, fix = f"{where} does not exist, and no file named {self.path.name} is near it.", glob
+        return (self.result(Code.PATH_NOT_FOUND, message, fix,
+                            nearby=[path.as_posix() for path in nearby or ()]),)
 
-    def nearby(self) -> tuple[Path, ...]:
+    def nearby(self) -> tuple[Path, ...] | None:
         """Files with the missing path's name: the repository's, else those under the nearest folder that
-        exists, the ones that share the most folders with the missing path first."""
+        exists inside the session's folder, the ones that share the most folders with the missing path first.
+        None when that folder is outside the session's folder, because a walk from there, such as a drive's
+        root, takes longer than the whole pipeline may."""
         name = self.path.name.casefold()
         try:
             root = self.ctx.git.root(self.failed.cwd)
@@ -224,6 +229,8 @@ class Diagnosis:
         found = [path for path in known if path.name.casefold() == name]
         if not found:
             folder = self.existing(self.path.parent)
+            if paths.inside(folder, [self.failed.cwd], self.ctx.platform) is None:
+                return None
             found = list(self.ctx.fs.find_named(folder, self.path.name, self.options["find_limit"]))
         wanted = self.path.parts
         return tuple(sorted(found, key=lambda path: -sum(1 for part in path.parts if part in wanted)))

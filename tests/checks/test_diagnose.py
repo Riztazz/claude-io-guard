@@ -133,6 +133,14 @@ class AFailedCallIsAnsweredAfterIt(unittest.TestCase):
         found = results(failed("Grep", {"pattern": "(?<=a)b"}, error, context()), "diagnose.failure")[0]
         self.assertIn("without look-around", found.fix.text, "the fix names what ripgrep lacks")
 
+    def test_a_missing_path_outside_the_session_folder_is_not_walked_for(self):
+        ctx = context({Path("C:/other/Hero.h"): b"x"})
+        outcome = failed("Read", {"file_path": "C:/elsewhere/Hero.h"}, MISSING, ctx)
+        found = results(outcome, "diagnose.failure")[0]
+        self.assertEqual((found.message, found.evidence["nearby"]),
+                         ("C:/elsewhere/Hero.h does not exist.", []),
+                         "the nearest folder that exists is the drive, and a walk of it could take seconds")
+
     def test_a_missing_search_folder_names_the_nearest_that_exists(self):
         ctx = context({CWD / "Source" / "a.h": b"x"})
         found = results(failed("Glob", {"pattern": "*.h", "path": str(CWD / "Source" / "Gone" / "Deeper")},
