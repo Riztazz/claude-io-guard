@@ -28,6 +28,17 @@ publishes it.
 | Read shows CRLF, LF and a BOM the same way | 2.1.281 | waits for the Mac | 2026-09-27 |
 | Python prints through the cp1252 console code page | 2.1.281 | not a macOS issue | 2026-09-27 |
 
+The PowerShell calls `shell.lint` refuses, confirmed through the PowerShell tool on PowerShell 7.6.6 during task
+13. Each is an error in PowerShell itself, so any host shows it.
+
+| Fact | Windows | macOS | Confirmed |
+|---|---|---|---|
+| Assigning `$PID`, `$HOME`, `$Host`, `$PSHOME`, `$ShellId`, `$true`, `$false`, `$ExecutionContext`, `$PSVersionTable`, `$Error`, `$PSCulture` or `$PSEdition` fails: "Cannot overwrite variable PID because it is read-only or constant." `$null`, `$input`, `$args` and `$Matches` take an assignment | 7.6.6 | waits for the Mac | 2026-09-27 |
+| `foreach ($pid in ...)` fails the same way | 7.6.6 | waits for the Mac | 2026-09-27 |
+| `Select-String -Recurse` fails: "A parameter cannot be found that matches parameter name 'Recurse'." | 7.6.6 | waits for the Mac | 2026-09-27 |
+| `export X=1` is not a command, and `> /dev/null` fails: "Could not find a part of the path 'C:\dev\null'." | 7.6.6 | Unix PowerShell has a /dev/null | 2026-09-27 |
+| A `pwsh` start that parses one command takes 191 to 218 ms, over five runs | 7.6.6 | waits for the Mac | 2026-09-27 |
+
 ## Plugins
 
 Confirmed with the `claude` CLI at 2.1.283 and the desktop app on 2.1.281, during tasks 02 and 03.

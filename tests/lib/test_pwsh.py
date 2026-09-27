@@ -29,6 +29,13 @@ class PowerShellCommands(unittest.TestCase):
         found = pwsh.commands("# Set-Content x y\n<# Out-File z #>\nGet-Date")
         self.assertEqual(found[0].words, ("Get-Date",), "line and block comments are skipped")
 
+    def test_blanked_code_keeps_no_string_or_comment(self):
+        command = "$a = 'x $pid = 1' # $home = 2\n$b = @\"\n$host = 3\n\"@\n$c = 4"
+        blanked = pwsh.blanked(command)
+        self.assertEqual((len(blanked), blanked.count("\n"), "$pid" in blanked, "$c = 4" in blanked),
+                         (len(command), command.count("\n"), False, True),
+                         "strings, here-strings and comments turn to spaces, and the code and offsets stay")
+
     def test_io_file_calls_name_their_path(self):
         found = pwsh.file_calls("[System.IO.File]::WriteAllText(\"C:/p/a.txt\", $x)")
         self.assertEqual(found, ("C:/p/a.txt",), "the literal path of a write call is found")

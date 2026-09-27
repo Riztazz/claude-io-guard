@@ -62,6 +62,24 @@ CODES: tuple[CodeSpec, ...] = (
              "The Bash tool on Windows halves a pair of backslashes in this command.",
              "If the command needs both, put the text in a file with the Write tool and read it from there.",
              "0.1"),
+    CodeSpec("BACKTICK_IN_DOUBLE_QUOTES", Layer.TRANSPORT, Severity.REFUSED,
+             "Bash runs the text between backticks inside double quotes as a command.",
+             "Put that text in single quotes, or escape each backtick with a backslash.", "0.1"),
+    CodeSpec("TRAILING_BACKSLASH_QUOTE", Layer.TRANSPORT, Severity.FIXED,
+             "A backslash before a closing double quote escapes the quote in bash, so io-guard wrote the "
+             "path with forward slashes.", "Nothing to do.", "0.1"),
+    CodeSpec("DIALECT_MISMATCH", Layer.TRANSPORT, Severity.REFUSED,
+             "The command is written for the other shell.",
+             "Send it to the tool for that shell, or write it for this one.", "0.1"),
+    CodeSpec("POWERSHELL_TRAP", Layer.TRANSPORT, Severity.REFUSED,
+             "PowerShell refuses this command before it does anything.",
+             "Change the command as the message says, then run it again.", "0.1"),
+    CodeSpec("PIPE_HIDES_EXIT", Layer.TRANSPORT, Severity.WARNING,
+             "A pipe gives the command the exit code of its last part, which hides a build or test failure.",
+             "Read the output for the result, not the exit code.", "0.1"),
+    CodeSpec("INLINE_SCRIPT_INVALID", Layer.TRANSPORT, Severity.REFUSED,
+             "The Python program in this command does not compile.",
+             "Fix the line the message names, then run the command again.", "0.1"),
 )
 Code = Enum("Code", {spec.code: spec.code for spec in CODES})
 SPECS: dict[Code, CodeSpec] = {Code[spec.code]: spec for spec in CODES}

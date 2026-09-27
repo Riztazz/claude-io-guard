@@ -77,6 +77,11 @@ Windows 10, Claude Code desktop (bundled 2.1.281), Git Bash, PowerShell 7, Pytho
 
 The probes are `baseline/eol_probe.py`.
 
+Task 13 checked, through the PowerShell tool on PowerShell 7.6.6, the PowerShell calls `shell.lint` refuses: an
+assignment to one of 12 read-only automatic variables such as `$PID` or `$HOME`, `Select-String -Recurse`,
+`export`, and `> /dev/null` on Windows. A `pwsh` start that parses one command takes 191 to 218 ms, so the check
+parses PowerShell itself rather than through `pwsh`. `docs/live-checks.md` has each error text.
+
 Rules through a junction, checked on 2026-09-27 with Claude Code 2.1.281 and 2.1.283:
 
 - **Claude Code loads a rule, or an `@` import, only when its real path is inside the project.** A junction's real

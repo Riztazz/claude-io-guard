@@ -1,13 +1,15 @@
 """Reading a Bash command the way bash will: its heredocs, its python -c bodies, the backslash pairs the
-Windows Bash tool halves, and its length as that tool's transport counts it.
+Windows Bash tool halves, its simple commands, the quoting that bash reads differently from what was meant,
+and its length as that tool's transport counts it.
 
 The scanner follows bash's quoting: single quotes, double quotes and their four escapes, $'...' strings,
-command substitution, arithmetic, comments and heredoc bodies. It holds no policy. checks.transport_body
-decides what to move and what to refuse.
+command substitution, arithmetic, comments and heredoc bodies. It holds no policy. The checks decide what to
+move, rewrite and refuse.
 """
 import json
 import re
 import shlex
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 NORMAL, SINGLE, DOUBLE, ANSI, COMMENT, BODY, ARITH = range(7)
@@ -47,6 +49,8 @@ class Scan:
     bodies: tuple[InlineBody, ...]
     hazards: tuple[int, ...]     # offsets of the \\ pairs whose halving changes what bash reads
     states: bytes                # the quoting state at each offset
+    backticks: tuple[int, ...] = ()   # offsets of unescaped backticks inside double quotes
+    unterminated: bool = False        # a quote runs to the end, so bash stops at unexpected EOF
 
 
 class Scanner:
@@ -54,6 +58,8 @@ class Scanner:
         self.text = text
         self.states = bytearray(len(text))
         self.hazards: list[int] = []
+        self.backticks: list[int] = []
+        self.unclosed = False
         self.heredocs: list[Heredoc] = []
         self.pending: list[tuple[int, int, str, bool, bool]] = []
 
@@ -73,7 +79,7 @@ class Scanner:
     def run(self) -> Scan:
         self.normal(0, stop=None)
         return Scan(tuple(self.heredocs), inline_bodies(self.text, self.states), tuple(sorted(self.hazards)),
-                    bytes(self.states))
+                    bytes(self.states), tuple(self.backticks), self.unclosed)
 
     def normal(self, at: int, stop: str | None) -> int:
         """Scan unquoted text from at, until stop closes a command substitution. Returns the offset after."""
@@ -115,7 +121,8 @@ class Scanner:
 
     def single(self, at: int) -> int:
         end = self.text.find("'", at)
-        end = len(self.text) if end < 0 else end
+        if end < 0:
+            end, self.unclosed = len(self.text), True
         self.mark(at, end, SINGLE)
         self.hazards.extend(offset for match in re.finditer(r"\\\\", self.text[at:end])
                             if self.pair(offset := at + match.start()))
@@ -137,8 +144,11 @@ class Scanner:
             elif text.startswith("$(", at):
                 at = self.normal(at + 2, stop=")")
             else:
+                if char == "`":
+                    self.backticks.append(at)
                 self.states[at] = DOUBLE
                 at += 1
+        self.unclosed = True
         return at
 
     def ansi(self, at: int) -> int:
@@ -152,6 +162,7 @@ class Scanner:
             else:
                 self.states[at] = ANSI
                 at += 1
+        self.unclosed = self.unclosed or at >= len(text)
         return at + 1
 
     def arithmetic(self, at: int) -> int:
@@ -428,4 +439,63 @@ def moved(command: str, heredocs: dict[Heredoc, str], bodies: dict[InlineBody, s
     edits += [(body.argument, exec_file(path)) for body, path in bodies.items()]
     for (start, end), replacement in sorted(edits, key=lambda edit: edit[0][0], reverse=True):
         command = command[:start] + replacement + command[end:]
+    return command
+
+
+BODY_FILE = re.compile(r"[^\s'\"<>]*(?:io-guard|bodies)/body-[0-9a-f]{16}\.(?:txt|py)")
+PYTHON = re.compile(rf"^{PYTHON_NAME}$", re.I)
+QUOTED_PATH_BEFORE_QUOTE = re.compile(r'"[A-Za-z]:\\[^"\n]*\\"(?=[\s;&|)<>]|$)')
+
+
+def body_files(command: str) -> tuple[str, ...]:
+    """The body files a moved command reads, named io-guard/body-<16 hex>.txt or .py."""
+    return tuple(match[0] for match in BODY_FILE.finditer(command))
+
+
+def python_reads_stdin(simple: SimpleCommand) -> bool:
+    """Whether the simple command is Python reading its program from stdin: no script, no -c and no -m."""
+    if not PYTHON.match(simple.name):
+        return False
+    words = iter(simple.words[1:])
+    for word in words:
+        if word == "-":
+            return True
+        if word in ("-c", "-m") or not word.startswith("-"):
+            return False
+        if word in ("-W", "-X"):
+            next(words, None)
+    return True
+
+
+def piped(command: str, simple: SimpleCommand) -> bool:
+    """Whether the simple command's output goes into a pipe: one | or a |& follows it."""
+    end = simple.span[1]
+    return command[end:end + 1] == "|" and command[end + 1:end + 2] != "|"
+
+
+def call_operators(command: str, states: bytes) -> tuple[int, ...]:
+    """The offsets of each & that starts a command, as PowerShell's call operator does. Bash reads one as a
+    syntax error. The & of &&, |&, 2>&1 and &> is never one."""
+    found = []
+    for at, char in enumerate(command):
+        if char != "&" or states[at] != NORMAL or command[at - 1:at] in ("&", ">", "<", "|"):
+            continue
+        if command[at + 1:at + 2] in ("&", ">"):
+            continue
+        before = command[:at].rstrip(" \t")
+        if not before or before[-1] in "\n;(|&":
+            found.append(at)
+    return tuple(found)
+
+
+def trailing_backslash_paths(command: str) -> tuple[tuple[int, int], ...]:
+    """The spans of the double-quoted Windows paths that end in a backslash. That backslash escapes the
+    closing quote, so bash reads the string on past it."""
+    return tuple(match.span() for match in QUOTED_PATH_BEFORE_QUOTE.finditer(command))
+
+
+def forward_slashed(command: str, spans: Sequence[tuple[int, int]]) -> str:
+    """The command with each backslash inside the spans turned into a forward slash."""
+    for start, end in sorted(spans, reverse=True):
+        command = command[:start] + command[start:end].replace("\\", "/") + command[end:]
     return command

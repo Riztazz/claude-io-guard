@@ -15,8 +15,8 @@ class PathsNormalise(unittest.TestCase):
                          "on Windows a relative path joins cwd and .. is folded")
 
     def test_a_windows_absolute_path_ignores_cwd(self):
-        self.assertEqual(normalise("D:\\other\\a.txt", Path("C:\\work"), WINDOWS).as_posix(), "D:/other/a.txt",
-                         "an absolute Windows path stands on its own")
+        self.assertEqual(normalise("D:\\other\\a.txt", Path("C:\\work"), WINDOWS).as_posix(),
+                         "D:/other/a.txt", "an absolute Windows path stands on its own")
 
     def test_a_windows_path_keeps_its_parts_on_any_host(self):
         self.assertEqual(normalise("src\\a.py", Path("C:/project"), WINDOWS).parts[-2:], ("src", "a.py"),

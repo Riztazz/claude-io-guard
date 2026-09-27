@@ -1,5 +1,6 @@
-"""Reading a PowerShell command far enough to find what it writes: its simple commands, their words and their
-file redirects, and the paths it hands to [IO.File] write calls.
+"""Reading a PowerShell command far enough to find what it writes and what it gets wrong: its simple commands,
+their words and their file redirects, its code with the strings left out, and the paths it hands to [IO.File]
+write calls.
 
 The reader follows PowerShell's quoting: '...' with '' inside, "..." with backtick escapes, the here-strings
 @'...'@ and @"..."@, # and <# #> comments. It splits at ; | && || and newlines outside them.
@@ -106,6 +107,27 @@ def word_at(text: str, at: int) -> int:
             return at
         at += 1
     return at
+
+
+def blanked(command: str) -> str:
+    """The command with each string, here-string and comment turned into spaces, so a search of what is left
+    finds only code. Newlines stay, so an offset still points at the same place."""
+    out, at = [], 0
+    while at < len(command):
+        char = command[at]
+        here = command.startswith(("@'", '@"'), at) and command[at + 2:at + 3] in ("\n", "\r")
+        if here or char in "'\"" or command.startswith("<#", at):
+            end = quoted_end(command, at)
+        elif char == "#" and (at == 0 or command[at - 1] in " \t\n;|("):
+            end = command.find("\n", at)
+            end = len(command) if end < 0 else end
+        else:
+            out.append(char)
+            at += 1
+            continue
+        out.append(re.sub(r"[^\n]", " ", command[at:end]))
+        at = end
+    return "".join(out)
 
 
 def file_calls(command: str) -> tuple[str, ...]:

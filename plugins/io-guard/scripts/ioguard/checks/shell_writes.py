@@ -24,7 +24,6 @@ from ioguard.lib.results import Code, Fix, Layer, Result, Severity
 DEVICES = {"/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty", "nul", "$null", "con"}
 INTERPRETERS = re.compile(r"^(?:python[\d.]*|py|node|perl|ruby)$")
 SCRIPT_SUFFIXES = {".py", ".sh", ".ps1", ".psm1", ".js", ".bat", ".cmd", ".rb", ".pl"}
-BODY_FILE = re.compile(r"[^\s'\"<>]*io-guard/body-[0-9a-f]{16}\.(?:txt|py)")
 SCRIPT_WRITE = re.compile(
     r"open\(\s*r?(['\"])(?P<open>[^'\"]+)\1\s*,\s*(?:mode\s*=\s*)?r?['\"][wax]"
     r"|Path\(\s*r?(['\"])(?P<path>[^'\"]+)\3\s*\)\.write_(?:text|bytes)\("
@@ -98,11 +97,11 @@ def sed_files(arguments: list[str]) -> list[str]:
 
 
 def moved_bodies(command: str, ctx: Context) -> list[str]:
-    """The bodies task 11 moved into files that this command runs."""
+    """The bodies transport.body moved into files that this command runs."""
     bodies = []
-    for match in BODY_FILE.finditer(command):
+    for path in shell.body_files(command):
         try:
-            bodies.append(ctx.fs.read_bytes(Path(match[0])).decode("utf-8", "replace"))
+            bodies.append(ctx.fs.read_bytes(Path(path)).decode("utf-8", "replace"))
         except OSError:
             continue
     return bodies

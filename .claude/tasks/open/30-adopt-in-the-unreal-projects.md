@@ -24,7 +24,11 @@ File one kit ticket for each change below, in `UNREAL-SHARED/tasks/open/`:
 2. `tools/CLAUDE.md.template` drops the rules io-guard enforces, and points at the io-guard skill instead.
 3. The kit's `.clang-format` sets `LineEnding: DeriveLF` in place of `CRLF`. All 74 kit C++ files are LF (BYT-3).
 4. io-guard is installed on the lead's machine and enabled for the four projects and this repository.
-5. Each project gets its own `.claude/io-guard.json`, holding the LFS-heavy trees the guard should skip.
+5. Each project gets its own `.claude/io-guard.json`, holding the LFS-heavy trees the guard should skip, and
+   `checks.shell.lint.build_commands` naming its builds, such as `build.bat`, `runuat.bat` and
+   `python .claude/tools/shared/build.py`. The list replaces the defaults. Task 13 measured it with those and
+   `python .claude/tools/build.py`: 2,138 recorded Bash calls get the pipe warning, and 464 of them ran with exit
+   code 0 while their output showed an error.
 6. The kit's rule on the Bash tool's backslash halving is corrected and says a body io-guard moves arrives
    byte-exact (D25). Task 11 filed it as `UNREAL-SHARED/tasks/open/correct-the-bash-backslash-halving-rule.md`.
 

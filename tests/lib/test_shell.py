@@ -199,5 +199,49 @@ class PathsAreQuotedForBash(unittest.TestCase):
                          "the path arrives as written")
 
 
+class QuotingBashReadsDifferently(unittest.TestCase):
+    def test_backticks_are_found_only_unescaped_inside_double_quotes(self):
+        command = 'echo "a `b` \\`c\\`" \'`d`\' `e`'
+        self.assertEqual([command[at] + command[at + 1] for at in shell.scan(command).backticks],
+                         ["`b", "` "], "only the backticks bash runs inside double quotes count")
+
+    def test_a_quote_left_open_is_unterminated(self):
+        cases = ('ls "a', "ls 'a", "echo $'a", 'ls "a"', "", 'ls "a\\" && cat "b"', "echo 'a' \"")
+        self.assertEqual([shell.scan(text).unterminated for text in cases],
+                         [True, True, True, False, False, True, True],
+                         "a command that ends inside a quote is unterminated, an empty one at the end too")
+
+    def test_a_windows_path_ending_in_a_backslash_is_found_and_slashed(self):
+        command = r'ls "C:\a b\c\" && cat "C:\d\e.md"'
+        spans = shell.trailing_backslash_paths(command)
+        self.assertEqual(shell.forward_slashed(command, spans), 'ls "C:/a b/c/" && cat "C:\\d\\e.md"',
+                         "only the path whose last backslash escapes its quote changes")
+
+    def test_an_ampersand_that_starts_a_command_is_a_call_operator(self):
+        for command, expected in (('& "x.exe"', [0]), ("a && & b", [5]), ("a & b", []), ("x 2>&1", []),
+                                  ("a &> log", []), ("a |& b", [])):
+            with self.subTest(command=command):
+                self.assertEqual(list(shell.call_operators(command, shell.scan(command).states)), expected,
+                                 "only an & where a command starts is PowerShell's call operator")
+
+    def test_a_pipe_is_told_from_an_or(self):
+        command = "make | tail; a || b"
+        piped = [shell.piped(command, simple) for simple in shell.commands(command)]
+        self.assertEqual(piped, [True, False, False, False], "| pipes, || does not")
+
+    def test_python_reads_its_program_from_stdin_only_without_a_script(self):
+        cases = {"python -": True, "python3 -X utf8": True, "py -3 -": True, "python tool.py": False,
+                 "python -c x": False, "python -m pytest": False, "cat": False}
+        for command, expected in cases.items():
+            with self.subTest(command=command):
+                self.assertEqual(shell.python_reads_stdin(shell.commands(command)[0]), expected,
+                                 "a script, -c or -m means stdin is data")
+
+    def test_moved_body_files_are_named(self):
+        command = 'python - < "C:/s/io-guard/body-0123456789abcdef.txt"; cat /tmp/body-x.txt'
+        self.assertEqual(shell.body_files(command), ("C:/s/io-guard/body-0123456789abcdef.txt",),
+                         "only a file the move wrote is a body file")
+
+
 if __name__ == "__main__":
     unittest.main()

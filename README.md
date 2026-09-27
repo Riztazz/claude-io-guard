@@ -3,9 +3,9 @@
 A Claude Code plugin that checks what an agent sends to the file and shell tools, fixes what it safely can, and
 returns a structured error for the rest. One codebase runs on Windows and macOS.
 
-**Status: in build.** The plugin installs, and its hooks answer every file and shell call. Three checks run so
-far: the session probe, the Bash body move and the shell-write refusal. The build plan is in `.claude/tasks/`,
-and this page describes the plugin the plan builds.
+**Status: in build.** The plugin installs, and its hooks answer every file and shell call. Four checks run so
+far: the session probe, the Bash body move, the shell-write refusal and the quoting and dialect lint. The build
+plan is in `.claude/tasks/`, and this page describes the plugin the plan builds.
 
 ## Five fixes, by example
 
@@ -72,6 +72,7 @@ The numbers come from 110,379 file and shell tool calls in 738 transcripts of re
 | Write turns a CRLF file into LF and drops its BOM, and Edit trims trailing spaces from the new text | 328 "LF will be replaced by CRLF" warnings | Rewrites the input in the file's own endings, BOM and indent before it runs |
 | A failed Edit says "not found" and nothing else | 67 anchor misses, 112 stale reads | Returns the closest match, the file's endings and a corrected call |
 | `sed -i`, redirects and scripts write files around the edit tools, so no check and no rewind sees them | 2,876 shell writes | Refuses a write to a file git tracks, names the tool that does it safely, and warns about a script created inside the repository |
+| Bash reads a command differently from what was meant: a Windows path's last backslash escapes its quote, a backtick inside double quotes runs as a command, PowerShell syntax goes to the Bash tool, a Python body doesn't compile | 29 failed commands, and 11 more that ran and did the wrong thing | Rewrites the path with forward slashes, and refuses the rest with the fix |
 | Long output is cut, and exit code 1 from grep stops a chain | 148 cut results | Labels the exit code and summarises the errors |
 
 ## How it works
@@ -159,6 +160,11 @@ cuts commands near 7,800 bytes. The setting is `transport.budget_bytes`, and a p
 it adds `DOTNET_CLI_UI_LANGUAGE=en` and `VSLANG=1033`, so build tools report in English. The lists are the settings
 `checks.session.probe.env` and `checks.session.probe.env_windows`, and only your own `config.json` can change them,
 because a variable such as `PYTHONSTARTUP` can run a program.
+
+**Your build command:** a build or test piped into `tail`, `grep` or `head` reports the filter's exit code, so
+io-guard warns before it runs. It knows common builds such as `make`, `npm test` and `pytest`. To name your own,
+list each by its first words in `checks.shell.lint.build_commands`, in your project's `.claude/io-guard.json`.
+Your list replaces the default one.
 
 **Recommended Claude Code settings**, proposed until the release confirms them:
 

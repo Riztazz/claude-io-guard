@@ -26,8 +26,9 @@ plugins/io-guard/
         bytesio.py                 read_bytes, write_atomic, size guard
         profile.py                 Profile, profile, target_profile
         anchors.py                 find, closest, unique_anchor, extend_right
-        shell.py                   scan, commands, budget_length, moved, shell_path, exec_file, dialect
-        pwsh.py                    commands, file_calls, and the parse through pwsh when present
+        shell.py                   scan, commands, budget_length, moved, the hazards bash reads differently
+        pwsh.py                    commands, blanked, file_calls
+        python_source.py           compile_report: a Python body's syntax error or warning, without running it
         paths.py                   normalise, reserved, link_target, inside, same_file
         git.py                     Git, the GitPort implementation
         locks.py                   holders, file_lock
@@ -50,7 +51,7 @@ plugins/io-guard/
         location.py                OUTSIDE_WRITE_ROOT, LINKED_PATH, RESERVED_NAME, READ_ONLY
         transport_body.py          BODY_MOVED_TO_FILE, TRANSPORT_BUDGET, BACKSLASH_TRANSPORT
         shell_writes.py            SHELL_WRITE, scratch script warning
-        lint.py                    quoting, escapes, dialect, PIPE_HIDES_EXIT
+        lint.py                    shell.lint: quoting, escapes, dialect, Python bodies, PIPE_HIDES_EXIT
         win_paths.py               MSYS_PATH, device names, cmd quirks
         conform_write.py           EOL_CONVERTED, BOM_RESTORED
         conform_edit.py            TRAILING_WS_STRIPPED avoidance, INDENT_MISMATCH
@@ -346,7 +347,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Location | `OUTSIDE_WRITE_ROOT`, `LINKED_PATH`, `READ_ONLY`, `FILE_LOCKED` | 19 |
 | Transport | `BODY_MOVED_TO_FILE`, `TRANSPORT_BUDGET`, `BACKSLASH_TRANSPORT`, the last a warning (D25) | 11, in `CODES` |
 | Transport | `SHELL_WRITE`, a warning for a new script inside a repository (GIT-1) | 12, in `CODES` |
-| Transport | `BACKTICK_IN_DOUBLE_QUOTES`, `TRAILING_BACKSLASH_QUOTE`, `DIALECT_MISMATCH`, `PIPE_HIDES_EXIT`, `INLINE_SCRIPT_INVALID` | 13 |
+| Transport | `BACKTICK_IN_DOUBLE_QUOTES`, `TRAILING_BACKSLASH_QUOTE`, `DIALECT_MISMATCH`, `POWERSHELL_TRAP`, `PIPE_HIDES_EXIT`, `INLINE_SCRIPT_INVALID` | 13, in `CODES` |
 | Transport | `MSYS_PATH`, `RESERVED_NAME` | 14 |
 | Bytes | `EOL_CONVERTED`, `BOM_RESTORED`, `TRAILING_WS_STRIPPED`, `INDENT_MISMATCH` | 17 |
 | Bytes | `EOL_MISMATCH`, `BOM_CHANGED`, `ENCODING_INVALID`, `NON_ASCII_ADDED`, `CONTROL_BYTES_ADDED`, `SIZE_COLLAPSED`, `UNINTENDED_CHANGE` | 18 |
@@ -532,7 +533,8 @@ of that type, none of them named `enabled`, which every check gets. A check that
 rewrite whose fields are not all in `writes` is a bug, and the pipeline fails open around it. Each check joins
 `CHECKS` in the task that builds it. A test registers one class into an empty registry to test a check alone.
 No import-time discovery, no decorators, one list. `transport.body` runs after `shell.writes`, so a command
-refused for its write never has a body moved into a file first.
+refused for its write never has a body moved into a file first. `shell.lint` runs after `transport.body`, so it
+compiles a moved body from its file, as Python will read it.
 
 ### The pipeline
 
@@ -623,14 +625,22 @@ def commands(command: str, found: Optional[Scan] = None) -> tuple[SimpleCommand,
 class SimpleCommand: words, redirects, inputs, span, name  # words unquoted, leading assignments dropped
 class Redirect: target, append, fd                          # a file only: 2>&1 and >&2 are never one
 # shell.py, task 13
-def dialect(command: str) -> Dialect                        # BASH, POWERSHELL, MIXED
+Scan.backticks, Scan.unterminated           # unescaped backticks in double quotes, a quote left open at the end
+def call_operators(command: str, states: bytes) -> tuple[int, ...]   # an & that starts a command
+def trailing_backslash_paths(command: str) -> tuple[tuple[int, int], ...]   # "C:\dir\" escaping its quote
+def forward_slashed(command: str, spans: Sequence[tuple[int, int]]) -> str
+def piped(command: str, simple: SimpleCommand) -> bool      # its output goes into | or |&
+def python_reads_stdin(simple: SimpleCommand) -> bool       # python or python -, with no script, -c or -m
+def body_files(command: str) -> tuple[str, ...]             # the moved body files the command reads
 
 # pwsh.py, task 12
 def commands(command: str) -> tuple[SimpleCommand, ...]     # split at ; | && || and newlines, here-strings whole
 def file_calls(command: str) -> tuple[str, ...]             # the literal paths [IO.File] write calls name
 # pwsh.py, task 13
-def parse(command: str, pwsh: Optional[Path]) -> PwshParse  # errors, commands, arguments
-def canonical(name: str) -> str                             # alias to cmdlet
+def blanked(command: str) -> str                            # strings and comments as spaces, code left
+
+# python_source.py, task 13
+def compile_report(source: str) -> Optional[CompileReport]  # the SyntaxError, or the SyntaxWarnings
 
 # paths.py
 def normalise(raw: str, cwd: Path, platform: Platform) -> Path
@@ -732,7 +742,9 @@ Four layers merge in this order, and a later layer overrides an earlier one key 
 key is a defect. The values above are the defaults the lead set on 2026-09-27. A key enters `lib.config` with
 the code that reads it, because a key nothing reads is a validation error in waiting. Task 07 defined
 `schema`, `pipeline.*`, `transport.rewrite_mode.*` and `telemetry.*`, task 10 `checks.session.probe.env` and
-`env_windows`, and task 11 `transport.budget_bytes`. Each other key arrives with its check. A key marked
+`env_windows`, task 11 `transport.budget_bytes`, and task 13 `checks.shell.lint.build_commands`, the commands
+whose exit code a pipe hides, each as its first words, such as `make` or `npm test`. A project names its own
+builds there, and its list replaces the default one. Each other key arrives with its check. A key marked
 `project_narrows`, such as the budget, takes a lower number from a project file and refuses a higher one.
 
 **The rewrite mode is the user's (D12).** For each permission mode the user layer sets `refuse`, `ask` or `allow`.
