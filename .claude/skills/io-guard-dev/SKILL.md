@@ -6,7 +6,7 @@ description: How io-guard's own code is laid out, written, tested and verified. 
 # Working on io-guard
 
 The design is `docs/design/architecture.md`, and every signature there is a contract. The decisions behind it are
-D1 to D24 in `.claude/tasks/context.md`. This page is how the code gets written and proved. The kit's generic
+D1 to D26 in `.claude/tasks/context.md`. This page is how the code gets written and proved. The kit's generic
 skills hold the rules for every project: `engineering` (with `references/python.md`), `testing`, `verification`
 and `prose`.
 

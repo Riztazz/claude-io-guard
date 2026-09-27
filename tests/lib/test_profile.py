@@ -3,7 +3,8 @@ target_profile gives the convention a new file takes."""
 import time
 import unittest
 
-from ioguard.lib.profile import Bom, Eol, IndentKind, profile, target_profile
+from ioguard.lib.profile import (Bom, Eol, IndentKind, convert_eol, profile, target_profile, with_bom,
+                                 with_final_newline)
 from tests.support.fixtures import FIXTURES_DIR
 
 
@@ -126,6 +127,20 @@ class ANewFilesProfile(unittest.TestCase):
         self.assertEqual((chosen.bom, chosen.indent.kind, chosen.final_newline),
                          (Bom.UTF8, IndentKind.TABS, False),
                          ".editorconfig's charset, indent_style and insert_final_newline decide")
+
+
+class ConvertingText(unittest.TestCase):
+    def test_endings_bom_and_final_newline(self):
+        self.assertEqual(convert_eol("a\r\nb\nc\rd", Eol.CRLF), "a\r\nb\r\nc\r\nd",
+                         "every ending becomes CRLF")
+        self.assertEqual(convert_eol("a\nb", Eol.MIXED), "a\nb", "a mixed target changes nothing")
+        bom = chr(0xFEFF)
+        self.assertEqual((with_bom("x", Bom.UTF8), with_bom(bom + "x", Bom.NONE)), (bom + "x", "x"),
+                         "the BOM is added or removed to match")
+        added = with_final_newline("a", True, Eol.CRLF)
+        removed = with_final_newline("a\r\n\r\n", False, Eol.CRLF)
+        self.assertEqual((added, removed), ("a\r\n", "a\r\n"),
+                         "one ending is added, or exactly one taken off")
 
 
 class Speed(unittest.TestCase):

@@ -24,8 +24,9 @@ plugins/io-guard/
       __init__.py                  PLUGIN_VERSION, CONFIG_SCHEMA, CHECK_API, TELEMETRY_SCHEMA
       lib/                         mechanism, functions and frozen dataclasses only
         bytesio.py                 read_bytes, write_atomic, size guard
-        profile.py                 Profile, profile, target_profile
-        anchors.py                 find, closest, unique_anchor, extend_right
+        profile.py                 Profile, profile, target_profile, convert_eol, with_bom, with_final_newline
+        editorconfig.py            parse, matches, properties: the .editorconfig properties for one file
+        anchors.py                 find, closest, unique_anchor
         shell.py                   scan, commands, budget_length, moved, the hazards bash reads differently
         pwsh.py                    commands, blanked, file_calls
         python_source.py           compile_report: a Python body's syntax error or warning, without running it
@@ -53,8 +54,8 @@ plugins/io-guard/
         shell_writes.py            SHELL_WRITE, scratch script warning
         lint.py                    shell.lint: quoting, escapes, dialect, Python bodies, PIPE_HIDES_EXIT
         win_paths.py               win.paths: MSYS_PATH for slash arguments and cmd /c, RESERVED_NAME for nul
-        conform_write.py           EOL_CONVERTED, BOM_RESTORED
-        conform_edit.py            TRAILING_WS_STRIPPED avoidance, INDENT_MISMATCH
+        conform_write.py           conform.write: EOL_CONVERTED, BOM_RESTORED, EOL_MISMATCH for a mixed file
+        conform_edit.py            conform.edit: INDENT_MISMATCH, new_string in the indent around the match
         verify_write.py            profile drift after Edit and Write
         touched.py                 TOUCHED_BY_SHELL, new files
         read_profile.py            read.profile: the profile line after Read, and the hash in read_hashes
@@ -195,6 +196,7 @@ class FsPort(Protocol):
     def exists(self, path: Path) -> bool: ...
     def holders(self, path: Path) -> tuple[Process, ...]: ...
     def make_folders(self, path: Path) -> None: ...
+    def list_dir(self, path: Path) -> tuple[Path, ...]: ...   # the files in a folder, sorted, () when none
 
 class Clock(Protocol):
     def now(self) -> datetime: ...
@@ -349,8 +351,8 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Transport | `SHELL_WRITE`, a warning for a new script inside a repository (GIT-1) | 12, in `CODES` |
 | Transport | `BACKTICK_IN_DOUBLE_QUOTES`, `TRAILING_BACKSLASH_QUOTE`, `DIALECT_MISMATCH`, `POWERSHELL_TRAP`, `PIPE_HIDES_EXIT`, `INLINE_SCRIPT_INVALID` | 13, in `CODES` |
 | Transport | `MSYS_PATH`, `RESERVED_NAME` | 14, in `CODES` |
-| Bytes | `EOL_CONVERTED`, `BOM_RESTORED`, `TRAILING_WS_STRIPPED`, `INDENT_MISMATCH` | 17 |
-| Bytes | `EOL_MISMATCH`, `BOM_CHANGED`, `ENCODING_INVALID`, `NON_ASCII_ADDED`, `CONTROL_BYTES_ADDED`, `SIZE_COLLAPSED`, `UNINTENDED_CHANGE` | 18 |
+| Bytes | `EOL_CONVERTED`, `BOM_RESTORED`, `EOL_MISMATCH`, `INDENT_MISMATCH` | 17, in `CODES` |
+| Bytes | `BOM_CHANGED`, `ENCODING_INVALID`, `NON_ASCII_ADDED`, `CONTROL_BYTES_ADDED`, `SIZE_COLLAPSED`, `UNINTENDED_CHANGE` | 18 |
 | Stale | `ANCHOR_NOT_FOUND`, `ANCHOR_AMBIGUOUS`, `STALE_VIEW`, `NOT_READ` | 20 |
 | Stale | `TOUCHED_BY_SHELL` | 21 |
 | Read | `PATH_NOT_FOUND`, `READ_TOO_LARGE`, `PATTERN_INVALID`, `SEARCH_TOO_BROAD` | 20 |
@@ -612,14 +614,20 @@ def would_collapse(before: int, after: int) -> bool          # task 18, with its
 def profile(data: bytes) -> Profile
 def target_profile(siblings: Sequence[Profile], editorconfig: Mapping[str, str],
                    gitattributes: Mapping[str, str]) -> Profile
-def convert_eol(text: str, eol: Eol) -> str                  # task 17
-def with_bom(data: bytes, bom: Bom) -> bytes                 # task 17
+def convert_eol(text: str, eol: Eol) -> str                  # MIXED and NONE leave text as it is
+def with_bom(text: str, bom: Bom) -> str                     # a leading U+FEFF, which Write writes as EF BB BF
+def with_final_newline(text: str, final: bool, eol: Eol) -> str
+
+# editorconfig.py, task 17
+def parse(text: str) -> tuple[bool, list[tuple[str, dict[str, str]]]]   # root = true, then the sections
+def matches(glob: str, relative: str) -> bool               # *, **, ?, [set], [!set], {a,b}
+def properties(path: Path, read: Callable[[Path], Optional[str]]) -> dict[str, str]
+                                                            # up the folders to root = true, nearer wins
 
 # anchors.py
 def find(data: bytes, anchor: bytes) -> AnchorMatch         # count, offsets, lines
 def closest(data: bytes, anchor: bytes, limit: int = 3) -> tuple[Candidate, ...]
 def unique_anchor(data: bytes, offset: int, minimum: int = 1) -> bytes
-def extend_right(data: bytes, offset: int, length: int) -> int   # bytes to the next non-space
 
 # shell.py, task 11
 def scan(command: str) -> Scan              # heredocs, python -c bodies, halving hazards, quoting states
@@ -809,14 +817,17 @@ the shape, and a refusal outranks an ask, which outranks an allow.
 | OBSERVE or ALLOW, no rewrite | `{}`, or `additionalContext` only. No `permissionDecision`, so no prompt is skipped |
 | DENY | `permissionDecision: "deny"`, the refusing check's results rendered first in the reason, then the lines of the checks before it |
 | ASK, no rewrite | `permissionDecision: "ask"` with the check's lines as the reason |
+| file-tool rewrite, no ASK or DENY | `updatedInput` and the notes in `additionalContext`, no `permissionDecision` |
 | rewrite, mode `ask`, or any rewrite with an ASK | `permissionDecision: "ask"`, `updatedInput`, the notes in `permissionDecisionReason` |
 | rewrite, mode `allow` | `permissionDecision: "allow"`, `updatedInput`, the notes in `additionalContext` |
 | rewrite, mode `refuse` | `permissionDecision: "deny"`, the notes, then the command to run instead, or the changed fields as JSON |
 
-A rewrite's note renders as `CODE: note`. The mode comes from `transport.rewrite_mode[permission_mode]`.
-File-tool rewrites from `conform_write` and `conform_edit` always answer `allow`, because the harness
-auto-approves edits in the working directory in every mode that matters. Task 17 checks that claim for an edit
-outside the working directory before it relies on it.
+A rewrite's note renders as `CODE: note`. The mode comes from `transport.rewrite_mode[permission_mode]`, and
+applies to shell rewrites. A file-tool rewrite from `conform_write` and `conform_edit` answers with
+`updatedInput`, the notes in `additionalContext`, and no `permissionDecision`. The harness then applies the
+conformed input and asks or approves as it would have for the original call: task 17's `write-quiet` probe saw
+the permission prompt show the rewritten content, BOM and CRLF, on 2.1.281 and 2.1.283 (`context.md`, "Hooks
+and MCP", row 27). A check's own ASK or DENY still outranks it.
 
 PostToolUse answers carry `additionalContext`, `classifierContext` and `updatedToolOutput`. An
 `updatedToolOutput` has the tool's own output shape: for Bash, the `tool_response` object with `stdout`

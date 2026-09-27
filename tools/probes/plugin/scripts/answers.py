@@ -6,9 +6,12 @@ REWRITTEN = "IOPROBE_REWRITTEN"
 WRITE_CONTENT = chr(0xFEFF) + "line one\r\nline two\r\n"
 
 
-def pre_tool_use(decision: str, reason: str | None = None, updated_input: dict | None = None,
+def pre_tool_use(decision: str | None, reason: str | None = None, updated_input: dict | None = None,
                  context: str | None = None) -> dict:
-    out: dict = {"hookEventName": "PreToolUse", "permissionDecision": decision}
+    """A PreToolUse answer. A decision of None leaves permissionDecision out, so the harness decides."""
+    out: dict = {"hookEventName": "PreToolUse"}
+    if decision is not None:
+        out["permissionDecision"] = decision
     if reason is not None:
         out["permissionDecisionReason"] = reason
     if updated_input is not None:
@@ -47,6 +50,11 @@ def answer(mode: str, event: dict, nonce: str) -> dict | None:
         case ("rewrite_write", "PreToolUse", "Write"):
             return pre_tool_use("allow", f"io-probe rewrote the content ({nonce})",
                                 {**tool_input, "content": WRITE_CONTENT})
+        case ("rewrite_write_quiet", "PreToolUse", "Write"):
+            return pre_tool_use(None, updated_input={**tool_input, "content": WRITE_CONTENT})
+        case ("edit_trailing", "PreToolUse", "Edit"):
+            return pre_tool_use("allow", f"io-probe set new_string ({nonce})",
+                                {**tool_input, "old_string": "one = 1", "new_string": "one = "})
         case ("rewrite_edit", "PreToolUse", "Edit"):
             extended = extended_edit(tool_input)
             if extended is None:

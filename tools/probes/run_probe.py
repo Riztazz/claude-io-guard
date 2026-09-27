@@ -110,6 +110,10 @@ MOVED = ("Run one Bash command: a python heredoc, written as python - <<'PY' on 
 READ_PROFILE = "Read profiled.txt with the Read tool. Then quote word for word any text that came with " \
                "that tool result besides the file's own lines, such as an added note or context. If there " \
                "was none, reply NONE."
+CONFORM = "Do these in order, one tool call each, and never retry a failed step. 1. Read keep.txt. 2. Use " \
+          "the Write tool on keep.txt with two lines: gamma and delta. Then reply DONE."
+TRAILING = "Read one.txt, then use the Edit tool once on one.txt to replace one = 1 with one = 9. " \
+           "Then reply DONE."
 ARROW = 'python -c "print(chr(0x2192))"'
 DEFAULTS = f"Run these commands one at a time, each in its own tool call, and never retry. 1. Bash: " \
            f"{ARROW} 2. Bash: env -u PYTHONUTF8 -u PYTHONIOENCODING {ARROW} 3. PowerShell: {ARROW} " \
@@ -241,8 +245,18 @@ PROBES = {
                            env={"CLAUDE_CODE_MAX_OUTPUT_TOKENS": "16000"}),
     "live-move-auto": Probe(0, "record", guard="", permission="auto", model="sonnet", prompt=MOVED,
                             env={"CLAUDE_CODE_MAX_OUTPUT_TOKENS": "16000"}),
+    "write-quiet": Probe(0, "rewrite_write_quiet", hooks=(("PreToolUse", "Write", "exec"),), server=True,
+                         extra_args=PERMIT, check=("probe.txt",),
+                         prompt="Use the Write tool once to create probe.txt in the current folder with the "
+                                "content: hello\nThen reply DONE."),
+    "edit-trailing": Probe(0, "edit_trailing", hooks=(("PreToolUse", "Edit", "exec"),),
+                           allowed=("Read", "Edit"), setup={"one.txt": b"one = 1\ntwo = 2\n"},
+                           check=("one.txt",), prompt=TRAILING),
     "live-read-profile": Probe(0, "", guard="", allowed=("Read",), prompt=READ_PROFILE,
                                setup={"profiled.txt": b"\xef\xbb\xbfint x;\r\n\tint y;\r\n"}),
+    "live-conform": Probe(0, "", guard="", permission="acceptEdits", allowed=("Read", "Write"),
+                          prompt=CONFORM, check=("keep.txt",),
+                          setup={"keep.txt": b"\xef\xbb\xbfalpha\r\nbeta\r\n"}),
 }
 
 
@@ -551,6 +565,7 @@ def guarded_every_call(summary: dict) -> bool:
 
 
 BOM_CRLF = b"\xef\xbb\xbfline one\r\nline two\r\n".decode("latin-1")
+KEPT_CONFORMED = b"\xef\xbb\xbfgamma\r\ndelta\r\n".decode("latin-1")
 VERDICTS = {
     "rewrite-allow": lambda s, n: "IOPROBE_REWRITTEN" in seen(s),
     "write-bytes": lambda s, n: s["files"]["probe.txt"] == BOM_CRLF,
@@ -595,8 +610,12 @@ VERDICTS = {
     "live-probe": defaults_applied,
     "live-move-ask": asked_with_moved_body,
     "live-move-auto": lambda s, n: "Run this command instead" in seen(s) and printed(s, "3"),
+    "write-quiet": lambda s, n: s["files"]["probe.txt"] == BOM_CRLF and logged(s, '"name": "probe_permit"')
+    and logged(s, "line one\\\\r\\\\nline two"),
     "live-read-profile": lambda s, n: context_reached(n, "io-guard: CRLF, BOM, UTF-8, tabs, 2 lines")
     and "CRLF, BOM" in seen(s),
+    "edit-trailing": lambda s, n: s["files"]["one.txt"] == "one = \ntwo = 2\n",
+    "live-conform": lambda s, n: s["files"]["keep.txt"] == KEPT_CONFORMED,
 }
 
 

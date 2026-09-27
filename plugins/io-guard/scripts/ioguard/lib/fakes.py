@@ -60,6 +60,9 @@ class FakeFs:
     def make_folders(self, path: Path) -> None:
         self.folders.add(path)
 
+    def list_dir(self, path: Path) -> tuple[Path, ...]:
+        return tuple(sorted(file for file in self.files if file.parent == path))
+
 
 class FakeGit:
     def __init__(self, root: Path | None = None, tracked: frozenset[Path] = frozenset(),

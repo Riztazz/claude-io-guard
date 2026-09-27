@@ -1,9 +1,11 @@
 """An Outcome as the JSON answer Claude Code reads for each hook event.
 
 For PreToolUse the verdict and the user's rewrite mode decide the shape, as docs/design/architecture.md,
-section 6, tabulates. A rewrite's mode is refuse, ask or allow, and a refusal outranks an ask, which outranks
-an allow. Every other event answers with its context lines, and PostToolUse also with the replaced output and
-the note for the auto-mode classifier. The outcome's user_message is the systemMessage the user sees.
+section 6, tabulates. A shell rewrite's mode is refuse, ask or allow, and a refusal outranks an ask, which
+outranks an allow. A file tool's rewrite carries the conformed input and no permission decision, so the
+harness applies it and still asks, or approves, as it would have for the original call. Every other event
+answers with its context lines, and PostToolUse also with the replaced output and the note for the
+auto-mode classifier. The outcome's user_message is the systemMessage the user sees.
 """
 import json
 from collections.abc import Iterable, Mapping
@@ -15,7 +17,7 @@ from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.results import render
 
 MODE_VERDICTS = {"refuse": Verdict.DENY, "ask": Verdict.ASK, "allow": Verdict.ALLOW}
-FILE_TOOLS = frozenset({Tool.EDIT, Tool.WRITE})   # their rewrites always answer allow
+FILE_TOOLS = frozenset({Tool.EDIT, Tool.WRITE})   # a rewrite leaves the permission decision to the harness
 
 
 def answer(event: Event, outcome: Outcome, mode: str) -> dict[str, Any]:
@@ -46,9 +48,11 @@ def hook_output(event: Event, outcome: Outcome, mode: str) -> dict[str, Any]:
 
 def pre_tool_use(event: Event, outcome: Outcome, mode: str) -> dict[str, Any]:
     rewritten = bool(outcome.rewrites)
-    shape = max(outcome.verdict, rewrite_verdict(event, mode) if rewritten else Verdict.OBSERVE)
     notes = tuple(f"{rewrite.code.value}: {rewrite.note}" for rewrite in outcome.rewrites)
     updated = dict(outcome.tool_input) if rewritten else None
+    if rewritten and event.tool in FILE_TOOLS and outcome.verdict < Verdict.ASK:
+        return present(updatedInput=updated, additionalContext=joined((*notes, *outcome.context)))
+    shape = max(outcome.verdict, MODE_VERDICTS[mode] if rewritten else Verdict.OBSERVE)
     match shape:
         case Verdict.DENY if outcome.verdict is Verdict.DENY:
             return {"permissionDecision": "deny", "permissionDecisionReason": refusal(outcome)}
@@ -63,11 +67,6 @@ def pre_tool_use(event: Event, outcome: Outcome, mode: str) -> dict[str, Any]:
             return present(permissionDecision="allow", updatedInput=updated,
                            additionalContext=joined((*notes, *outcome.context)))
     return present(additionalContext=joined(outcome.context))
-
-
-def rewrite_verdict(event: Event, mode: str) -> Verdict:
-    """A file tool's rewrite runs at once. A shell rewrite follows the user's mode."""
-    return Verdict.ALLOW if event.tool in FILE_TOOLS else MODE_VERDICTS[mode]
 
 
 def refusal(outcome: Outcome) -> str:

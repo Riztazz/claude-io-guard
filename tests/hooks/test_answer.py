@@ -109,13 +109,14 @@ class ARewriteFollowsTheMode(unittest.TestCase):
         reply = self.rewritten("allow", saying("z.ask", Verdict.ASK, layer=Layer.OUTPUT))
         self.assertEqual(reply["permissionDecision"], "ask", "a check's ask outranks the user's allow")
 
-    def test_a_file_tool_rewrite_answers_allow_in_every_mode(self):
+    def test_a_file_tool_rewrite_leaves_the_decision_to_the_harness(self):
         raw = events.write(CWD / "a.txt", "one\n", CWD)
         for mode in ("refuse", "ask", "allow"):
             with self.subTest(mode=mode):
                 reply = answered(raw, content_fix(), mode=mode)["hookSpecificOutput"]
-                self.assertEqual((reply["permissionDecision"], reply["updatedInput"]["content"]),
-                                 ("allow", "one\r\n"), "a file tool's rewrite runs at once whatever the mode")
+                self.assertEqual((reply.get("permissionDecision"), reply["updatedInput"]["content"]),
+                                 (None, "one\r\n"),
+                                 "the harness applies the conformed input and asks or approves as before")
 
 
 class OtherEventsAnswerWithTheirFields(unittest.TestCase):

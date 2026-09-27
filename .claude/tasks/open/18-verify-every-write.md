@@ -5,7 +5,7 @@ area: bytes
 created: 2026-09-27
 status: open
 depends-on: [15, 17]
-findings: [BYT-1, BYT-3, BYT-6, BYT-7, BYT-11, BYT-13, ANC-4, ANC-5, VFY-1, VFY-2, VFY-3, VFY-4, VFY-5, SHL-7, GIT-9]
+findings: [BYT-1, BYT-3, BYT-6, BYT-7, BYT-11, BYT-13, ANC-5, VFY-1, VFY-2, VFY-3, VFY-4, VFY-5, SHL-7, GIT-9]
 platforms: [windows, macos]
 commit: "feat: check each written file against its profile and repair only data loss"
 ---
@@ -16,7 +16,6 @@ Byte damage raises no error. Comparing the file's profile before and after a wri
 - a changed ending style or a lost BOM
 - new U+FFFD, NUL or control bytes
 - a collapsed size
-- a stripped trailing space
 - lines changed outside the edited region
 
 The same moment is the cheapest place for per-language checks (VFY-1 to VFY-5).
@@ -64,3 +63,10 @@ primary fix, and a repair here is the exception.
 - Live on Windows, an Edit after a repair succeeds once the file is read again.
 - **A project file that sets `verify` is dropped whole** with a scope error naming the key and the user's
   `config.json` as the place to set it, and no command from it runs (D24). A test proves both, in CI.
+
+## Notes
+
+- **ANC-4 is out of reach.** The Edit tool keeps a trailing space it is given. A trailing space the model was asked
+  for is gone from its own call before any hook sees it, so the file matches the call and no comparison shows a
+  loss (`context.md`, "Hooks and MCP", row 28). Task 17 found this on 2026-09-27.
+- **Task 17 already reports `EOL_MISMATCH`**, for a Write over a file with mixed endings.

@@ -222,6 +222,34 @@ def profile(data: bytes) -> Profile:
                    sha256=hashlib.sha256(data).hexdigest())
 
 
+ENDINGS = {Eol.CRLF: "\r\n", Eol.LF: "\n", Eol.CR: "\r"}
+LINE_BREAK = re.compile("\r\n|\r|\n")
+BOM_CHAR = chr(0xFEFF)
+
+
+def convert_eol(text: str, eol: Eol) -> str:
+    """text with every line ending written as eol. A MIXED or NONE target leaves text as it is."""
+    ending = ENDINGS.get(eol)
+    return text if ending is None else LINE_BREAK.sub(lambda _: ending, text)
+
+
+def with_bom(text: str, bom: Bom) -> str:
+    """text that starts with a UTF-8 BOM when bom is UTF8, and without one otherwise. The Write tool writes
+    a leading U+FEFF as the BOM's three bytes."""
+    body = text.removeprefix(BOM_CHAR)
+    return BOM_CHAR + body if bom is Bom.UTF8 else body
+
+
+def with_final_newline(text: str, final: bool, eol: Eol) -> str:
+    """text that ends with one line ending when final is true, and with none when it is false."""
+    if final and text and not text.endswith(("\n", "\r")):
+        return text + ENDINGS.get(eol, "\n")
+    if not final:
+        last = next((ending for ending in ("\r\n", "\n", "\r") if text.endswith(ending)), "")
+        return text[:len(text) - len(last)]
+    return text
+
+
 def majority(values: Sequence, skip: tuple = ()) -> object | None:
     kept = [value for value in values if value not in skip]
     return Counter(kept).most_common(1)[0][0] if kept else None

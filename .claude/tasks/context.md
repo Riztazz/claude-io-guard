@@ -37,6 +37,7 @@ which it answers, is `docs/design/review.md`. Both reviews use the task numbers 
 | D23 | GitHub Pages serves `docs/` from `main`, and the README links the drawing there: `https://riztazz.github.io/claude-io-guard/architecture.svg`. `docs/.nojekyll` makes Pages serve the folder as files. Chosen by the lead on 2026-09-27 | GitHub shows an SVG in a README, and in the file view, as an image with no script. `raw.githubusercontent.com` and `gist.githubusercontent.com` both send `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox`, which blocks it too. Pages sends no such header, checked with curl on 2026-09-27 |
 | D24 | A project's `io-guard.json` never makes io-guard run a program. `verify` commands come only from the user's `config.json`, where a command for one project is keyed by the project's root. Set on 2026-09-27, when the lead asked for the security issue raised in task 07 to be handled | A cloned repository must not execute code through the guard (`architecture.md`, section 12), and the design's first draft let a project file add `verify` commands, which io-guard would run on every write |
 | D25 | A body io-guard moves into a file arrives byte-exact, with no backslash halved. A halving pair left outside a moved body is a `BACKSLASH_TRANSPORT` warning, and the call runs. Set on 2026-09-27 by the lead during task 11, choosing the plan's exact bytes over keeping the halving | Replay over 180,464 calls: refusing a pair outside a body would stop 971 calls that ran, 1.0%, because agents double backslashes to survive the halving. Of 20 sampled passing calls an exact move changes, 12 had been silently corrupted by the halving and are fixed, 4 had doubled on purpose and break, and 4 read the same. Anthropic's fix to #92543 breaks the doubling anyway |
+| D26 | A rewrite of an Edit or Write input answers `updatedInput` with no `permissionDecision`, so the harness asks or approves as it would have for the original call. A check's own ask or deny still outranks it. Set on 2026-09-27 in task 17, which asked for this answer once the harness was shown to keep its own decision ("Hooks and MCP", row 27) | An `allow` would skip the prompt for a write outside the working directory, or in default mode, that nobody approved. The rewrite restores only the file's own endings, BOM and indent, and the prompt shows the input as it will land |
 
 ## Surfaces
 
@@ -69,7 +70,7 @@ Windows 10, Claude Code desktop (bundled 2.1.281), Git Bash, PowerShell 7, Pytho
 | Line count is not the trigger | 20 and 70-line heredocs with an apostrophe | 20 and 70 |
 | Edit keeps CRLF | A newline inside new_string, in a CRLF file | `TWO\r\nadded\r\n` |
 | Edit keeps a BOM | An edit in a CRLF file with a BOM | BOM and CRLF kept |
-| Edit strips trailing whitespace from new_string | new_string `one = ` | `one =` |
+| A trailing space asked for in new_string does not reach the file | new_string `one = ` | `one =`. Task 17 found the space already gone from the model's own `tool_use`, before any hook. The Edit tool keeps one it is given (Hooks and MCP, row 28) |
 | Write writes LF over a CRLF file | Write `alpha`, `beta` | `alpha\nbeta\n` |
 | Write drops a BOM | The same Write over a BOM file | No BOM |
 | Read hides endings and BOM | Read of CRLF, LF and CRLF-with-BOM probes | Three identical outputs |
@@ -90,6 +91,10 @@ becomes a path under Git's install folder, a lone `/F` becomes `F:/`, and `/p:x`
 Task 16's `live-read-profile` probe passed on the desktop's 2.1.281 and the CLI 2.1.283: after a Read of a
 BOM and CRLF file, the model quoted "PostToolUse:Read hook additional context: io-guard: CRLF, BOM, UTF-8,
 tabs, 2 lines". The check adds 12.8 ms after a Read of a 1 MB file.
+
+Task 17's probes passed on the desktop's 2.1.281 and the CLI 2.1.283. `live-conform` read a BOM and CRLF
+`keep.txt` and wrote two lines over it in acceptEdits, with io-guard loaded, and the file landed as `EF BB BF`
+then `gamma\r\ndelta\r\n`. `write-quiet` is "Hooks and MCP", row 27, and `edit-trailing` is row 28.
 
 Rules through a junction, checked on 2026-09-27 with Claude Code 2.1.281 and 2.1.283:
 
@@ -206,6 +211,8 @@ denied, and the rerun denied all three. Ten calls each took:
 | 24 | A hook's environment names the Claude Code version | `live-probe`, task 10 | Yes. `AI_AGENT` is `claude-code_2-1-283_agent` on the CLI and `claude-code_2-1-281_agent` on the desktop's copy, and `CLAUDE_CODE_EXECPATH` names the desktop's `claude-code\2.1.281\claude.exe`. The SessionStart event itself carries no version |
 | 25 | Which backslashes the Windows Bash tool halves | the Bash tool of this session, desktop 2.1.281, task 11 | A run of backslashes that a double quote does not follow loses half its pairs: `'a\\b'` arrived as `a\b`, a run of four as two, a run of three as two, in single quotes and in a quoted heredoc alike. A run before `"` arrives whole: `"\\"` and four before `"` in a quoted heredoc were unchanged. A `\\` before a closing `'` was halved. So Python's `"\\"` in a heredoc runs, and `r'\\d'` silently becomes `r'\d'` |
 | 26 | A moved body runs through `ask` and `refuse` | `live-move-ask`, `live-move-auto`, task 11 | Default mode, Haiku: an 8,973-character `python - <<'PY'` call was answered `ask` with `updatedInput`, the permission prompt received `python - < "<file>"`, and the approved run printed 3 for `len(r"\\n")`. Auto mode, Sonnet: the call was refused with the moved command as the fix, and the rerun printed 3. CLI 2.1.283 |
+| 27 | A PreToolUse `updatedInput` with no `permissionDecision` applies, and keeps the harness's own decision | `write-quiet`, task 17 | Yes. In default mode a Write rewritten to BOM and CRLF content reached the permission prompt as rewritten, and the approved file landed as `EF BB BF` then `line one\r\nline two\r\n`, byte for byte. 2.1.281 and 2.1.283 |
+| 28 | The Edit tool keeps a trailing space in new_string | `edit-trailing`, and the first `live-conform` run, task 17 | Yes. A hook that set new_string to `one = ` left `one = \ntwo = 2\n` in the file, on 2.1.281 and 2.1.283. Asked for `one = `, Haiku's own `tool_use` carried `one =`, so the space is lost before any hook sees the call, and io-guard cannot restore it (2.1.283) |
 
 ## Doc facts, checked on 2026-09-27
 
@@ -300,14 +307,16 @@ listings.
 ## Failure catalog and the task that covers each
 
 Classes: **data** leaves a file or result wrong, **time** costs retries and tokens, **noise** is friction. Scope:
-**win** happens on Windows only, **all** everywhere. "-" means not planned, because it is outside file and shell IO.
+**win** happens on Windows only, **all** everywhere. "-" means not planned, because it is outside file and shell
+IO. ANC-4 is the exception: the space is gone from the model's own call before any hook sees it ("Hooks and MCP",
+row 28).
 
 | Id | Title | Class | Scope | Task |
 |---|---|---|---|---|
 | ANC-1 | Anchor not found | time | all | 20, 24 |
 | ANC-2 | Anchor matches more than once | data | all | 20, 24 |
 | ANC-3 | A batch stops half applied | data | all | 24 |
-| ANC-4 | Trailing whitespace is cut from new_string | data | all | 17, 18 |
+| ANC-4 | Trailing whitespace is cut from new_string | data | all | - |
 | ANC-5 | Private-use glyphs are invisible | data | all | 15, 18 |
 | STL-1 | File changed between read and write | time | all | 20, 21 |
 | STL-2 | Edit or Write before Read | noise | all | 20 |

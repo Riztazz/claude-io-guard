@@ -7,7 +7,7 @@ codebase. The plan goes from an empty repository to a plugin hosted on GitHub an
 ```
 .claude/tasks/open/        waiting for someone
 .claude/tasks/done/        finished, kept for the record
-.claude/tasks/context.md   the evidence every task rests on: decisions D1 to D24, verified facts, doc facts,
+.claude/tasks/context.md   the evidence every task rests on: decisions D1 to D26, verified facts, doc facts,
                            baseline numbers, the failure catalog ids
 .claude/tasks/baseline/    the measurement scripts and research notes behind the baseline of 2026-09-27
 docs/design/               the architecture every task builds from, and the review it answers

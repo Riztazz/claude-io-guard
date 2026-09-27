@@ -153,7 +153,7 @@
   <text class="pl" x="132" y="545">Default in bypassPermissions. Runs at once, and no</text>
   <text class="pl" x="132" y="562">classifier sees it.</text>
   <text class="pm" x="58" y="596">Set per permission mode in config.json, with io.config,</text>
-  <text class="pm" x="58" y="613">or on the dashboard. File-tool fixes always run.</text>
+  <text class="pm" x="58" y="613">or on the dashboard. File-tool fixes keep the prompt.</text>
 </g>
 <g class="panel static-panel">
   <rect class="frame" x="40" y="652" width="420" height="224" rx="10"/>
@@ -231,7 +231,7 @@
       'The pipeline selects the checks for this event, orders them and runs them, within 300 ms, or 2 s at most.',
       'Checks call lib: values in, values out. Each decision is also one telemetry line.',
       'Checks read the config, the probe, git and the session state from the Context.',
-      "The answer returns as the tool result, and Claude Code reads it as the hook's decision: deny, ask or allow with the rewritten input, or context only.",
+      "The answer returns as the tool result, and Claude Code reads it as the hook's decision: deny, ask or allow with a rewritten command, a fixed Write or Edit input that leaves the decision to Claude Code, or context only.",
       'The permission rules and the auto-mode classifier judge the rewritten input.',
       'The approved command runs.',
       'A moved command body waits in the scratchpad as a file.',

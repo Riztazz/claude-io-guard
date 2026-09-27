@@ -3,10 +3,10 @@
 A Claude Code plugin that checks what an agent sends to the file and shell tools, fixes what it safely can, and
 returns a structured error for the rest. One codebase runs on Windows and macOS.
 
-**Status: in build.** The plugin installs, and its hooks answer every file and shell call. Six checks run so
+**Status: in build.** The plugin installs, and its hooks answer every file and shell call. Eight checks run so
 far: the session probe, the Bash body move, the shell-write refusal, the quoting and dialect lint, the Git Bash
-path fix, and the profile line after a Read. The build plan is in `.claude/tasks/`, and this page describes the
-plugin the plan builds.
+path fix, the endings and BOM fix for Write, the indent fix for Edit, and the profile line after a Read. The
+build plan is in `.claude/tasks/`, and this page describes the plugin the plan builds.
 
 ## Five fixes, by example
 
@@ -26,7 +26,8 @@ The call   Write: settings.ini, a file with CRLF endings and a BOM
 Without    The file comes back LF with no BOM. git diff marks every line changed, and git warns
            "LF will be replaced by CRLF".
 With       The content is rewritten to CRLF with the BOM before Write runs. git diff shows only the lines that
-           changed, and the model reads EOL_CONVERTED and BOM_RESTORED.
+           changed, and the model reads EOL_CONVERTED: io-guard wrote the content with CRLF line endings, a
+           BOM, and a final newline, as settings.ini has them.
 ```
 
 **An Edit that misses.** The text the model sends is not quite the text in the file.
@@ -70,7 +71,7 @@ The numbers come from 110,379 file and shell tool calls in 738 transcripts of re
 | What goes wrong | How often | What io-guard does |
 |---|---|---|
 | On Windows, a Bash command longer than about 7.8 KB fails with "unexpected EOF", and a `\\` that no double quote follows loses a backslash | 122 failed commands, about 262k tokens | Moves a heredoc or `python -c` body into a file, byte-exact, and runs the file. Warns about a halved `\\` it cannot move |
-| Write turns a CRLF file into LF and drops its BOM, and Edit trims trailing spaces from the new text | 328 "LF will be replaced by CRLF" warnings | Rewrites the input in the file's own endings, BOM and indent before it runs |
+| Write turns a CRLF file into LF and drops its BOM, and an Edit's new text comes indented with spaces in a file indented with tabs, or the other way round | 328 "LF will be replaced by CRLF" warnings | Rewrites Write content in the file's own endings, BOM and final newline, and an Edit's new text in the indent of the lines around it, before either runs. A new file takes its endings from `.editorconfig`, `.gitattributes` or the files beside it |
 | Read shows a CRLF file, an LF file and a file with a BOM the same way | Agents ran a script of their own 107 times to find out | Adds one line after each Read, such as `io-guard: CRLF, BOM, UTF-8, tabs, 1,284 lines`, and a warning for mixed endings, invalid UTF-8, NUL or private-use bytes |
 | A failed Edit says "not found" and nothing else | 67 anchor misses, 112 stale reads | Returns the closest match, the file's endings and a corrected call |
 | `sed -i`, redirects and scripts write files around the edit tools, so no check and no rewind sees them | 2,876 shell writes | Refuses a write to a file git tracks, names the tool that does it safely, and warns about a script created inside the repository |
@@ -150,6 +151,9 @@ places to write to or approve commands.
 | `refuse` | auto, dontAsk | The call is refused, and the reason carries the fixed command. The model reruns it, and the auto-mode classifier judges it |
 | `ask` | default, acceptEdits, plan | You see the fixed command and approve it |
 | `allow` | bypassPermissions | It runs at once, and no classifier sees it |
+
+A Write or an Edit that io-guard fits to the file's endings, BOM and indent isn't a rewritten command. Claude Code
+asks about it or approves it as it would have anyway, and a prompt shows the input as it will land.
 
 **The time budget:** past 300 ms, the checks that start a subprocess are skipped. Past 2 s, every remaining check is
 skipped and the call goes ahead. Both are settings.

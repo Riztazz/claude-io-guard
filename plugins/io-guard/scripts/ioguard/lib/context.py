@@ -59,6 +59,7 @@ class FsPort(Protocol):
     def exists(self, path: Path) -> bool: ...
     def holders(self, path: Path) -> tuple[Process, ...]: ...
     def make_folders(self, path: Path) -> None: ...
+    def list_dir(self, path: Path) -> tuple[Path, ...]: ...    # the files in a folder, sorted, () when none
 
 
 class Clock(Protocol):
@@ -171,6 +172,13 @@ class LiveFs:
 
     def make_folders(self, path: Path) -> None:
         path.mkdir(parents=True, exist_ok=True)
+
+    def list_dir(self, path: Path) -> tuple[Path, ...]:
+        try:
+            with os.scandir(path) as entries:
+                return tuple(sorted(Path(entry.path) for entry in entries if entry.is_file()))
+        except OSError:
+            return ()
 
 
 def load_probe(data_dir: Path | None, platform: Platform) -> Probe:

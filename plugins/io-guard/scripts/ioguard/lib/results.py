@@ -86,6 +86,17 @@ CODES: tuple[CodeSpec, ...] = (
     CodeSpec("RESERVED_NAME", Layer.TRANSPORT, Severity.REFUSED,
              "The path is a Windows device name, such as nul or con, which Windows tools cannot open or "
              "delete as a file.", "Use /dev/null in Bash, or another name for a file.", "0.1"),
+    CodeSpec("EOL_CONVERTED", Layer.BYTES, Severity.FIXED,
+             "io-guard wrote the new text in the file's own line endings.", "Nothing to do.", "0.1"),
+    CodeSpec("BOM_RESTORED", Layer.BYTES, Severity.FIXED,
+             "io-guard kept the file's byte order mark, which the Write tool drops.", "Nothing to do.",
+             "0.1"),
+    CodeSpec("EOL_MISMATCH", Layer.BYTES, Severity.WARNING,
+             "The new text's line endings differ from the file's.",
+             "Write the whole file in one ending.", "0.1"),
+    CodeSpec("INDENT_MISMATCH", Layer.BYTES, Severity.FIXED,
+             "The new text's indent differs from the lines around it, tabs against spaces.",
+             "Indent the new text as the lines around it are.", "0.1"),
 )
 Code = Enum("Code", {spec.code: spec.code for spec in CODES})
 SPECS: dict[Code, CodeSpec] = {Code[spec.code]: spec for spec in CODES}
