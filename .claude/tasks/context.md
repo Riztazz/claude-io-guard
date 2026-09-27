@@ -250,6 +250,13 @@ denied, and the rerun denied all three. Ten calls each took:
 738 transcripts (6.4 GB, main sessions and sub-agents, 2026-06-20 to 2026-09-27) and 1,819 scratchpad scripts.
 Counts are per call. Task 31 re-measures against these.
 
+Task 09's replay corpus, built at 14:55 on 2026-09-27 from the same four projects, holds 180,464 calls: Bash
+98,272, Edit 26,882, Read 28,385, Write 11,331, Grep 9,004, PowerShell 5,648 and Glob 942. Five calls had no
+result. Its seed labels match the baseline. The 71 anchor misses are the same 71. `unexpected-eof` is 246, the
+baseline's 236 plus 10 from that morning's sessions. `msys-path` is 39 against 37. `guard-refused` is 14, 12 of
+them failed calls, once the rule matched only the guard's refusal text. The baseline's rule also matched
+`write-guard` as a file name in git status lines, diffs and listings, which gave 81.
+
 | Measure | Count |
 |---|---|
 | Tool calls | Bash 97,579, PowerShell 5,565, Edit 26,098, Write 10,920, Read 27,858, Grep 8,894, Glob 938 |

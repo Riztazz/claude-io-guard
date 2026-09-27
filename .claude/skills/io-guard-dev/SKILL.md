@@ -79,7 +79,13 @@ live checks.
 ## Replay
 
 - **`tools/replay.py` runs every check over `corpus/`** without executing anything, and reports per check what it
-  would fix, refuse and warn, split by whether the recorded call succeeded.
+  would fix, refuse and warn, split by whether the recorded call succeeded. `architecture.md`, section 11, has
+  the report's fixed shape.
+- **Build the corpus first** with `python tools/corpus.py NAME=FOLDER ...`, one pair per transcript folder under
+  `~/.claude/projects/`. The lead's four projects are CLICKER, with its two worktree folders, OrbitalDrift,
+  SmartTablesHost and UNREAL-SHARED. It takes under two minutes, and a replay with no check under 20 seconds.
+- **A replay with test checks** times the harness under load: put `tests/support/inject` on `PYTHONPATH` and name
+  the checks in `IOGUARD_TEST_CHECKS`, as the live probes do.
 - **Before a rule ships, read every refusal of a call that succeeded.** The false-refusal rate stays under 0.1% per
   rule, and the numbers go into the task's `## What changed`.
 - **`corpus/` never leaves the machine** (D8).

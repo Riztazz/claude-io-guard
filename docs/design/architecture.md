@@ -78,7 +78,10 @@ plugins/io-guard/
         tools_dashboard.py         io.dashboard, io.config, the ui resource
         tools_hook.py              hook.pre_tool_use, hook.post_tool_use, hook.post_tool_use_failure, hook.ping
       cli/
-        main.py                    probe, check, profile, codes, replay, report, serve, doctor
+        main.py                    corpus and replay today, then probe, check, profile, codes, report, serve, doctor
+        labels.py                  the baseline's labels for a recorded call's result and command shape
+        corpus.py                  Record, build, load: transcripts -> corpus/<project>.jsonl
+        replay.py                  Replay, replay, render: the corpus through the pipeline, offline
 tests/                             mirrors ioguard, plus fixtures/, support/, mcp/, replay/
 tools/                             ioguard.py, corpus.py, replay.py, measure.py, report.py, probes/
 ```
@@ -1156,6 +1159,38 @@ file under `tests/mcp/requests/` with the expected shape beside it.
 
 Live checks are a checklist page, one row per harness fact the design leans on, with the platform, the
 Claude Code version and the date of the last confirmation. Task 04 owns it.
+
+### The replay corpus and report
+
+`python tools/corpus.py NAME=FOLDER ...` reads each transcript folder, subagent transcripts included, and writes
+`corpus/<NAME>.jsonl` and `corpus/index.json`. A `Record` is one Bash, PowerShell, Edit, MultiEdit, Write, Read,
+Grep, Glob or NotebookEdit call: its tool use id, project, session, whether a subagent made it, time, Claude Code
+version, cwd, permission mode, the whole input, whether it failed, the first 2,000 characters of the result and
+its full length, the structured `toolUseResult` with strings cut at 4,000 characters and lists at 200 items, and
+its labels from `cli.labels`. `corpus/` never leaves the machine (D8).
+
+`python tools/replay.py` runs each record as a PreToolUse event, then as PostToolUse or PostToolUseFailure with
+the recorded result, through `default_registry()`. Each session gets an in-memory context: an empty file system,
+a git that knows nothing, a clock that stands still and telemetry off. Nothing runs, nothing is written, and the
+budget never skips a check. The report goes to `reports/replay-<time>.json`, and its shape is fixed at schema 1:
+
+```json
+{"schema": 1, "corpus": "corpus", "projects": ["CLICKER"], "checks_run": ["transport.body"],
+ "records": 178000, "unreadable": 0, "seconds": 140.2,
+ "by_tool": {"Bash": {"ok": 95000, "failed": 2579}}, "by_label": {"unexpected-eof": 236},
+ "checks": {"transport.body": {
+   "fix": {"ok": 1200, "failed": 180}, "refuse": {"ok": 3, "failed": 40}, "warn": {"ok": 10},
+   "events": {"PreToolUse": 1433}, "raised": 0, "labels": {"unexpected-eof": 201},
+   "false_positive_candidates": 3,
+   "samples": [{"id": "toolu_01", "project": "CLICKER", "tool": "Bash", "input": "python - <<'PY'",
+                "reason": "TRANSPORT_BUDGET: ..."}]}}}
+```
+
+`fix` counts decisions with a rewrite, `refuse` the denials, and `warn` any other decision that says something,
+each split by whether the recorded call ran (`ok`) or failed. `labels` counts the labels of the calls the check
+acted on, which is what it would have caught. `samples` holds up to 20 refusals of calls that ran, drawn evenly
+from the whole corpus with a fixed seed, for the review a rule needs before it ships. Task 31 reads this shape,
+so a change to it raises `REPORT_SCHEMA`.
 
 ## 12. Extend it
 

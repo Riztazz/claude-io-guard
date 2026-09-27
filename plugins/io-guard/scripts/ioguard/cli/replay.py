@@ -1,0 +1,179 @@
+"""Replay the corpus through the check pipeline, offline, and report what each check would have done.
+
+Each record runs as a PreToolUse event, then as a PostToolUse or PostToolUseFailure event carrying its
+recorded result. Every session gets its own in-memory context: an empty file system, a git that knows nothing,
+a clock that stands still and telemetry turned off. So nothing runs, nothing is written, and no check is
+skipped for time. A refusal of a call that succeeded is a false-positive candidate, and the report keeps a
+sample of them. docs/design/architecture.md, section 11, fixes the report's shape, which task 31 reads.
+"""
+import random
+import re
+import time
+from collections import Counter, defaultdict
+from collections.abc import Iterable
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from ioguard.checks.pipeline import Pipeline
+from ioguard.checks.registry import Registry
+from ioguard.cli.corpus import Record
+from ioguard.lib.config import defaults
+from ioguard.lib.context import Context, Probe, SessionState
+from ioguard.lib.decisions import Decision, Verdict
+from ioguard.lib.events import Event, EventError, Surface
+from ioguard.lib.platform import Platform, detect
+from ioguard.lib.results import render_many
+from ioguard.lib.telemetry import Telemetry
+
+REPORT_SCHEMA = 1
+SAMPLE = 20
+KINDS = ("fix", "refuse", "warn")
+DRIVE = re.compile(r"^[A-Za-z]:")
+WINDOWS = Platform("win32", True)
+
+
+def kind_of(decision: Decision) -> str | None:
+    """What a decision did to the call: refuse, fix, warn, or nothing."""
+    if decision.verdict is Verdict.DENY:
+        return "refuse"
+    if decision.rewrite is not None:
+        return "fix"
+    if decision.verdict is not Verdict.OBSERVE or decision.results or decision.context:
+        return "warn"
+    return None
+
+
+@dataclass
+class CheckTally:
+    counts: dict[str, Counter] = field(default_factory=lambda: {kind: Counter() for kind in KINDS})
+    events: Counter = field(default_factory=Counter)
+    labels: Counter = field(default_factory=Counter)
+    raised: int = 0
+    samples: list[dict] = field(default_factory=list)
+    candidates: int = 0
+
+    def to_json(self) -> dict:
+        return {"fix": dict(self.counts["fix"]), "refuse": dict(self.counts["refuse"]),
+                "warn": dict(self.counts["warn"]), "events": dict(self.events), "raised": self.raised,
+                "labels": dict(self.labels.most_common()), "false_positive_candidates": self.candidates,
+                "samples": self.samples}
+
+
+class Replay:
+    """One replay over a stream of records."""
+
+    def __init__(self, registry: Registry, seed: int = 0) -> None:
+        self.registry = registry
+        self.pipeline = Pipeline(registry)
+        self.config = defaults(registry.keys())
+        self.sessions: dict[str, SessionState] = {}
+        self.checks: dict[str, CheckTally] = defaultdict(CheckTally)
+        self.tools: dict[str, Counter] = defaultdict(Counter)
+        self.labels: Counter = Counter()
+        self.unreadable = 0
+        self.random = random.Random(seed)
+
+    def context(self, record: Record) -> Context:
+        platform = WINDOWS if DRIVE.match(record.cwd) else detect()
+        session = self.sessions.setdefault(record.session, SessionState())
+        return Context.fake(config=self.config, platform=platform, probe=Probe.unprobed(platform),
+                            session=session, telemetry=Telemetry(None, enabled=False))
+
+    def events(self, record: Record) -> Iterable[Event]:
+        raw = {"session_id": record.session, "cwd": record.cwd, "tool_name": record.tool,
+               "tool_input": record.input, "tool_use_id": record.id,
+               "permission_mode": record.permission_mode}
+        yield Event.from_hook_json({**raw, "hook_event_name": "PreToolUse"}, Surface.CLI)
+        if record.failed:
+            failure = {**raw, "hook_event_name": "PostToolUseFailure", "error": record.result}
+            yield Event.from_hook_json(failure, Surface.CLI)
+        else:
+            response = record.response if isinstance(record.response, dict) else {}
+            yield Event.from_hook_json({**raw, "hook_event_name": "PostToolUse", "tool_response": response},
+                                       Surface.CLI)
+
+    def run(self, record: Record) -> None:
+        outcome_key = "failed" if record.failed else "ok"
+        self.tools[record.tool][outcome_key] += 1
+        self.labels.update(record.labels)
+        ctx = self.context(record)
+        try:
+            events = list(self.events(record))
+        except EventError:
+            self.unreadable += 1
+            return
+        for event in events:
+            outcome = self.pipeline.run(event, ctx)
+            for check_id in outcome.errors:
+                self.checks[check_id].raised += 1
+            for decision in outcome.decisions:
+                kind = kind_of(decision)
+                if kind is None:
+                    continue
+                tally = self.checks[decision.check_id]
+                tally.counts[kind][outcome_key] += 1
+                tally.events[event.kind.value] += 1
+                tally.labels.update(record.labels)
+                if kind == "refuse" and not record.failed:
+                    self.keep_sample(tally, record, decision)
+
+    def keep_sample(self, tally: CheckTally, record: Record, decision: Decision) -> None:
+        """Keep a uniform sample of the check's false-positive candidates, the same for the same corpus."""
+        tally.candidates += 1
+        sample = {"id": record.id, "project": record.project, "tool": record.tool,
+                  "input": head(record), "reason": render_many(decision.results)}
+        if len(tally.samples) < SAMPLE:
+            tally.samples.append(sample)
+            return
+        slot = self.random.randrange(tally.candidates)
+        if slot < SAMPLE:
+            tally.samples[slot] = sample
+
+    def report(self, seconds: float, corpus: Path, projects: Iterable[str]) -> dict:
+        return {
+            "schema": REPORT_SCHEMA,
+            "corpus": str(corpus),
+            "projects": sorted(projects),
+            "checks_run": list(self.registry.ids()),
+            "records": sum(sum(counts.values()) for counts in self.tools.values()),
+            "unreadable": self.unreadable,
+            "seconds": round(seconds, 1),
+            "by_tool": {tool: dict(counts) for tool, counts in sorted(self.tools.items())},
+            "by_label": dict(self.labels.most_common()),
+            "checks": {check_id: tally.to_json() for check_id, tally in sorted(self.checks.items())},
+        }
+
+
+def head(record: Record) -> str:
+    """The part of a call's input a reviewer reads first: the command, or the file path."""
+    shown = record.input.get("command") or record.input.get("file_path") or record.input.get("pattern") or ""
+    return str(shown)[:300]
+
+
+def replay(records: Iterable[Record], registry: Registry, corpus: Path) -> dict:
+    """Run every record through the pipeline, and return the report."""
+    started = time.monotonic()
+    run = Replay(registry)
+    projects = set()
+    for record in records:
+        projects.add(record.project)
+        run.run(record)
+    return run.report(time.monotonic() - started, corpus, projects)
+
+
+def render(report: dict) -> str:
+    """The report as text a person reads: the corpus, then a line per check, then each check's samples."""
+    tools = ", ".join(f"{tool} {counts.get('ok', 0)} ok and {counts.get('failed', 0)} failed"
+                      for tool, counts in report["by_tool"].items())
+    lines = [f"{report['records']} records from {', '.join(report['projects']) or 'no project'}, "
+             f"replayed in {report['seconds']} s: {tools or 'none'}.",
+             f"Checks run: {', '.join(report['checks_run']) or 'none, so every count below is zero'}."]
+    labels = ", ".join(f"{name} {count}" for name, count in list(report["by_label"].items())[:12])
+    lines.append(f"Top labels: {labels or 'none'}.")
+    for check_id, tally in report["checks"].items():
+        counts = "  ".join(f"{kind} {tally[kind].get('ok', 0)}/{tally[kind].get('failed', 0)}"
+                           for kind in KINDS)
+        lines.append(f"{check_id}: {counts}  raised {tally['raised']}  (ok/failed calls)")
+        for sample in tally["samples"]:
+            lines.append(f"  refused a call that ran: {sample['tool']} {sample['input']!r}")
+    return "\n".join(lines)
