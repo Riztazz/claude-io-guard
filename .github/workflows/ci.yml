@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+        python: ["3.14", "3.x"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Show the checkout's line-ending setting
+        shell: bash
+        run: git config --get core.autocrlf || echo "core.autocrlf is unset"
+      - name: Run the tests, and fail when none run
+        run: python tests/run_all.py
+      - name: Install the claude CLI
+        id: cli
+        continue-on-error: true
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Validate the marketplace and the plugin
+        if: steps.cli.outcome == 'success'
+        run: |
+          claude plugin validate .
+          claude plugin validate plugins/io-guard

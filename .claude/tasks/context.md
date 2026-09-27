@@ -120,6 +120,11 @@ The plugin skeleton from a local marketplace, checked on 2026-09-27 with the `cl
 Checked on 2026-09-27 with the probes in `tools/probes/`, task 03: `claude -p` 2.1.283 with Haiku 4.5 (Sonnet 5 for
 auto mode, which Haiku disables), and the desktop app's Code tab on its bundled 2.1.281. The column names each
 probe in `tools/probes/run_probe.py`. Hook times run from the stream's `hook_started` line to its `hook_response`.
+Task 05 keeps one recorded event per kind, scrubbed of local paths and ids, in `tests/fixtures/events/`, and
+`tests/support/events.py` builds events with the same fields. A SessionStart event carries `source`, such as
+`startup`, and no `permission_mode` or `prompt_id`. A PostToolUse or PostToolUseFailure event adds
+`duration_ms`, and a failure adds `error` and `is_interrupt`.
+
 Task 04 reran every probe on the desktop app's bundled `claude.exe` 2.1.281 and on the CLI at 2.1.283, and the
 runner's `verdicts` command passed all 28 on both. One 2.1.283 run of `mcp-prompts` first failed its verdict:
 the model stopped asking after the first denial, so the verdict now checks that every probe tool called was

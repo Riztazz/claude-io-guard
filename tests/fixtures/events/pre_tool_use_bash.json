@@ -1,0 +1,15 @@
+{
+  "cwd": "C:\\project",
+  "hook_event_name": "PreToolUse",
+  "permission_mode": "default",
+  "prompt_id": "00000000-0000-4000-8000-000000000000",
+  "scratchpad_dir": "C:\\Users\\user\\AppData\\Local\\Temp\\claude\\C--project\\00000000-0000-4000-8000-000000000000\\scratchpad",
+  "session_id": "00000000-0000-4000-8000-000000000000",
+  "tool_input": {
+    "command": "echo IOPROBE_ORIGINAL",
+    "description": "Run the specified echo command"
+  },
+  "tool_name": "Bash",
+  "tool_use_id": "toolu_01PROBE",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--project\\00000000-0000-4000-8000-000000000000.jsonl"
+}

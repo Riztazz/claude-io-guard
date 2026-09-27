@@ -6,13 +6,14 @@ plugin's marketplace: github.com/Riztazz/claude-io-guard.
 
 ## Layout
 
-The tasks build most of this. Today the two manifests, the plugin's stub skill, `tools/probes/`, `.claude/`,
-`docs/`, `workbench/` and this file exist.
+The tasks build most of this. Today the two manifests, the plugin's stub skill, `tests/` with its fixtures and
+helpers, `tools/probes/`, `.github/workflows/ci.yml`, `.claude/`, `docs/`, `workbench/` and this file exist.
 
 ```
 .claude-plugin/marketplace.json   the catalog
 plugins/io-guard/                 the shipped plugin: manifest, hooks, scripts/ioguard, skills, .mcp.json, ui
-tests/                            the unittest suite and the byte fixtures
+tests/                            the unittest suite, the byte fixtures, and support/ with the event builders
+.github/workflows/ci.yml          the tests on Windows and macOS runners, Python 3.14 and the newest release
 tools/                            corpus, replay, report, measure, the ioguard command line, and probes/
 tools/probes/                     the harness probes: run_probe.py and the one-off plugin it builds per probe
 workbench/                        copies of the lead's project files to test on, local and gitignored
@@ -58,7 +59,9 @@ one to git: git writes through a tracked link into the kit. A change to them is 
 
 Each line works once the task that builds it has landed.
 
-- Tests: `python -m unittest discover -s tests -t .`
+- Tests: `python -m unittest discover -s tests -t .`. CI runs `python tests/run_all.py`, the same suite, which
+  also fails when no test ran
+- Fixtures: `python -m tests.support.fixtures` rewrites the generated fixtures and `tests/fixtures/MANIFEST.sha256`
 - The checks on one command, offline: `python tools/ioguard.py check "<command>"`
 - The plugin for one CLI session: `claude --plugin-dir plugins/io-guard`
 - The harness facts, after a Claude Code update: `python tools/probes/run_probe.py run all`, then
