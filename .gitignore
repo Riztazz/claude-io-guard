@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+.venv/
+/corpus/
+/events/
+/reports/
+
+# install.ps1 manages every line down to the closing line. A hand edit here is lost.
+.claude/_replaced/
+.claude/rules/shared
+.claude/settings.local.json
+.claude/shared-install.json
+.claude/skills/engineering
+.claude/skills/prose
+.claude/skills/testing
+.claude/skills/verification
+.claude/tools/shared
+# install.ps1 manages every line above, back up to its opening line.
