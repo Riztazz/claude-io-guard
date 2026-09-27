@@ -23,7 +23,10 @@ A run tool is also a way around the user's rules. Settings cannot match an MCP t
 - **`io.run(argv[] | {lang, code}, cwd, env?, timeout_s?, background?)`**
   - **Rule parity first (D14).** `lib.rules` loads the user and project permission rules, and `match_argv` matches
     the argv against the Bash and PowerShell rules before anything runs. A deny rule refuses with `RULE_DENIED`. An
-    ask rule elicits the user's yes, and refuses with `RULE_ASKED` when no answer comes.
+    ask rule asks the user through the PreToolUse hook on the `io.run` call itself: the bridge answers `ask` with
+    the matched rule as the reason, and the harness shows its permission prompt. Elicitation cannot carry it,
+    because the desktop declines it without showing a form (`context.md`, "Hooks and MCP", row 16). `RULE_ASKED`
+    is the refusal when the user says no.
   - Runs without a shell, through `lib.proc`.
   - A code body is written to a file under the scratchpad, then run with the platform's interpreter for its
     `lang`.

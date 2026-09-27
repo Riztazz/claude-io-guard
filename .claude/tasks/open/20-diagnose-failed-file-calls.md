@@ -57,3 +57,16 @@ text.
 - Replay over the 71 recorded misses names the intended region for at least half of them. Record the measured
   rate.
 - Each branch has a live check on Windows, and its tests pass in CI on both platforms.
+
+## Notes
+
+- **An anchor miss fires no hook after the call.** Task 03 found that an Edit whose `old_string` is missing is
+  refused by the tool before it runs, as a `<tool_use_error>`, and neither PostToolUse nor PostToolUseFailure
+  fires (`context.md`, "Hooks and MCP", row 5). The Edit branches therefore run in PreToolUse: the check finds
+  the anchor itself, and a miss or a double match is a `deny` that carries the fix. The ambiguous-match and
+  not-read-yet refusals look like the same kind of tool error, and this task confirms them live before relying
+  on either hook.
+- **A stale view no longer fails the Edit.** An Edit after the file changed on disk applied, with a note that the
+  file was modified since it was read (row 5). `STALE_VIEW` becomes a warning after the call, fed by task 21.
+- **A missing path does reach PostToolUseFailure**, with the error "File does not exist. Note: your current
+  working directory is <cwd>." and its `additionalContext` reaches the model (row 5).

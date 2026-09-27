@@ -28,8 +28,11 @@ The agent needs to hear which files a command changed.
   - **New untracked files** are listed (GIT-2).
   - **Every changed file** is compared against its last profile with task 18's code, so a script that rewrote the
     endings is caught.
-- **`bashEditDiff` is a secondary source** where task 03 confirms it. It counts only with `bashEditDiffEnabled: true`
-  in user settings, so the README's settings snippet carries that line (task 34).
+- **`bashEditDiff` is a secondary source.** Task 03 confirmed it arrives inside `tool_response` only with
+  `bashEditDiffEnabled: true` in user settings, as `{"files": [{"filePath", "hunks": [...]}]}` (`context.md`,
+  "Hooks and MCP", row 6), so the README's settings snippet carries that line (task 34).
+- **An Edit after a shell change no longer fails.** Task 03 saw it apply with a note that the file was modified
+  since it was read (row 5), so this notice is the only warning the agent gets before it edits over the change.
 - **Stay under 200 ms on the Unreal repositories.** Skip the untracked-file scan of `Content/` and other LFS-heavy
   trees, as set in `skip_trees`.
 

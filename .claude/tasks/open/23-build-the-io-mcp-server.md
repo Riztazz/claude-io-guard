@@ -17,8 +17,9 @@ list. They need tools of their own. MCP writes are invisible to rewind and read 
 small and every result says so.
 
 The same server runs the hook checks (D13): one process per session, shared by the session's subagents, so no Python
-starts per call and the caches are shared. Claude Code does not reconnect a stdio server, so the server must not
-die silently.
+starts per call and the caches are shared. Claude Code restarts a server that exited on the next hook call. A server
+that cannot start leaves every hook failing open, and the model hears nothing (`context.md`, "Hooks and MCP", row
+18), so the server must not die silently.
 
 ## What to build
 
@@ -27,11 +28,15 @@ die silently.
 - **Transport and eras.** A stdio JSON-RPC server on the standard library alone. The legacy era comes first,
   because Claude Code connects stdio servers with `initialize` (D9): `initialize` and `notifications/initialized`
   select 2025-11-25 semantics for the process. The modern era follows: `server/discover`, `_meta` validation with
-  `-32602` and `-32022`, and `resultType` on every result.
+  `-32602` and `-32022`, and `resultType` on every result. Claude Code's modern client rejects a result without
+  `resultType`, `resources/list` included, and a `tools/list` without a number `ttlMs` and a `cacheScope` of
+  `public` or `private` (row 15).
 - **Tools.** `ToolSpec`, the generated schemas and `tools/list` in a fixed order. Every output schema sets
   `additionalProperties: true`, because the client validates `structuredContent` against it. Annotations come from
   `read_only`, `destructive` and `idempotent`. An expected failure is a result with `isError: true` and the fix.
-  Every fix names the callable name, such as `mcp__plugin_io-guard_io__io_edit`, and the ToolSearch step.
+  Every fix names the callable name, such as `mcp__plugin_io-guard_io__io_edit`, and the ToolSearch step. When a
+  result has `structuredContent`, the model reads that JSON and not the text copy (row 16), so the structured
+  result carries the message and the fix, and stays compact.
 - **The hook bridge tools:** `hook.pre_tool_use`, `hook.post_tool_use`, `hook.post_tool_use_failure` and
   `hook.ping`, registered last with the description "Called by Claude Code hooks. Not for the model." They call
   `hooks.bridge` from task 08, and they never set `isError`. `hooks.json` binds the tool events to them as
@@ -44,8 +49,11 @@ die silently.
   heartbeat file the watchdog writes every 5 seconds, and a `UserPromptSubmit` command hook that warns once when the
   heartbeat is older than 30 seconds (`SERVER_DOWN`).
 - **The launch:** `.mcp.json` from task 06, with `${user_config.python}`.
-- **Handles, elicitation, progress and cancellation** as section 7 says. The legacy `elicitation/create` is the
-  primary elicitor. `input_required` serves the modern era.
+- **Handles, progress and cancellation** as section 7 says. **No tool relies on elicitation to reach the user.**
+  The desktop declines a legacy `elicitation/create` without showing it, `claude -p` cancels it, and in the modern
+  era a server-sent `elicitation/create` is never answered, which hangs the call. A modern tool that must elicit
+  answers `input_required`, which the client does resume (row 16). Asking the user goes through a hook `ask`
+  instead, as task 25 does.
 - **Bounded results.** A result stays under 25,000 tokens. Longer output goes to a file under the scratchpad, and
   the result names it.
 - **`io.read`.** A byte-exact read with the profile header and line ranges. Text or binary is decided by sniffing
@@ -63,5 +71,6 @@ die silently.
   `MCP_PROTOCOL_NEGOTIATION=auto`.
 - Live on Windows, the hook checks answer through the bridge tools, and three parallel subagents editing one file
   through `io.edit` serialise without a lost edit.
-- Killing the server mid-session gives the heartbeat warning on the next turn, and the tool calls still run.
+- A server that cannot start again after it dies gives the heartbeat warning on the next turn, and the tool calls
+  still run.
 - `io.read` returns a CRLF fixture with a BOM, with the right profile, and the server starts in under 500 ms.

@@ -115,6 +115,33 @@ The plugin skeleton from a local marketplace, checked on 2026-09-27 with the `cl
 | A `userConfig` default counts as not set | The same install | "1 userConfig option not yet set", although `python` has the default `python3` |
 | The stub skill loads | `claude plugin details io-guard` | Skills (1) `io-guard`, about 109 tokens in every session |
 
+### Hooks and MCP
+
+Checked on 2026-09-27 with the probes in `tools/probes/`, task 03: `claude -p` 2.1.283 with Haiku 4.5 (Sonnet 5 for
+auto mode, which Haiku disables), and the desktop app's Code tab on its bundled 2.1.281. The column names each
+probe in `tools/probes/run_probe.py`. Hook times run from the stream's `hook_started` line to its `hook_response`.
+
+| # | Claim | Probe | Result |
+|---|---|---|---|
+| 1 | PreToolUse `updatedInput` with `allow` runs the new input | `rewrite-allow` | Bash printed `IOPROBE_REWRITTEN`. The model's own `tool_use` keeps the original command, and its result is only the output |
+| 2 | A Write `content` rewritten by a hook lands byte-exact | `write-bytes` | `﻿line one\r\nline two\r\n` landed as `EF BB BF` and CRLF, byte for byte. The model sees only "File created successfully" |
+| 3 | An Edit with both strings extended by one character runs | `edit-extend` | The edit ran on the extended anchor, and the file became `alpha BETA gamma\n` |
+| 4 | PostToolUse `additionalContext` on Read reaches the model | `read-context` | The model quoted `PostToolUse:Read hook additional context: <text>` |
+| 5 | What PostToolUseFailure sees | `failures` | A missing Read path and Bash `exit 3` fire it, with `error` "File does not exist. Note: your current working directory is <cwd>." and "Exit code 3". Its `additionalContext` reaches the model as a system reminder. An Edit whose `old_string` is missing fires **no hook at all**: the tool refuses before it runs, with `<tool_use_error>String to replace not found in file.\nString: <old_string></tool_use_error>`. An Edit after the file changed on disk **succeeds**, with a note that the file was modified since it was read |
+| 6 | `bashEditDiff` | `bash-diff-on`, `bash-diff-off` | Only with `bashEditDiffEnabled: true`, and inside `tool_response`: `{"files": [{"filePath", "hunks": [{"oldStart", "oldLines", "newStart", "newLines", "lines": ["-a", "+b"]}]}]}`. Absent without the setting. The probe had read the file first |
+| 7 | `CLAUDE_ENV_FILE` | `env-file` | Set for a SessionStart command hook, as `~/.claude/session-env/<session>/sessionstart-hook-0.sh`. Both `export X=v` and `X=v` lines reached a later Bash call |
+| 8 | `updatedToolOutput` and `classifierContext` | `updated-output` | A string for Bash is refused, and the model sees the real output: "PostToolUse hook returned updatedToolOutput that does not match Bash's output shape: reason=schema_invalid issues=invalid_type". The `tool_response` object with `stdout` replaced works. Bash's shape is `{stdout, stderr, interrupted, isImage, noOutputExpected}`. `classifierContext` is accepted |
+| 9 | Exec form against shell form, ten calls each | `time-exec`, `time-shell` | Exec: p50 58.3 ms, p95 74.7 ms. Shell through Git Bash: p50 89.7 ms, p95 97.0 ms |
+| 10 | A hook that crashes, times out or prints bad JSON | `hook-crash`, `hook-timeout`, `hook-badjson` | All three are non-blocking, and the Bash call ran. A crash is `outcome: "error"`, `exit_code: 1`, with the traceback as stderr. A hook past its 3 s `timeout` is cancelled at 3,188 ms. Bad JSON gives "Hook output looks like a JSON object but is not valid JSON". The model saw none of them |
+| 11 | The desktop Code tab loads a local-marketplace plugin | task 02, the io-probe install | Yes. After an app restart it runs a cached copy from `~/.claude/plugins/cache/<marketplace>/<plugin>/unknown`, not the marketplace folder. Synced plugins load there too: `superpowers@synced`'s SessionStart hook and `supericons@synced`'s MCP server ran in the Code tab session that probed the desktop |
+| 12 | An `mcp_tool` hook hands the event to the plugin's own server | `mcp-gate`, `time-mcp`, `mcp-subst`, `dead-server`, `dead-for-good` | Yes. Every substituted value is a string, `${tool_input}` is the whole object as JSON text, and a returned `deny` blocks the call. p50 1.4 ms, p95 3.9 ms. A hook-invoked tool never prompts. `architecture.md`, section 6, has the detail |
+| 13 | `ask` with `updatedInput` shows the new input | `ask-prompt`, and the desktop by the lead | CLI: the prompt, taken through `--permission-prompt-tool`, carried `echo IOPROBE_REWRITTEN`, which ran once approved. Desktop: the prompt showed the rewritten command under the hook's `permissionDecisionReason` |
+| 14 | A hook `allow` skips the auto-mode classifier | `auto-control`, `auto-allow` | Yes. Without the hook: "Slow permission decision: 17422ms for Bash (mode=auto, behavior=allow)". With it: "Hook approved tool use for Bash, bypassing permission prompt", 17 ms |
+| 15 | The MCP era | `era-legacy`, `era-auto`, the desktop | CLI by default and the desktop: legacy `initialize` at `2025-11-25`. The CLI declares `roots` and `elicitation: {form, url}`, and the desktop `roots` and `elicitation: {}`. With `MCP_PROTOCOL_NEGOTIATION=auto`: `server/discover` first, then `_meta` at `2026-07-28` on every request. `MCP_SDK_GENERATION` is unset. No client declares an extension, so no Tasks and no ui. The modern client rejects a result without `resultType`, and a `tools/list` without a number `ttlMs` and a `cacheScope` of `public` or `private` |
+| 16 | Elicitation, progress, Apps and structured content | `mcp-features`, `features-modern`, the desktop | Legacy `elicitation/create`: `claude -p` answers `cancel`, and the desktop answers `decline` without showing a form. Modern: a server-sent `elicitation/create` is never answered, and the call hung past 570 s. `input_required` works: the client retries with `inputResponses` and `requestState`, and `-p` answers `cancel`. Progress notifications are accepted, and the desktop showed none. No client sent `resources/read`, so no App renders. When a result has `structuredContent`, the model sees that JSON instead of the text content |
+| 17 | MCP tools prompt in default mode | `mcp-prompts`, `mcp-permit` | All three prompted: no annotations, `readOnlyHint: true` and `destructiveHint: true`. The annotations change nothing |
+| 18 | A dead server | `dead-server`, `dead-for-good` | A server that exits restarts on the next hook call in about 50 ms. One that cannot start gives the non-blocking `MCP server "plugin:io-probe:probe" is not connected`, the call runs, and the model sees nothing |
+
 ## Doc facts, checked on 2026-09-27
 
 | Fact | Source |
@@ -158,30 +185,20 @@ The plugin skeleton from a local marketplace, checked on 2026-09-27 with the `cl
 | Clients with MCP Apps: Claude (web) and Claude Desktop, among others. Claude Code is not listed. Tasks and Skills over MCP have no Claude client listed. Enterprise-Managed Authorization serves enterprise IdPs over HTTP | https://modelcontextprotocol.io/extensions/client-matrix |
 | Claude Code has two MCP client runtimes. The v2 runtime (TypeScript SDK 2.0) speaks 2026-07-28 with HTTP servers that support it, and connects to stdio servers the legacy way unless `MCP_PROTOCOL_NEGOTIATION=auto`. `MCP_SDK_GENERATION` picks the runtime | https://code.claude.com/docs/en/mcp |
 
-## Not verified yet (task 03)
+## Not verified yet
 
-- `bashEditDiff` in the PostToolUse input for Bash, and the setting that enables it.
-- `CLAUDE_ENV_FILE` for SessionStart hooks.
-- PostToolUse `updatedToolOutput` and `classifierContext`.
-- Whether `updatedInput` on a Bash or Write call runs the rewritten input on this harness, and whether a Write `content` holding `\r\n` lands byte-exact.
-- Whether the desktop app's Code tab loads synced plugins. The docs name Cowork and terminal sessions.
 - How claude.ai reaches a private repository added for oneself.
 - `${user_config.*}` in a hook's `command`. The docs say a shell-form `command` rejects it (Doc facts).
 - Whether `${user_config.python}` resolves to its `default` when the user never set it. `claude plugin install`
   reports the option as not yet set. Task 06 depends on the answer.
 - The Bash tool's behaviour on macOS. Expected: no halving and no 8 KB limit, because no MS-CRT quoting is involved.
   Waits for the Mac (D21), and so does `bash --version` through the Bash tool there.
-- Whether an `mcp_tool` hook can pass the whole hook event to a tool on the plugin's own MCP server. If it can,
-  one long-lived process serves the hooks and the tools, with no Python start-up per call (D13). The docs promise
-  string `${path}` substitution in `input` and nothing more, so record what an absent field, a boolean and an object
-  become (`${tool_input.replace_all}`, `${tool_input.content}`), and whether a hook-invoked MCP tool prompts.
-- Whether `ask` with `updatedInput` shows the rewritten command to the user, and whether a hook `allow` skips the
-  auto-mode classifier (D12).
-- Whether `io.*` calls prompt in manual mode, and whether `readOnlyHint` changes that.
-- What the session shows when the io server is down: the `hook error` notice.
-- Which protocol era Claude Code (desktop and CLI) uses with the io server, with and without
-  `MCP_PROTOCOL_NEGOTIATION=auto`, and whether it answers `input_required`, renders MCP Apps, or declares the Tasks
-  extension.
+- What the desktop shows the user when the io server cannot start. The stream reports the hook's error, and the
+  model sees nothing (Hooks and MCP, row 18). Nobody has looked at the desktop's notice.
+- Whether the desktop prompts on an `io.*` call in manual mode. The CLI does (row 17). The desktop session that
+  ran the probes was in auto mode.
+- Whether Cowork renders an MCP App.
+- How large a `${tool_input}` substitution can be. The largest probed was a three-line Write.
 
 ## Baseline
 

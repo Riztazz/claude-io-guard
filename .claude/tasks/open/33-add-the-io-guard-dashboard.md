@@ -14,8 +14,9 @@ commit: "feat: the io-guard dashboard, as an MCP App and as a local page"
 
 Telemetry is only useful when the lead can see it. The lead reads by seeing (the kit's `presenting.md`), so a table
 of counts in a terminal is not enough. MCP Apps render interactive HTML inline in the conversation, where the
-client supports them (D10). No Claude client that loads a local server is confirmed to render them yet, so every
-view also exists as text and as a local page. It comes after the measurement (D20).
+client supports them (D10). Task 03 found that neither the desktop Code tab nor the CLI fetches an App's `ui://`
+resource, so neither renders one (`context.md`, "Hooks and MCP", row 16). Cowork is not checked. Every view
+therefore also exists as text and as a local page. It comes after the measurement (D20).
 
 ## What to build
 

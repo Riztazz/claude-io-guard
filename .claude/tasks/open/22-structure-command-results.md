@@ -25,7 +25,9 @@ machine, and each machine's command wrapper differs (#95653).
 ## What to build
 
 A PostToolUse and PostToolUseFailure check on Bash and PowerShell. It adds `additionalContext`. It replaces the
-output with `updatedToolOutput` only if task 03 confirms that field, and only for output saved to a file.
+output with `updatedToolOutput` only for output saved to a file. Task 03 confirmed the field for Bash when it is the
+tool's own `tool_response` object with `stdout` replaced. A plain string fails the harness's schema check and
+changes nothing (`context.md`, "Hooks and MCP", row 8). PowerShell's shape is not probed yet.
 
 - **`EXIT_BENIGN`:** label exit codes that are not failures, such as grep 1 (no match), diff 1 (the inputs
   differ), and the documented codes of test runners.

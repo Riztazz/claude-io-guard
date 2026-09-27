@@ -80,7 +80,7 @@ plugins/io-guard/
       cli/
         main.py                    probe, check, profile, codes, replay, report, serve, doctor
 tests/                             mirrors ioguard, plus fixtures/, support/, mcp/, replay/
-tools/                             ioguard.py, corpus.py, replay.py, measure.py, report.py
+tools/                             ioguard.py, corpus.py, replay.py, measure.py, report.py, probes/
 ```
 
 Three rules hold the layout together. `lib` imports only the standard library and other `lib` modules.
@@ -157,10 +157,12 @@ class Event:
     def from_fields(cls, fields: Mapping[str, str]) -> "Event": ...
 ```
 
-`from_hook_json` reads the harness JSON. `from_fields` rebuilds an event from the flat string map an `mcp_tool`
-hook passes, and treats a value that still reads as its own template, such as `${tool_input.command}`, or an
-empty string, as absent. Both constructors normalise `file_path` through `paths.normalise`. `tool` is `OTHER`
-for an MCP tool name, and `tool_name` keeps the full name.
+`from_hook_json` reads the harness JSON. `from_fields` rebuilds an event from the map an `mcp_tool` hook passes.
+Every value in that map arrives as a string, and an absent one as an empty string (task 03, item 12). The scalars
+come flat. `tool_input` and `tool_response` come whole, as the compact JSON text the harness substitutes for
+`${tool_input}` and `${tool_response}`, and `from_fields` decodes them. That keeps an empty `new_string`, a
+`replace_all` of `true` and a missing field apart, which a flat map of strings cannot. Both constructors normalise
+`file_path` through `paths.normalise`. `tool` is `OTHER` for an MCP tool name, and `tool_name` keeps the full name.
 
 ### Context
 
@@ -687,8 +689,10 @@ the shape.
 The mode comes from `transport.rewrite_mode[permission_mode]`. File-tool rewrites from `conform_write` and
 `conform_edit` always answer `allow`, because the harness auto-approves edits in the working directory in
 every mode that matters. PostToolUse answers carry `additionalContext`, `classifierContext` and
-`updatedToolOutput`. PostToolUseFailure answers carry `additionalContext`. SessionStart answers carry
-`additionalContext` and write `CLAUDE_ENV_FILE`.
+`updatedToolOutput`. An `updatedToolOutput` has the tool's own output shape: for Bash, the `tool_response` object
+with `stdout` replaced. A plain string there fails the harness's schema check and changes nothing.
+PostToolUseFailure answers carry `additionalContext`. SessionStart answers carry `additionalContext` and write
+`CLAUDE_ENV_FILE`.
 
 ### The mcp_tool alternative
 
@@ -715,12 +719,7 @@ scoped name `plugin:io-guard:io`, and the tools are `hook.pre_tool_use`, `hook.p
           "scratchpad_dir": "${scratchpad_dir}",
           "permission_mode": "${permission_mode}",
           "agent_id": "${agent_id}",
-          "command": "${tool_input.command}",
-          "file_path": "${tool_input.file_path}",
-          "content": "${tool_input.content}",
-          "old_string": "${tool_input.old_string}",
-          "new_string": "${tool_input.new_string}",
-          "replace_all": "${tool_input.replace_all}"
+          "tool_input": "${tool_input}"
         }
       }]
     }],
@@ -735,17 +734,31 @@ scoped name `plugin:io-guard:io`, and the tools are `hook.pre_tool_use`, `hook.p
 ```
 
 PostToolUse and PostToolUseFailure bind the same way to `hook.post_tool_use` and
-`hook.post_tool_use_failure`, with `error` and the `tool_response` fields the checks read added to the map.
+`hook.post_tool_use_failure`, with `"tool_response": "${tool_response}"` and `"error": "${error}"` added to the
+map.
 
-`hooks.bridge` receives the flat map, calls `Event.from_fields`, runs `run_event` with `Surface.MCP_HOOK` and
-returns the answer JSON as the tool's text content. The harness reads that text exactly as it reads command-hook
-stdout. The tool never sets `isError`, because an error result produces a hook notice on every call. A
-`GUARD_ERROR` answers `{}` and warns once through `user_message`.
+`hooks.bridge` receives the map, calls `Event.from_fields`, runs `run_event` with `Surface.MCP_HOOK` and returns
+the answer JSON as the tool's text content. The harness reads that text exactly as it reads command-hook stdout,
+and a `deny` in it blocks the call. The tool never sets `isError`, because an error result produces a hook notice
+on every call. A `GUARD_ERROR` answers `{}` and warns once through `user_message`.
 
-The docs promise string `${path}` substitution and nothing more. Task 03 item 12 records what an absent field,
-a boolean and an object become. `from_fields` already treats an unresolved template as absent, so the bridge
-survives every answer to that probe except one: if `tool_input.content` does not substitute at all, Write
-conformance moves to PostToolUse repair, and the skill says so.
+Task 03 checked this path live on Windows with Claude Code 2.1.283 (`context.md`, "Hooks and MCP"):
+
+- **Substitution gives strings.** `${tool_input}` becomes the compact JSON text of the whole object. A number
+  becomes its digits, a boolean `true` or `false`, and an absent field an empty string. A multi-line `content`
+  with quotes, backslashes and non-ASCII arrives exact. A literal number or boolean written into `input` keeps its
+  type.
+- **The answer is the decision.** A `deny` returned as the tool's text blocked a Bash call, and the model saw the
+  reason as `PreToolUse:Bash hook error: <reason>`.
+- **It is fast.** Ten calls took 1.4 ms at p50 and 3.9 ms at p95, against 58.3 ms and 74.7 ms for an exec-form
+  command hook that starts Python.
+- **A hook-invoked tool never prompts**, even when the same tool called by the model would.
+- **A dead server fails open.** A server that exits is restarted on the next hook call, in about 50 ms. One that
+  cannot start gives the non-blocking notice `MCP server "plugin:io-guard:io" is not connected`, the tool call
+  runs, and the model sees nothing. The server-down warning therefore comes from the heartbeat hook, never from
+  the bridge.
+- **SessionStart cannot use it.** The docs say `mcp_tool` hooks are skipped at launch, before the servers
+  connect, so SessionStart stays a command hook.
 
 The bridge pays off in three ways. No Python starts per call. The profile cache, the git status cache, the
 read set and the probe live in one process. Fail-open comes from the harness, which continues on a
@@ -900,9 +913,15 @@ A tool that needs the user calls `call.elicit(form)`. Under `LEGACY` the worker 
 arrives, with a timeout of five minutes. Under `MODERN` the tool returns `Pending`, the dispatcher answers
 `resultType: "input_required"` with the form and a `requestState` that encodes the tool name, the arguments and
 the step reached, and the retry with `inputResponses` resumes from that state without any memory in the
-server. Claude Code answers the legacy request with a dialog or an `Elicitation` hook, and URL mode exists on
-2026-07-28 connections only. Elicitation is reserved for a user decision: a locked file, a restore over newer
-edits, and an ask rule matched by `io.run`.
+server. URL mode exists on 2026-07-28 connections only.
+
+Task 03 found that no probed surface shows the user a form (`context.md`, "Hooks and MCP", row 16). The desktop
+Code tab on 2.1.281 declines a legacy request without showing it, and `claude -p` cancels it. A modern
+connection never answers a server-sent `elicitation/create`, so `ModernElicitor` is the only way to ask there.
+A user decision therefore goes through a PreToolUse hook on the io tool's own call: the bridge answers `ask`,
+and the harness shows its permission prompt, which the desktop does render. That covers a locked file, a restore
+over newer edits, and an ask rule matched by `io.run`. An elicitor stays for a client that shows forms, and a
+declined or cancelled answer is a refusal that names the decision.
 
 ### Progress and cancellation
 

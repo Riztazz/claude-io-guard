@@ -31,7 +31,12 @@ things start Python: the io server, and the command hooks for SessionStart and t
 - **The first real hook:** a no-op PreToolUse on `Bash|PowerShell|Edit|Write|Read` that writes one JSONL line per
   call to `${CLAUDE_PLUGIN_DATA}`. It proves the wiring, and task 08 replaces it.
 - **Measure** 100 no-op calls through each path: the `mcp_tool` hook on task 03's probe server, the command hook
-  through `hook.sh`, and the exec form. Record p50 and p95 in `docs/launcher.md`.
+  through `hook.sh`, and the exec form. Record p50 and p95 in `docs/launcher.md`. Task 03's ten-call run gives
+  the expected order (`context.md`, "Hooks and MCP", rows 9 and 12): `mcp_tool` 1.4 and 3.9 ms, exec 58.3 and
+  74.7 ms, shell through Git Bash 89.7 and 97.0 ms. `tools/probes/run_probe.py` times hooks from the stream
+  lines, and the measurement reuses it.
+- **`mcp_tool` is the primary path.** Task 03 item 12 confirmed it, so the fallback above stays a documented
+  snippet, never the default.
 
 ## Where
 

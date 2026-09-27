@@ -6,14 +6,15 @@ plugin's marketplace: github.com/Riztazz/claude-io-guard.
 
 ## Layout
 
-The tasks build most of this. Today the two manifests, the plugin's stub skill, `.claude/`, `docs/`, `workbench/`
-and this file exist.
+The tasks build most of this. Today the two manifests, the plugin's stub skill, `tools/probes/`, `.claude/`,
+`docs/`, `workbench/` and this file exist.
 
 ```
 .claude-plugin/marketplace.json   the catalog
 plugins/io-guard/                 the shipped plugin: manifest, hooks, scripts/ioguard, skills, .mcp.json, ui
 tests/                            the unittest suite and the byte fixtures
-tools/                            corpus, replay, report, measure, and the ioguard command line
+tools/                            corpus, replay, report, measure, the ioguard command line, and probes/
+tools/probes/                     the harness probes: run_probe.py and the one-off plugin it builds per probe
 workbench/                        copies of the lead's project files to test on, local and gitignored
 docs/design/architecture.md       the design every task builds from, with every contract
 docs/design/review.md             Fable's review of the plan, and the lead's answers
