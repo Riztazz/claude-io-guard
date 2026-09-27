@@ -3,7 +3,7 @@ title: Start the server and the two command hooks the same way on both platforms
 stage: A
 area: runtime
 created: 2026-09-27
-status: open
+status: done
 claimed-by: claude-opus-5-5, session 7eeb509f
 depends-on: [03]
 findings: [SHL-3]
@@ -52,13 +52,7 @@ things start Python: the io server, and the command hooks for SessionStart and t
 - A missing or wrong interpreter gives one clear warning per session and never blocks the tool call (D7).
 - `hook.sh` passes `sh -n` in CI on the macOS runner. Its live start on the Mac waits in task 36.
 
-## Blocked on
-
-**The same push as task 05.** The CI step `sh -n plugins/io-guard/scripts/hook.sh` is in
-`.github/workflows/ci.yml`, and it has never run, because nothing has been pushed. The other three Done-when
-lines are met on Windows, below.
-
-## What changed so far
+## What changed
 
 - **`plugins/io-guard/.mcp.json`:** the server `io`, started from `${user_config.python}` with
   `scripts/server.py`, and `PYTHONUTF8`, `PYTHONIOENCODING` and `IOGUARD_DATA` in its `env`.
@@ -116,7 +110,8 @@ Evidence, on Windows 10 with Python 3.14.0 on 2026-09-27:
 
 Not checked:
 
-- **The CI run and macOS**, including `sh -n` on the macOS runner (Blocked on).
+- **Live starts on macOS.** CI run 36317022051 on `f968f32` passed `sh -n` on `hook.sh`, and the whole suite,
+  the launcher tests included, on both macOS jobs. A live session on a Mac waits in task 36 (D21).
 - **The desktop app's own window with io-guard loaded.** Its bundled binary ran the check headless, and task
   02 already showed the Code tab loading the plugin.
 - **Windows with no Git Bash.** Shell-form hooks run through PowerShell there, and `hook.sh` cannot start.

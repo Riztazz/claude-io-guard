@@ -3,7 +3,7 @@ title: Build the test kit and CI on Windows and macOS
 stage: A
 area: infra
 created: 2026-09-27
-status: open
+status: done
 claimed-by: claude-opus-5-5, session 7eeb509f
 depends-on: [01, 02]
 findings: [BYT-1, BYT-6, BYT-7]
@@ -43,14 +43,7 @@ macOS runner is the only macOS evidence there is (D21).
 - Committing a fixture without `-text` makes the self-check fail on the next CI run.
 - A run with no tests found fails CI.
 
-## Blocked on
-
-**A push, which only the lead can grant.** CI runs on GitHub, and nothing here has been pushed since `a78a1f8`.
-The first Done-when line needs the workflow's first run on both runners. Everything else is built and proved on
-Windows below. `.claude/rules/this-repo.md` asks for task 34's scrub before a push that makes content public, so
-the lead decides whether this push waits for it. Task 07 depends on this task and waits with it.
-
-## What changed so far
+## What changed
 
 - **`tests/`**, standard-library `unittest`. `tests/__init__.py` puts `plugins/io-guard/scripts` on the path, so
   task 07's tests import `ioguard` as the hooks will.
@@ -83,4 +76,11 @@ Evidence, on Windows 10 with Python 3.14.0:
   `test_every_fixture_has_the_hash_the_manifest_records`, `test_every_generated_fixture_holds_its_definition`
   and `test_git_treats_every_fixture_as_not_text`.
 
-Not checked: the workflow itself, and macOS. Both need the push above.
+- **CI:** the lead pushed `f968f32`, and run 36317022051 passed on all four jobs, `windows-latest` and
+  `macos-latest` on Python 3.14 and `3.x`, in 47 s. Every step succeeded in every job, the test step included,
+  which fails when no test runs, and the npm install and both `claude plugin validate` calls. Read from the
+  GitHub API and the lead's screenshot on 2026-09-27. The step logs need a sign-in, so the test counts on the
+  runners were not read.
+
+Not checked: the self-check failing on a real CI run after a fixture lost `-text`. The scratch-clone proof above
+shows the same failure on Windows.
