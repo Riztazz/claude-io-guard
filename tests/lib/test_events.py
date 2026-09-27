@@ -34,8 +34,8 @@ class EventsFromTheHarness(unittest.TestCase):
 
     def test_a_recorded_edit_event_reads_its_strings_and_path(self):
         event = Event.from_hook_json(recorded("pre_tool_use_edit"), Surface.COMMAND_HOOK, WINDOWS)
-        self.assertEqual((event.old_string, event.new_string, event.replace_all, event.file_path),
-                         ("alpha beta gamma", "alpha BETA gamma", False, Path("C:\\project\\edit.txt")),
+        self.assertEqual((event.old_string, event.new_string, event.replace_all, event.file_path.as_posix()),
+                         ("alpha beta gamma", "alpha BETA gamma", False, "C:/project/edit.txt"),
                          "a recorded Edit event reads its strings, replace_all and absolute path")
 
     def test_a_session_start_without_permission_mode_reads_as_default(self):
