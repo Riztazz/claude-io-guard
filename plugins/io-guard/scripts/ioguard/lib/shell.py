@@ -266,6 +266,142 @@ def scan(command: str) -> Scan:
     return Scanner(command).run()
 
 
+@dataclass(frozen=True)
+class Redirect:
+    target: str                  # the word after the operator, quotes removed
+    append: bool                 # >> or &>>
+    fd: int | None               # the stream it names, None for &> which names both
+
+
+@dataclass(frozen=True)
+class SimpleCommand:
+    words: tuple[str, ...]       # quotes removed, with leading assignments and reserved words dropped
+    redirects: tuple[Redirect, ...]   # the output redirects to a file, never a duplicated stream
+    inputs: tuple[str, ...]      # the files a < redirect reads
+    span: tuple[int, int]
+
+    @property
+    def name(self) -> str:
+        """The program's name, without its folder or .exe."""
+        if not self.words:
+            return ""
+        name = re.split(r"[\\/]", self.words[0])[-1]
+        return name[:-4].lower() if name.lower().endswith(".exe") else name.lower()
+
+
+SEPARATORS = ";&|\n()"
+RESERVED = {"if", "then", "else", "elif", "fi", "do", "done", "while", "until", "for", "case", "esac", "in",
+            "{", "}", "!", "time", "exec", "command", "builtin", "nohup", "sudo"}
+ASSIGNMENT = re.compile(r"^[A-Za-z_]\w*=")
+REDIRECT = re.compile(r"(\d*|&)(>>?|>\||<>?)")
+
+
+def commands(command: str, found: Scan | None = None) -> tuple[SimpleCommand, ...]:
+    """The simple commands of a Bash command, split at the operators bash reads outside quotes, heredoc bodies
+    and comments. Command substitutions stay inside their word."""
+    found = found or scan(command)
+    states, text = found.states, command
+    parsed, at, start = [], 0, 0
+    words: list[str] = []
+    redirects: list[Redirect] = []
+    inputs: list[str] = []
+
+    def finish(end: int) -> None:
+        nonlocal words, redirects, inputs
+        kept = list(words)
+        while kept and (ASSIGNMENT.match(kept[0]) or kept[0] in RESERVED):
+            kept.pop(0)
+        if kept or redirects:
+            parsed.append(SimpleCommand(tuple(kept), tuple(redirects), tuple(inputs), (start, end)))
+        words, redirects, inputs = [], [], []
+
+    while at < len(text):
+        char = text[at]
+        normal = states[at] == NORMAL
+        match = REDIRECT.match(text, at) if normal and not text.startswith("<<", at) else None
+        if normal and char in SEPARATORS and not match:
+            finish(at)
+            at += 1
+            start = at
+        elif (normal and char in " \t") or states[at] in (COMMENT, BODY):
+            at += 1
+        elif match:
+            at = match.end()
+            if text.startswith("&", at):          # 2>&1, >&2: a duplicated stream, not a file
+                at = word_end(text, states, at + 1)
+                continue
+            while at < len(text) and text[at] in " \t":
+                at += 1
+            end = word_end(text, states, at)
+            target = unquote(text, states, at, end)
+            operator = match[2]
+            if operator.startswith(">"):
+                fd = None if match[1] == "&" else int(match[1] or 1)
+                redirects.append(Redirect(target, operator == ">>", fd))
+            else:
+                inputs.append(target)
+            at = end
+        elif states[at] == NORMAL and text.startswith("<<", at):
+            at = heredoc_word_end(text, at)
+        else:
+            end = word_end(text, states, at)
+            words.append(unquote(text, states, at, end))
+            at = end
+    finish(len(text))
+    return tuple(parsed)
+
+
+def word_end(text: str, states: bytes | bytearray, at: int) -> int:
+    """The end of the word starting at at: the first unquoted blank, operator or redirect."""
+    while at < len(text):
+        if states[at] == NORMAL:
+            if text[at] in " \t" or text[at] in SEPARATORS or text[at] in "<>":
+                if not (text[at] in "()" and text.startswith("$(", at - 1)):
+                    return at
+            if text[at] == "\\":
+                at += 2
+                continue
+            if text.startswith("$(", at):
+                depth, at = 1, at + 2
+                while at < len(text) and depth:
+                    depth += {"(": 1, ")": -1}.get(text[at], 0) if states[at] == NORMAL else 0
+                    at += 1
+                continue
+        elif states[at] in (COMMENT, BODY):
+            return at
+        at += 1
+    return at
+
+
+def heredoc_word_end(text: str, at: int) -> int:
+    at += 2
+    at += text.startswith("-", at)
+    while at < len(text) and text[at] in " \t":
+        at += 1
+    while at < len(text) and text[at] not in WORD_END:
+        at += 1
+    return at
+
+
+def unquote(text: str, states: bytes | bytearray, start: int, end: int) -> str:
+    """The word as bash passes it, for the plain cases: quotes dropped, escapes applied, expansions kept."""
+    out, at = [], start
+    while at < end:
+        char, state = text[at], states[at]
+        if state == NORMAL and char in "'\"":
+            at += 1
+        elif state == NORMAL and char == "\\" and at + 1 < end:
+            out.append(text[at + 1])
+            at += 2
+        elif state == DOUBLE and char == "\\" and at + 1 < end and text[at + 1] in ESCAPED_IN_DOUBLE:
+            out.append(text[at + 1])
+            at += 2
+        else:
+            out.append(char)
+            at += 1
+    return "".join(out)
+
+
 def budget_length(command: str) -> int:
     """The command's length as the Windows Bash tool's transport counts it: UTF-8 bytes, and each apostrophe
     as four, which is how the baseline's largest passing and smallest failing commands line up."""

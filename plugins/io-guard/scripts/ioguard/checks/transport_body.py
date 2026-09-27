@@ -50,7 +50,8 @@ class TransportBody(Check):
     meta = CheckMeta(
         id="transport.body", layer=Layer.TRANSPORT, events=frozenset({HookEvent.PRE_TOOL_USE}),
         tools=frozenset({Tool.BASH}), platforms=frozenset({"win32", "darwin"}), severity=Severity.FIXED,
-        cost=Cost.MEDIUM, reads=frozenset({"command"}), writes=frozenset({"command"}), after=frozenset(),
+        cost=Cost.MEDIUM, reads=frozenset({"command"}), writes=frozenset({"command"}),
+        after=frozenset({"shell.writes"}),
         config={},
         codes=frozenset({Code.BODY_MOVED_TO_FILE, Code.TRANSPORT_BUDGET, Code.BACKSLASH_TRANSPORT}),
         description="Moves a Bash command's heredoc or python -c body into a file when the Bash tool would "

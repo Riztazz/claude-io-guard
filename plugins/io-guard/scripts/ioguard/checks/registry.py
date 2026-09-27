@@ -3,6 +3,7 @@ from collections.abc import Mapping
 
 from ioguard.checks.base import Check, CheckMeta
 from ioguard.checks.session_probe import SessionProbe
+from ioguard.checks.shell_writes import ShellWrites
 from ioguard.checks.transport_body import TransportBody
 from ioguard.lib.config import Config, ConfigKey
 from ioguard.lib.context import Context
@@ -70,7 +71,7 @@ class Registry:
                      if check.options.get("enabled", True) and check.applies(event, ctx))
 
 
-CHECKS: tuple[type[Check], ...] = (SessionProbe, TransportBody)
+CHECKS: tuple[type[Check], ...] = (SessionProbe, ShellWrites, TransportBody)
 
 
 def default_registry() -> Registry:

@@ -7,10 +7,11 @@ plugin's marketplace: github.com/Riztazz/claude-io-guard.
 ## Layout
 
 The tasks build most of this. Today the marketplace, the plugin's manifest, hooks, launcher, stub skill, the
-`ioguard` package's runtime core (`lib/` and the pipeline in `checks/`, with the session probe as its one
-check), the hook entry point and bridge in `hooks/`, the corpus and replay commands in `cli/` with their `tools/`
-scripts, a stub server that serves only the hook tools, `tests/` with its fixtures and helpers, `tools/probes/`,
-`.github/workflows/ci.yml`, `.claude/`, `docs/`, `workbench/` and this file exist.
+`ioguard` package's runtime core (`lib/` and the pipeline in `checks/`, with three checks: the session probe,
+`shell.writes` and `transport.body`), the hook entry point and bridge in `hooks/`, the corpus and replay
+commands in `cli/` with their `tools/` scripts, a stub server that serves only the hook tools, `tests/` with its
+fixtures and helpers, `tools/probes/`, `.github/workflows/ci.yml`, `.claude/`, `docs/`, `workbench/` and this
+file exist.
 
 ```
 .claude-plugin/marketplace.json   the catalog
@@ -67,7 +68,7 @@ Each line works once the task that builds it has landed.
   also fails when no test ran
 - Fixtures: `python -m tests.support.fixtures` rewrites the generated fixtures and `tests/fixtures/MANIFEST.sha256`
 - The checks on one command, offline: `python tools/ioguard.py check "<command>"`
-- The replay corpus, from the lead's transcripts: `python tools/corpus.py CLICKER=<folder> ...`, one `NAME=FOLDER`
+- The replay corpus, from the lead's transcripts: `python tools/corpus.py myproject=<folder> ...`, one `NAME=FOLDER`
   per transcript folder under `~/.claude/projects/`. Then `python tools/replay.py`, which writes
   `reports/replay-<time>.json` and prints the summary
 - The plugin for one CLI session: `claude --plugin-dir plugins/io-guard`

@@ -260,7 +260,10 @@ Task 09's replay corpus, built at 14:55 on 2026-09-27 from the same four project
 result. Its seed labels match the baseline. The 71 anchor misses are the same 71. `unexpected-eof` is 246, the
 baseline's 236 plus 10 from that morning's sessions. `msys-path` is 39 against 37. `guard-refused` is 14, 12 of
 them failed calls, once the rule matched only the guard's refusal text. The baseline's rule also matched
-`write-guard` as a file name in git status lines, diffs and listings, which gave 81.
+`write-guard` as a file name in git status lines, diffs and listings, which gave 81. Task 12 renamed the label
+`hook-refused`, matching any PreToolUse hook's refusal, `PreToolUse:<tool> hook error`, so the label names no
+particular guard. The corpus rebuilt during task 12 holds 180,478 calls, 14 `hook-refused` and 248
+`unexpected-eof`.
 
 | Measure | Count |
 |---|---|
@@ -392,8 +395,8 @@ Surveyed on 2026-09-27, every tracked text file.
 ## Error codes
 
 Task 07 settled the list in `docs/design/architecture.md`, section 2, with the task that adds each code.
-`lib/results.py` holds a code once something produces it, and on 2026-09-27 that is `GUARD_ERROR`,
-`REWRITE_CONFLICT` and `BUDGET_EXCEEDED`. The table below is the draft the list came from.
+`lib/results.py` holds a code once something produces it, and that table marks each such row "in `CODES`". The
+table below is the draft the list came from.
 
 Every result the guard returns has this shape:
 

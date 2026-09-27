@@ -10,6 +10,9 @@
   waits in task 36.
 - **The plugin ships only `plugins/io-guard/`.** It has no top-level `bin/`, and its manifest paths use forward
   slashes.
+- **io-guard is for anyone's projects, not only the lead's Unreal ones.** Nothing it ships or tells a model names
+  Unreal, the lead's kit, its tools such as `bridge.py`, or the lead's projects, in code, a message, a default or
+  an example. A project's own advice belongs in that project's skills. The lead set this on 2026-09-27.
 - **Transcripts, the replay corpus, telemetry and anything copied from them stay on the machine and out of git**
   (D8). They hold the lead's paths and project content.
 - **`workbench/` holds byte-exact copies of the lead's project files to test on.** `workbench/MANIFEST.sha256`

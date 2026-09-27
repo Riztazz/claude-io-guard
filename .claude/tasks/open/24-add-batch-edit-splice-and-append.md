@@ -48,3 +48,9 @@ gets a copy of its own.
   built"), on CRLF, LF and BOM fixtures, in CI on both platforms.
 - An interrupted write never leaves a truncated file (BYT-9).
 - Two processes editing one file through `io.edit` at once both land, one after the other.
+
+## Notes
+
+- **`SHELL_WRITE` names `io.edit` once it exists.** Task 12's refusal names the Edit and Write tools only,
+  because no `io.edit` existed to name. Add `io.edit`'s callable name to the fix in `checks/shell_writes.py`, for
+  a command that writes several places in one file, with a test that renders it.

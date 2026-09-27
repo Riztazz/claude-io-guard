@@ -17,7 +17,8 @@ from ioguard.cli import corpus, replay
 def source(text: str) -> tuple[str, Path]:
     name, found, folder = text.partition("=")
     if not found or not name or not folder:
-        raise argparse.ArgumentTypeError(f"{text!r} is not NAME=FOLDER, such as CLICKER=<transcript folder>")
+        raise argparse.ArgumentTypeError(
+            f"{text!r} is not NAME=FOLDER, such as myproject=<transcript folder>")
     path = Path(folder).expanduser()
     if not path.is_dir():
         raise argparse.ArgumentTypeError(f"{path} is not a folder of transcripts")

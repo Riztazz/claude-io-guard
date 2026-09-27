@@ -1,10 +1,11 @@
 """Replay the corpus through the check pipeline, offline, and report what each check would have done.
 
 Each record runs as a PreToolUse event, then as a PostToolUse or PostToolUseFailure event carrying its
-recorded result. Every session gets its own in-memory context: an empty file system, a git that knows nothing,
-a clock that stands still and telemetry turned off. So nothing runs, nothing is written, and no check is
-skipped for time. A refusal of a call that succeeded is a false-positive candidate, and the report keeps a
-sample of them. docs/design/architecture.md, section 11, fixes the report's shape, which task 31 reads.
+recorded result. Every session gets its own in-memory context: an empty file system, a clock that stands
+still, telemetry turned off, and a git that answers from each repository's files as git tracks them now.
+Nothing runs but one git ls-files per repository, nothing is written, and no check is skipped for time. A
+refusal of a call that succeeded is a false-positive candidate, and the report keeps a sample of them.
+docs/design/architecture.md, section 11, fixes the report's shape, which task 31 reads.
 """
 import random
 import re
@@ -22,6 +23,7 @@ from ioguard.lib.config import defaults
 from ioguard.lib.context import Context, Probe, SessionState
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, EventError, Surface
+from ioguard.lib.git import Git, GitError, GitStatus
 from ioguard.lib.platform import Platform, detect
 from ioguard.lib.results import render_many
 from ioguard.lib.telemetry import Telemetry
@@ -32,6 +34,52 @@ KINDS = ("fix", "refuse", "warn")
 DRIVE = re.compile(r"^[A-Za-z]:")
 WINDOWS = Platform("win32", True)
 REPLAY_DATA = Path("replay-data")      # a data folder that exists only in the in-memory file system
+
+
+class SnapshotGit:
+    """A git port for replay that answers from each repository's tracked files as they are now. It runs one
+    read-only git ls-files per repository and nothing else, and finds a repository by its .git entry."""
+
+    def __init__(self) -> None:
+        self.roots: dict[Path, Path | None] = {}
+        self.files: dict[Path, frozenset[str]] = {}
+
+    @staticmethod
+    def key(path: Path) -> str:
+        return path.as_posix().lower()
+
+    def root(self, path: Path) -> Path | None:
+        for folder in (path, *path.parents):
+            if folder in self.roots:
+                return self.roots[folder]
+            if (folder / ".git").exists():
+                self.roots[folder] = folder
+                return folder
+        self.roots[path] = None
+        return None
+
+    def is_tracked(self, path: Path) -> bool:
+        root = self.root(path)
+        if root is None:
+            return False
+        if root not in self.files:
+            try:
+                self.files[root] = frozenset(self.key(file) for file in Git().ls_files(root))
+            except GitError:
+                self.files[root] = frozenset()
+        return self.key(path) in self.files[root]
+
+    def status(self, root: Path) -> GitStatus:
+        return GitStatus(())
+
+    def ls_files(self, root: Path) -> tuple[Path, ...]:
+        return ()
+
+    def changed_ranges(self, path: Path) -> tuple:
+        return ()
+
+    def attributes(self, path: Path) -> dict:
+        return {}
 
 
 def kind_of(decision: Decision) -> str | None:
@@ -64,8 +112,9 @@ class CheckTally:
 class Replay:
     """One replay over a stream of records."""
 
-    def __init__(self, registry: Registry, seed: int = 0) -> None:
+    def __init__(self, registry: Registry, seed: int = 0, git: object | None = None) -> None:
         self.registry = registry
+        self.git = git or SnapshotGit()
         self.pipeline = Pipeline(registry)
         self.config = defaults(registry.keys())
         self.sessions: dict[str, SessionState] = {}
@@ -83,7 +132,7 @@ class Replay:
         probe = replace(Probe.unprobed(platform), transport_budget=WINDOWS_CUT if cut else None,
                         halving=True if cut else None)
         session = self.sessions.setdefault(record.session, SessionState())
-        return Context.fake(config=self.config, platform=platform, probe=probe, session=session,
+        return Context.fake(config=self.config, platform=platform, probe=probe, session=session, git=self.git,
                             telemetry=Telemetry(None, enabled=False), data_dir=REPLAY_DATA)
 
     def events(self, record: Record) -> Iterable[Event]:

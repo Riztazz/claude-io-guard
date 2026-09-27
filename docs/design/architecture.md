@@ -26,8 +26,8 @@ plugins/io-guard/
         bytesio.py                 read_bytes, write_atomic, size guard
         profile.py                 Profile, profile, target_profile
         anchors.py                 find, closest, unique_anchor, extend_right
-        shell.py                   split, heredocs, inline_bodies, redirects, dialect, budget_length
-        pwsh.py                    PowerShell parse through pwsh when present, tokens otherwise
+        shell.py                   scan, commands, budget_length, moved, shell_path, exec_file, dialect
+        pwsh.py                    commands, file_calls, and the parse through pwsh when present
         paths.py                   normalise, reserved, link_target, inside, same_file
         git.py                     Git, the GitPort implementation
         locks.py                   holders, file_lock
@@ -225,6 +225,7 @@ class SessionState:
     snapshots: MutableMapping[Path, Snapshot]    # profile and bytes before a write
     warned: MutableSet[str]                      # one user warning per key per session
     budget_override: Optional[int]               # learned from an EOF failure
+    tracked: MutableMapping[Path, bool]          # whether git tracks a path, asked once by shell.writes
     last_failed_build: Optional[datetime]
     lock: RLock                                  # guards every field
 
@@ -344,7 +345,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 |---|---|---|
 | Location | `OUTSIDE_WRITE_ROOT`, `LINKED_PATH`, `READ_ONLY`, `FILE_LOCKED` | 19 |
 | Transport | `BODY_MOVED_TO_FILE`, `TRANSPORT_BUDGET`, `BACKSLASH_TRANSPORT`, the last a warning (D25) | 11, in `CODES` |
-| Transport | `SHELL_WRITE` | 12 |
+| Transport | `SHELL_WRITE`, a warning for a new script inside a repository (GIT-1) | 12, in `CODES` |
 | Transport | `BACKTICK_IN_DOUBLE_QUOTES`, `TRAILING_BACKSLASH_QUOTE`, `DIALECT_MISMATCH`, `PIPE_HIDES_EXIT`, `INLINE_SCRIPT_INVALID` | 13 |
 | Transport | `MSYS_PATH`, `RESERVED_NAME` | 14 |
 | Bytes | `EOL_CONVERTED`, `BOM_RESTORED`, `TRAILING_WS_STRIPPED`, `INDENT_MISMATCH` | 17 |
@@ -513,7 +514,7 @@ class Registry:
     def select(self, event: Event, ctx: Context) -> tuple[Check, ...]: ...
     def ids(self) -> tuple[str, ...]: ...
 
-CHECKS: tuple[type[Check], ...] = (SessionProbe, Location, TransportBody, ShellWrites, Lint, WinPaths,
+CHECKS: tuple[type[Check], ...] = (SessionProbe, Location, ShellWrites, TransportBody, Lint, WinPaths,
                                    ConformWrite, ConformEdit, VerifyWrite, Touched, ReadProfile,
                                    Diagnose, CommandResults, CommitPolicy)
 
@@ -530,7 +531,8 @@ of that type, none of them named `enabled`, which every check gets. A check that
 `CHECKS` after it, so the order has no cycle by construction. `writes` is enforced when the check runs: a
 rewrite whose fields are not all in `writes` is a bug, and the pipeline fails open around it. Each check joins
 `CHECKS` in the task that builds it. A test registers one class into an empty registry to test a check alone.
-No import-time discovery, no decorators, one list.
+No import-time discovery, no decorators, one list. `transport.body` runs after `shell.writes`, so a command
+refused for its write never has a body moved into a file first.
 
 ### The pipeline
 
@@ -615,12 +617,18 @@ def budget_length(command: str) -> int      # UTF-8 bytes, apostrophes count fou
 def moved(command: str, heredocs: Mapping[Heredoc, str], bodies: Mapping[InlineBody, str]) -> str
 def shell_path(path: str) -> str            # a path as a double-quoted bash word
 def exec_file(path: str) -> str             # the python -c argument that runs a file as -c ran its body
-# shell.py, tasks 12 and 13
-def split(command: str) -> tuple[Subcommand, ...]           # by && || ; | and newlines
-def redirects(command: str) -> tuple[Redirect, ...]         # target, append, fd, is_device
+# shell.py, task 12
+def commands(command: str, found: Optional[Scan] = None) -> tuple[SimpleCommand, ...]
+                                            # split at ; & | ( ) and newlines outside quotes, bodies, comments
+class SimpleCommand: words, redirects, inputs, span, name  # words unquoted, leading assignments dropped
+class Redirect: target, append, fd                          # a file only: 2>&1 and >&2 are never one
+# shell.py, task 13
 def dialect(command: str) -> Dialect                        # BASH, POWERSHELL, MIXED
 
-# pwsh.py
+# pwsh.py, task 12
+def commands(command: str) -> tuple[SimpleCommand, ...]     # split at ; | && || and newlines, here-strings whole
+def file_calls(command: str) -> tuple[str, ...]             # the literal paths [IO.File] write calls name
+# pwsh.py, task 13
 def parse(command: str, pwsh: Optional[Path]) -> PwshParse  # errors, commands, arguments
 def canonical(name: str) -> str                             # alias to cmdlet
 
@@ -702,7 +710,7 @@ Policy data lives in `io-guard.json`. The file carries no comments, so its keys 
                      "auto": "refuse", "dontAsk": "refuse", "bypassPermissions": "allow"}
   },
   "pipeline": {"soft_ms": 300, "hard_ms": 2000},
-  "write_roots": {"extra": ["C:/Users/me/projs/unreal/UNREAL-SHARED"]},
+  "write_roots": {"extra": ["C:/Users/me/projs/shared-lib"]},
   "skip_trees": ["Content/**", "Binaries/**"],
   "verify": {".py": ["python", "-m", "py_compile", "{file}"], ".cpp": ["clang-format", "--dry-run", "{file}"]},
   "noise_patterns": ["^LogTemp: Display:"],
@@ -1103,7 +1111,7 @@ One JSONL line per decision or tool call, in `${CLAUDE_PLUGIN_DATA}/events/<YYYY
 per session as section 8 says.
 
 ```json
-{"schema": 1, "ts": "2026-09-27T14:03:11.412Z", "session": "abc123", "project": "CLICKER",
+{"schema": 1, "ts": "2026-09-27T14:03:11.412Z", "session": "abc123", "project": "myproject",
  "platform": "win32", "surface": "mcp_hook", "event": "PreToolUse", "tool": "Bash",
  "check": "transport.body", "code": "BODY_MOVED_TO_FILE", "severity": "fixed",
  "latency_ms": 11.8, "fixed": ["BODY_MOVED_TO_FILE"], "skipped": [], "error": null,
@@ -1194,18 +1202,20 @@ its labels from `cli.labels`. `corpus/` never leaves the machine (D8).
 
 `python tools/replay.py` runs each record as a PreToolUse event, then as PostToolUse or PostToolUseFailure with
 the recorded result, through `default_registry()`. Each session gets an in-memory context: an empty file system,
-a git that knows nothing, a clock that stands still and telemetry off. Nothing runs, nothing is written, and the
-budget never skips a check. The report goes to `reports/replay-<time>.json`, and its shape is fixed at schema 1:
+a clock that stands still, telemetry off, and a git that answers from each repository's files as git tracks
+them now. Nothing runs but one `git ls-files` per repository, nothing is written, and the budget never skips a
+check. A file created in a session and committed later reads as tracked, so a refusal of a write that created
+it is a replay artifact. The report goes to `reports/replay-<time>.json`, and its shape is fixed at schema 1:
 
 ```json
-{"schema": 1, "corpus": "corpus", "projects": ["CLICKER"], "checks_run": ["transport.body"],
+{"schema": 1, "corpus": "corpus", "projects": ["myproject"], "checks_run": ["transport.body"],
  "records": 178000, "unreadable": 0, "seconds": 140.2,
  "by_tool": {"Bash": {"ok": 95000, "failed": 2579}}, "by_label": {"unexpected-eof": 236},
  "checks": {"transport.body": {
    "fix": {"ok": 1200, "failed": 180}, "refuse": {"ok": 3, "failed": 40}, "warn": {"ok": 10},
    "events": {"PreToolUse": 1433}, "raised": 0, "labels": {"unexpected-eof": 201},
    "false_positive_candidates": 3,
-   "samples": [{"id": "toolu_01", "project": "CLICKER", "tool": "Bash", "input": "python - <<'PY'",
+   "samples": [{"id": "toolu_01", "project": "myproject", "tool": "Bash", "input": "python - <<'PY'",
                 "reason": "TRANSPORT_BUDGET: ..."}]}}}
 ```
 

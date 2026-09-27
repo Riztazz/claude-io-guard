@@ -7,6 +7,7 @@ from pathlib import Path
 from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import Registry
 from ioguard.checks.session_probe import WINDOWS_CUT
+from ioguard.checks.shell_writes import ShellWrites
 from ioguard.checks.transport_body import TransportBody
 from ioguard.hooks.answer import answer
 from ioguard.lib.config import Config, defaults
@@ -37,9 +38,15 @@ def run(command: str, ctx: Context | None = None, scratchpad: Path | None = SCRA
     raw = events.bash(command, CWD)
     raw["scratchpad_dir"] = "" if scratchpad is None else str(scratchpad)
     registry = Registry()
+    registry.register(ShellWrites)          # transport.body runs after it, and the fake git tracks nothing
     registry.register(TransportBody)
     event = Event.from_hook_json(raw, Surface.MCP_HOOK, ctx.platform)
     return event, Pipeline(registry).run(event, ctx), ctx
+
+
+def moved_by(outcome):
+    """transport.body's own decision in the outcome."""
+    return next(decision for decision in outcome.decisions if decision.check_id == "transport.body")
 
 
 def heredoc(body: str, delimiter: str = "'PY'") -> str:
@@ -104,7 +111,7 @@ class ABodyMovesToAFile(unittest.TestCase):
 class WhatCannotMoveIsRefused(unittest.TestCase):
     def test_a_long_unquoted_heredoc_is_refused_with_transport_budget(self):
         _, outcome, ctx = run(heredoc(BIG_BODY, "PY"))
-        result = outcome.decisions[0].results[0]
+        result = moved_by(outcome).results[0]
         self.assertEqual((outcome.verdict, result.code), (Verdict.DENY, Code.TRANSPORT_BUDGET),
                          "bash expands an unquoted body, so moving it would change it")
         self.assertIn("Write tool", result.render(), "the fix says to write the script and run the file")
@@ -112,7 +119,7 @@ class WhatCannotMoveIsRefused(unittest.TestCase):
 
     def test_a_pair_outside_any_body_is_a_warning_and_the_call_runs(self):
         _, outcome, _ = run("sed 's/\\\\n/ /' notes.txt")
-        result = outcome.decisions[0].results[0]
+        result = moved_by(outcome).results[0]
         self.assertEqual((outcome.verdict, result.code), (Verdict.ALLOW, Code.BACKSLASH_TRANSPORT),
                          "agents double backslashes to survive the halving, so a refusal would stop 1% of "
                          "calls that ran (D25)")
@@ -120,7 +127,7 @@ class WhatCannotMoveIsRefused(unittest.TestCase):
 
     def test_a_pair_left_after_the_move_is_warned_about_next_to_the_move(self):
         _, outcome, _ = run("sed 's/\\\\n/ /' f && " + heredoc(BIG_BODY))
-        decision = outcome.decisions[0]
+        decision = moved_by(outcome)
         self.assertEqual((decision.rewrite.code, decision.results[0].code),
                          (Code.BODY_MOVED_TO_FILE, Code.BACKSLASH_TRANSPORT),
                          "the heredoc moves, and the sed argument it cannot fix is named")
@@ -132,7 +139,7 @@ class WhatCannotMoveIsRefused(unittest.TestCase):
 
     def test_with_nowhere_to_write_a_long_body_is_refused(self):
         _, outcome, _ = run(heredoc(BIG_BODY), scratchpad=None)
-        self.assertEqual(outcome.decisions[0].results[0].code, Code.TRANSPORT_BUDGET,
+        self.assertEqual(moved_by(outcome).results[0].code, Code.TRANSPORT_BUDGET,
                          "no scratchpad and no data folder means no move")
 
 

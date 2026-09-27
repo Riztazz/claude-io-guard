@@ -111,6 +111,34 @@ class InlineBodiesAreFound(unittest.TestCase):
                 self.assertIsNone(self.body(command), "a mixed word, a quoted mention or a bare word is left")
 
 
+class SimpleCommandsAreSplitOut(unittest.TestCase):
+    def test_commands_split_at_operators_outside_quotes(self):
+        found = shell.commands("a 'x;y' && b \"p|q\" | c; d\ne")
+        self.assertEqual([command.words for command in found],
+                         [("a", "x;y"), ("b", "p|q"), ("c",), ("d",), ("e",)], "quotes keep their operators")
+
+    def test_a_file_redirect_is_kept_and_a_stream_duplicate_is_not(self):
+        found = shell.commands("make > build.log 2>&1 &> all.log >> more.log 2>/dev/null")[0]
+        self.assertEqual([(redirect.target, redirect.append, redirect.fd) for redirect in found.redirects],
+                         [("build.log", False, 1), ("all.log", False, None), ("more.log", True, 1),
+                          ("/dev/null", False, 2)], "2>&1 names a stream, the rest name files")
+
+    def test_assignments_and_reserved_words_do_not_name_the_command(self):
+        found = shell.commands("if FOO=1 /usr/bin/python.exe x.py; then echo ok; fi")
+        self.assertEqual([command.name for command in found], ["python", "echo"],
+                         "the program's name is the first real word, without folder or .exe")
+
+    def test_a_heredoc_body_and_a_comment_hold_no_command(self):
+        found = shell.commands("cat <<'EOF' | wc -l\nrm -rf /\nEOF\n# echo x > y")
+        self.assertEqual([command.words for command in found], [("cat",), ("wc", "-l")],
+                         "the body's text and the comment are not commands")
+
+    def test_a_command_substitution_stays_in_its_word(self):
+        found = shell.commands('echo "$(date; ls > x)" > out.txt')
+        self.assertEqual((len(found), found[0].redirects[0].target), (1, "out.txt"),
+                         "the substitution is one word, and the outer redirect is the command's")
+
+
 class TheBudgetLength(unittest.TestCase):
     def test_bytes_and_apostrophes(self):
         self.assertEqual(shell.budget_length("a'b"), 6, "each apostrophe counts as four")

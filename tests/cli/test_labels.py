@@ -10,7 +10,7 @@ class ShellCallsGetResultAndShapeLabels(unittest.TestCase):
     def test_each_seed_label_matches_the_output_it_counts(self):
         cases = {
             "unexpected-eof": "bash: -c: line 3: unexpected EOF while looking for matching `''",
-            "guard-refused": "shell-write-guard refused this command",
+            "hook-refused": "PreToolUse:Bash hook error: [python guard.py]: this command was refused",
             "msys-path": "error: C:/Program Files/Git/usr/bin/foo not found",
             "heredoc-eof": "warning: here-document at line 1 delimited by end-of-file (wanted `PY')",
         }
@@ -18,9 +18,9 @@ class ShellCallsGetResultAndShapeLabels(unittest.TestCase):
             with self.subTest(label=label):
                 self.assertIn(label, labels("Bash", "echo", output, True), f"{label} is found in its output")
 
-    def test_the_guards_file_name_in_output_is_not_a_refusal(self):
-        self.assertEqual(labels("Bash", "wc -l *", "   74 shell-write-guard.py", False), (),
-                         "only the guard's refusal text counts, never its name in a listing or a diff")
+    def test_a_guards_file_name_in_output_is_not_a_refusal(self):
+        self.assertEqual(labels("Bash", "wc -l *", "   74 write-guard.py", False), (),
+                         "only a hook's refusal counts, never a guard's name in a listing or a diff")
 
     def test_a_command_shape_gets_a_cmd_label(self):
         self.assertEqual(labels("Bash", "python - <<'PY'\nprint(1)\nPY", "1", False), ("cmd-heredoc",),

@@ -18,7 +18,7 @@ SHELL_RESULT: tuple[tuple[str, re.Pattern], ...] = (
     ("heredoc-eof", re.compile(r"here-document at line \d+ delimited by end-of-file|wanted [`']\w+'", re.I)),
     ("unexpected-eof", re.compile(r"unexpected EOF while looking for matching|unexpected end of file", re.I)),
     ("bash-syntax", re.compile(r"syntax error near unexpected token", re.I)),
-    ("guard-refused", re.compile(r"shell-write-guard refused", re.I)),
+    ("hook-refused", re.compile(r"PreToolUse:\w+ hook error")),
     ("ps-terminator", re.compile(r"string is missing the terminator|Missing closing|Unexpected token"
                                  r"|ParserError|The here-string", re.I)),
     ("unicode-error", re.compile(r"Unicode(?:En|De)codeError|charmap. codec|codec can't (?:en|de)code",

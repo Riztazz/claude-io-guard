@@ -3,8 +3,9 @@
 A Claude Code plugin that checks what an agent sends to the file and shell tools, fixes what it safely can, and
 returns a structured error for the rest. One codebase runs on Windows and macOS.
 
-**Status: in build.** The plugin installs, and its hooks answer every file and shell call, but no check runs yet.
-The build plan is in `.claude/tasks/`, and this page describes the plugin the plan builds.
+**Status: in build.** The plugin installs, and its hooks answer every file and shell call. Three checks run so
+far: the session probe, the Bash body move and the shell-write refusal. The build plan is in `.claude/tasks/`,
+and this page describes the plugin the plan builds.
 
 ## Five fixes, by example
 
@@ -41,8 +42,9 @@ With       ANCHOR_NOT_FOUND, with the closest match: line 48 holds "\tretries = 
 ```
 The call   Bash: sed -i 's/timeout=30/timeout=60/' src/client.py
 Without    The file changes, and nothing records how.
-With       Refused. SHELL_WRITE: The command writes a file git tracks through the shell, around io-guard's
-           checks. Use the Edit tool to change the file, or the Write tool to replace it whole.
+With       Refused. SHELL_WRITE: This command writes C:/work/app/src/client.py, which git tracks, through
+           sed -i, so the write skips io-guard's byte checks and Claude Code's checkpoints. Use the Edit tool
+           to change it, or the Write tool to replace it whole.
 ```
 
 **A search that finds nothing.** grep exits with 1 when no line matches.
@@ -68,7 +70,7 @@ The numbers come from 738 transcripts of real agent sessions, 2026-06-20 to 2026
 | On Windows, a Bash command longer than about 7.8 KB fails with "unexpected EOF", and a `\\` that no double quote follows loses a backslash | 241 failed commands, about 531k tokens | Moves a heredoc or `python -c` body into a file, byte-exact, and runs the file. Warns about a halved `\\` it cannot move |
 | Write turns a CRLF file into LF and drops its BOM, and Edit trims trailing spaces from the new text | 432 "LF will be replaced by CRLF" warnings | Rewrites the input in the file's own endings, BOM and indent before it runs |
 | A failed Edit says "not found" and nothing else | 71 anchor misses, 137 stale reads | Returns the closest match, the file's endings and a corrected call |
-| `sed -i`, redirects and scripts write files around the edit tools, so no check and no rewind sees them | 6,217 shell writes | Refuses the write and names the tool that does it safely |
+| `sed -i`, redirects and scripts write files around the edit tools, so no check and no rewind sees them | 6,217 shell writes | Refuses a write to a file git tracks, names the tool that does it safely, and warns about a script created inside the repository |
 | Long output is cut, and exit code 1 from grep stops a chain | 180 cut results | Labels the exit code and summarises the errors |
 
 ## How it works
