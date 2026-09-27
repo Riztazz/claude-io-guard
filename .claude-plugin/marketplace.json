@@ -1,0 +1,15 @@
+{
+  "name": "claude-io-guard",
+  "description": "io-guard, a Claude Code plugin that checks file and shell tool calls",
+  "owner": {
+    "name": "Riztazz",
+    "url": "https://github.com/Riztazz"
+  },
+  "plugins": [
+    {
+      "name": "io-guard",
+      "source": "./plugins/io-guard",
+      "description": "Checks what an agent sends to the file and shell tools, fixes what it safely can, and returns a structured error for the rest."
+    }
+  ]
+}

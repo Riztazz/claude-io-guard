@@ -1,0 +1,19 @@
+{
+  "name": "io-guard",
+  "description": "Checks what an agent sends to the file and shell tools, fixes what it safely can, and returns a structured error for the rest.",
+  "author": {
+    "name": "Riztazz",
+    "url": "https://github.com/Riztazz"
+  },
+  "homepage": "https://github.com/Riztazz/claude-io-guard",
+  "repository": "https://github.com/Riztazz/claude-io-guard",
+  "license": "MIT",
+  "userConfig": {
+    "python": {
+      "type": "string",
+      "title": "Python interpreter",
+      "description": "The command that starts Python 3.14 or later. Windows with python.org Python: python",
+      "default": "python3"
+    }
+  }
+}

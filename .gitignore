@@ -4,6 +4,7 @@ __pycache__/
 /corpus/
 /events/
 /reports/
+/workbench/
 
 # install.ps1 manages every line down to the closing line. A hand edit here is lost.
 .claude/_replaced/

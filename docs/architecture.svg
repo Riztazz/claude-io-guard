@@ -1,0 +1,382 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 1132" role="img" aria-labelledby="svg-title svg-desc" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+<title id="svg-title">io-guard architecture</title>
+<desc id="svg-desc">How io-guard sits between Claude Code's tools and the files on disk: the hook runner calls the plugin's io server, a pipeline of checks decides, and lib does every read and write. Four coloured flows show a guarded tool call, an io tool call, session start with the heartbeat, and telemetry.</desc>
+<style><![CDATA[
+  svg { --bg: #ffffff; --fg: #1f2328; --muted: #57606a; --box: #f6f8fa; --stroke: #d0d7de; --lane: #fbfcfd;
+        --lane-stroke: #e3e7eb; --a: #0969da; --b: #1a7f37; --c: #9a6700; --d: #8250df; --chip: #eaeef2; }
+  @media (prefers-color-scheme: dark) {
+    svg { --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --box: #161b22; --stroke: #3d444d; --lane: #10151c;
+          --lane-stroke: #262c33; --a: #4493f8; --b: #3fb950; --c: #d29922; --d: #ab7df8; --chip: #21262d; }
+  }
+  .bg { fill: var(--bg); }
+  .lane { fill: var(--lane); stroke: var(--lane-stroke); stroke-width: 1; }
+  .lane-label { fill: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; }
+  .group { fill: none; stroke: var(--stroke); stroke-width: 1.2; stroke-dasharray: 5 4; }
+  .group-label { fill: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: 0.8px; }
+  .box rect { fill: var(--box); stroke: var(--stroke); stroke-width: 1.2; }
+  .box .t { fill: var(--fg); font-size: 14px; font-weight: 700; }
+  .box .s { fill: var(--muted); font-size: 11.5px; }
+  .box { cursor: pointer; }
+  .box:hover rect, .box:focus rect { stroke: var(--fg); stroke-width: 2; }
+  .title { fill: var(--fg); font-size: 22px; font-weight: 800; }
+  .subtitle { fill: var(--muted); font-size: 13px; }
+  .arrow { fill: none; stroke-width: 2; stroke-linejoin: round; }
+  .fa { stroke: var(--a); } .fb { stroke: var(--b); } .fc { stroke: var(--c); } .fd { stroke: var(--d); }
+  .badge circle { stroke: var(--bg); stroke-width: 2; }
+  .badge text { fill: #ffffff; font-size: 9px; font-weight: 800; text-anchor: middle; dominant-baseline: central; }
+  .ba circle { fill: var(--a); } .bb circle { fill: var(--b); } .bc circle { fill: var(--c); } .bd circle { fill: var(--d); }
+  .panel rect.frame { fill: var(--box); stroke: var(--stroke); stroke-width: 1.2; }
+  .panel .pt { fill: var(--fg); font-size: 13px; font-weight: 700; }
+  .panel .pl { fill: var(--fg); font-size: 11.5px; }
+  .panel .pm { fill: var(--muted); font-size: 11px; }
+  .chip rect { fill: var(--chip); stroke: var(--stroke); }
+  .chip text { fill: var(--fg); font-size: 11px; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+  .btn { cursor: pointer; }
+  .btn rect { fill: var(--box); stroke: var(--stroke); stroke-width: 1.2; }
+  .btn text { fill: var(--fg); font-size: 12px; font-weight: 600; text-anchor: middle; dominant-baseline: central; }
+  .btn .dot { stroke: none; }
+  .btn:hover rect, .btn:focus rect { stroke: var(--fg); }
+  .btn.on rect { stroke: var(--fg); stroke-width: 2; }
+  .help { fill: var(--muted); font-size: 12px; }
+  .dim { opacity: 0.13; }
+  .active { stroke-width: 4.5; }
+  .hl rect { stroke: var(--fg); stroke-width: 2.2; }
+]]></style>
+<defs>
+  <marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#8c959f" style="fill: context-stroke"/>
+  </marker>
+</defs>
+
+<rect class="bg" x="0" y="0" width="1440" height="1132"/>
+
+<text class="title" x="20" y="34">io-guard</text>
+<text class="subtitle" x="118" y="33">checks what an agent sends to the file and shell tools, fixes what it safely can, and returns a structured error for the rest</text>
+
+<g id="buttons">
+  <g class="btn on" data-flow="all" role="button" tabindex="0"><rect x="20" y="46" width="92" height="26" rx="13"/><text x="66" y="59">All flows</text></g>
+  <g class="btn" data-flow="A" role="button" tabindex="0"><rect x="120" y="46" width="176" height="26" rx="13"/><circle class="dot" cx="138" cy="59" r="5" style="fill: var(--a)"/><text x="222" y="59">A. A guarded tool call</text></g>
+  <g class="btn" data-flow="B" role="button" tabindex="0"><rect x="304" y="46" width="150" height="26" rx="13"/><circle class="dot" cx="322" cy="59" r="5" style="fill: var(--b)"/><text x="392" y="59">B. An io tool call</text></g>
+  <g class="btn" data-flow="C" role="button" tabindex="0"><rect x="462" y="46" width="222" height="26" rx="13"/><circle class="dot" cx="480" cy="59" r="5" style="fill: var(--c)"/><text x="578" y="59">C. Session start, heartbeat</text></g>
+  <g class="btn" data-flow="D" role="button" tabindex="0"><rect x="692" y="46" width="130" height="26" rx="13"/><circle class="dot" cx="710" cy="59" r="5" style="fill: var(--d)"/><text x="762" y="59">D. Telemetry</text></g>
+  <g class="btn" id="play" role="button" tabindex="0"><rect x="830" y="46" width="118" height="26" rx="13"/><text x="889" y="59">Play the flow</text></g>
+</g>
+
+<!-- lanes -->
+<rect class="lane" x="14" y="84" width="1412" height="166" rx="12"/>
+<text class="lane-label" x="28" y="102">CLAUDE CODE</text>
+<rect class="lane" x="14" y="256" width="1412" height="712" rx="12"/>
+<text class="lane-label" x="28" y="276">IO-GUARD PLUGIN</text>
+<rect class="lane" x="14" y="984" width="1412" height="104" rx="12"/>
+<text class="lane-label" x="28" y="1004">ON THIS MACHINE</text>
+
+<rect class="group" x="710" y="392" width="710" height="480" rx="12"/>
+<text class="group-label" x="724" y="414">IO SERVER: ONE PER SESSION, SHARED BY ITS SUBAGENTS</text>
+
+<!-- arrows -->
+<g id="arrows" marker-end="url(#head)">
+  <path class="arrow fa" data-flows="A" data-from="model" data-to="shell" d="M230,170 H268" marker-end="url(#head)"/>
+  <path class="arrow fa" data-flows="A" data-from="shell" data-to="runner" d="M365,140 V124 H835 V138" marker-end="url(#head)"/>
+  <path class="arrow fa" data-flows="A" data-from="runner" data-to="hooksjson" d="M835,200 V288" marker-end="url(#head)"/>
+  <path class="arrow fa" data-flows="A" data-from="hooksjson" data-to="client" d="M940,318 H1190 V180 H1208" marker-end="url(#head)"/>
+  <path class="arrow fa" data-flows="A B" data-from="client" data-to="protocol" d="M1305,200 V428" marker-end="url(#head)"/>
+  <path class="arrow fa" data-flows="A B" data-from="protocol" data-to="toolreg" d="M1305,486 V520" marker-end="url(#head)"/>
+  <path class="arrow fa" data-flows="A" data-from="toolreg" data-to="bridge" d="M1210,550 H1172" marker-end="url(#head)"/>
+  <path class="arrow fa" data-flows="A" data-from="bridge" data-to="entry" d="M1075,578 V612" marker-end="url(#head)"/>
+  <path class="arrow fa" data-flows="A" data-from="entry" data-to="pipeline" d="M1075,670 V704" marker-end="url(#head)"/>
+  <path class="arrow fa" data-flows="A" data-from="pipeline" data-to="checks" d="M1075,762 V796" marker-end="url(#head)"/>
+  <path class="arrow fa" data-flows="A D" data-from="checks" data-to="lib" d="M1075,854 V898" marker-end="url(#head)"/>
+  <path class="arrow fa" data-flows="A" data-from="checks" data-to="context" d="M980,826 H960 V742 H942" marker-end="url(#head)"/>
+  <path class="arrow fa" data-flows="A" data-from="client" data-to="runner" d="M1250,140 V112 H900 V138" marker-end="url(#head)"/>
+  <path class="arrow fa" data-flows="A" data-from="runner" data-to="perm" d="M940,170 H978" marker-end="url(#head)"/>
+  <path class="arrow fa" data-flows="A" data-from="perm" data-to="shell" d="M1075,200 V240 H365 V202" marker-end="url(#head)"/>
+  <path class="arrow fa" data-flows="A" data-from="lib" data-to="scratch" d="M835,956 V1014" marker-end="url(#head)"/>
+  <path class="arrow fa" data-flows="A" data-from="skill" data-to="model" d="M135,290 V202" marker-end="url(#head)"/>
+  <path class="arrow fb" data-flows="B" data-from="model" data-to="client" d="M200,140 V96 H1340 V138" marker-end="url(#head)"/>
+  <path class="arrow fb" data-flows="B" data-from="toolreg" data-to="iotools" d="M1305,578 V612" marker-end="url(#head)"/>
+  <path class="arrow fb" data-flows="B D" data-from="iotools" data-to="lib" d="M1305,670 V898" marker-end="url(#head)"/>
+  <path class="arrow fb" data-flows="B" data-from="iotools" data-to="handles" d="M1210,632 H1190 V458 H1172" marker-end="url(#head)"/>
+  <path class="arrow fb" data-flows="B" data-from="lib" data-to="project" d="M1305,956 V1014" marker-end="url(#head)"/>
+  <path class="arrow fb" data-flows="B" data-from="lib" data-to="git" d="M1075,956 V1014" marker-end="url(#head)"/>
+  <path class="arrow fc" data-flows="C" data-from="runner" data-to="hooksh" d="M760,200 V270 H420 V288" marker-start="url(#head)" marker-end="url(#head)"/>
+  <path class="arrow fc" data-flows="C" data-from="hooksh" data-to="lib" d="M460,318 H480 V928 H498" marker-end="url(#head)"/>
+  <path class="arrow fc" data-flows="C" data-from="threads" data-to="lib" d="M835,854 V898" marker-end="url(#head)"/>
+  <path class="arrow fc" data-flows="C D" data-from="lib" data-to="data" d="M600,956 V1014" marker-end="url(#head)"/>
+  <path class="arrow fd" data-flows="D" data-from="data" data-to="dashboard" d="M270,1044 H232" marker-end="url(#head)"/>
+</g>
+
+<!-- boxes -->
+<g id="boxes">
+  <g class="box" id="model" tabindex="0"><title>The agent. It picks the next tool call, and reads io-guard's refusals and context.</title><rect x="40" y="140" width="190" height="60" rx="9"/><text class="t" x="56" y="165">Model</text><text class="s" x="56" y="185">picks the next tool call</text></g>
+  <g class="box" id="shell" tabindex="0"><title>Claude Code's Bash and PowerShell tools. On Windows the Bash tool halves every double backslash and cuts commands near 7.8 KB.</title><rect x="270" y="140" width="190" height="60" rx="9"/><text class="t" x="286" y="165">Shell tools</text><text class="s" x="286" y="185">Bash and PowerShell</text></g>
+  <g class="box" id="files" tabindex="0"><title>Claude Code's Edit, Write and Read tools. io-guard conforms their input to the file's endings, BOM and indent, and checks every write.</title><rect x="500" y="140" width="190" height="60" rx="9"/><text class="t" x="516" y="165">File tools</text><text class="s" x="516" y="185">Edit, Write and Read</text></g>
+  <g class="box" id="runner" tabindex="0"><title>Fires the hook events: PreToolUse before a call, PostToolUse after it, PostToolUseFailure on an error, SessionStart, UserPromptSubmit.</title><rect x="730" y="140" width="210" height="60" rx="9"/><text class="t" x="746" y="165">Hook runner</text><text class="s" x="746" y="185">fires the hook events</text></g>
+  <g class="box" id="perm" tabindex="0"><title>Permission rules, the prompt and the auto-mode classifier. They judge the input after io-guard's rewrite.</title><rect x="980" y="140" width="190" height="60" rx="9"/><text class="t" x="996" y="165">Permission layer</text><text class="s" x="996" y="185">rules, prompt, classifier</text></g>
+  <g class="box" id="client" tabindex="0"><title>Claude Code's MCP client: one stdio connection per session to the io server, with the legacy handshake by default.</title><rect x="1210" y="140" width="190" height="60" rx="9"/><text class="t" x="1226" y="165">MCP client</text><text class="s" x="1226" y="185">one stdio link per session</text></g>
+
+  <g class="box" id="skill" tabindex="0"><title>The io-guard skill: every code, its fix, and which io tool does which job, generated from the code table and the tool registry.</title><rect x="40" y="290" width="190" height="56" rx="9"/><text class="t" x="56" y="313">io-guard skill</text><text class="s" x="56" y="332">codes, fixes, tool names</text></g>
+  <g class="box" id="hooksh" tabindex="0"><title>hook.sh finds Python and runs hook.py. Only SessionStart and the per-turn heartbeat check use it, and the fallback when mcp_tool hooks are unavailable.</title><rect x="270" y="290" width="190" height="56" rx="9"/><text class="t" x="286" y="313">hook.sh, hook.py</text><text class="s" x="286" y="332">session start, heartbeat</text></g>
+  <g class="box" id="hooksjson" tabindex="0"><title>Binds each tool event to a hook.* tool on the io server (mcp_tool hooks), and SessionStart and UserPromptSubmit to hook.sh.</title><rect x="730" y="290" width="210" height="56" rx="9"/><text class="t" x="746" y="313">hooks.json</text><text class="s" x="746" y="332">binds events to hook tools</text></g>
+
+  <g class="box" id="handles" tabindex="0"><title>Handles for background runs and snapshots, with stated lifetimes. The elicitor asks the user for a decision, such as a locked file.</title><rect x="980" y="430" width="190" height="56" rx="9"/><text class="t" x="996" y="453">Handles, elicitor</text><text class="s" x="996" y="472">runs, snapshots, questions</text></g>
+  <g class="box" id="protocol" tabindex="0"><title>Reads JSON-RPC from stdin, answers both MCP eras (2026-07-28 and the legacy initialize), validates _meta and maps errors.</title><rect x="1210" y="430" width="190" height="56" rx="9"/><text class="t" x="1226" y="453">Protocol</text><text class="s" x="1226" y="472">both MCP eras, _meta</text></g>
+  <g class="box" id="context" tabindex="0"><title>What a check reads: the config, the platform probe, git, the file system, the clock, the session state and telemetry. Tests pass a fake one.</title><rect x="730" y="522" width="210" height="240" rx="9"/><text class="t" x="746" y="547">Context</text><text class="s" x="746" y="572">config, four layers</text><text class="s" x="746" y="594">probe and platform</text><text class="s" x="746" y="616">git and file system ports</text><text class="s" x="746" y="638">clock</text><text class="s" x="746" y="660">session state</text><text class="s" x="746" y="682">telemetry</text><text class="s" x="746" y="720">read by every check,</text><text class="s" x="746" y="738">faked in every test</text></g>
+  <g class="box" id="bridge" tabindex="0"><title>hook.pre_tool_use, hook.post_tool_use and hook.post_tool_use_failure: the hook events as tools, so no Python starts per call.</title><rect x="980" y="522" width="190" height="56" rx="9"/><text class="t" x="996" y="545">hook.* bridge</text><text class="s" x="996" y="564">hook events as tools</text></g>
+  <g class="box" id="toolreg" tabindex="0"><title>One ToolSpec per tool, with generated input and output schemas, annotations, and the callable names the skill prints.</title><rect x="1210" y="522" width="190" height="56" rx="9"/><text class="t" x="1226" y="545">Tool registry</text><text class="s" x="1226" y="564">specs, generated schemas</text></g>
+  <g class="box" id="entry" tabindex="0"><title>hooks.entry runs one event through the pipeline. hooks.answer turns the outcome into the exact JSON the harness expects.</title><rect x="980" y="614" width="190" height="56" rx="9"/><text class="t" x="996" y="637">hooks.entry</text><text class="s" x="996" y="656">event in, harness JSON out</text></g>
+  <g class="box" id="iotools" tabindex="0"><title>io.read, io.edit, io.splice, io.append, io.run, io.status, io.read_log, io.format, and later snapshots and staging.</title><rect x="1210" y="614" width="190" height="56" rx="9"/><text class="t" x="1226" y="637">io tools</text><text class="s" x="1226" y="656">edit, splice, run, format</text></g>
+  <g class="box" id="pipeline" tabindex="0"><title>Selects the checks for the event, orders them by layer and cost, chains their rewrites, stops at the first refusal, holds the 300 ms and 2 s budget, and fails open on a bug.</title><rect x="980" y="706" width="190" height="56" rx="9"/><text class="t" x="996" y="729">Pipeline</text><text class="s" x="996" y="748">order, chain, budget</text></g>
+  <g class="box" id="checks" tabindex="0"><title>One class per concern: location, transport, bytes, stale view, read, output. Each declares its codes, its config keys and its cost.</title><rect x="980" y="798" width="190" height="56" rx="9"/><text class="t" x="996" y="821">Checks</text><text class="s" x="996" y="840">transport, bytes, stale view</text></g>
+  <g class="box" id="threads" tabindex="0"><title>A reader, a writer lock, four workers, a telemetry queue and a watchdog. One server serves a session and all its subagents safely.</title><rect x="730" y="798" width="210" height="56" rx="9"/><text class="t" x="746" y="821">Threads</text><text class="s" x="746" y="840">reader, 4 workers, watchdog</text></g>
+
+  <g class="box" id="lib" tabindex="0"><title>Mechanism only, with no config and no decisions. Every disk read and write goes through it.</title><rect x="500" y="900" width="900" height="56" rx="9"/><text class="t" x="516" y="923">lib: mechanism only, and every read and write goes through it</text><text class="s" x="516" y="942">profile   anchors   shell   paths   git   locks   proc   results   config   rules   telemetry   bytes and atomic writes</text></g>
+
+  <g class="box" id="dashboard" tabindex="0"><title>The MCP App page, or the same page from report.py --html: counts and percentiles, recent events, toggles for checks and the rewrite mode.</title><rect x="40" y="1016" width="190" height="56" rx="9"/><text class="t" x="56" y="1039">Dashboard page</text><text class="s" x="56" y="1058">MCP App or report --html</text></g>
+  <g class="box" id="data" tabindex="0"><title>The plugin's own folder: config.json, probe.json, snapshots, handles, locks, one telemetry file per session, and the heartbeat.</title><rect x="270" y="1016" width="420" height="56" rx="9"/><text class="t" x="286" y="1039">Plugin data</text><text class="s" x="286" y="1058">config, probe, snapshots, handles, locks, telemetry, heartbeat</text></g>
+  <g class="box" id="scratch" tabindex="0"><title>The session scratchpad: command bodies moved out of heredocs, and the logs of io.run.</title><rect x="730" y="1016" width="210" height="56" rx="9"/><text class="t" x="746" y="1039">Scratchpad</text><text class="s" x="746" y="1058">moved bodies, run logs</text></g>
+  <g class="box" id="git" tabindex="0"><title>Read for tracked files, status and hunks. io.stage writes the index only, and nothing ever commits.</title><rect x="980" y="1016" width="190" height="56" rx="9"/><text class="t" x="996" y="1039">Git</text><text class="s" x="996" y="1058">status, hunks, the index</text></g>
+  <g class="box" id="project" tabindex="0"><title>The files the agent works on. Every io tool writes them atomically, under a lock that two sessions share.</title><rect x="1210" y="1016" width="190" height="56" rx="9"/><text class="t" x="1226" y="1039">Project files</text><text class="s" x="1226" y="1058">atomic write under a lock</text></g>
+</g>
+
+<!-- static panels, shown when nothing is selected -->
+<g class="panel static-panel">
+  <rect class="frame" x="40" y="380" width="420" height="252" rx="10"/>
+  <text class="pt" x="58" y="406">What happens to a rewritten command</text>
+  <g class="chip"><rect x="58" y="424" width="62" height="22" rx="11"/><text x="89" y="435">refuse</text></g>
+  <text class="pl" x="132" y="433">Default in auto and dontAsk. Denied, with the fixed</text>
+  <text class="pl" x="132" y="450">command as the fix. The model reruns it, so the</text>
+  <text class="pl" x="132" y="467">auto-mode classifier judges it.</text>
+  <g class="chip"><rect x="58" y="488" width="62" height="22" rx="11"/><text x="89" y="499">ask</text></g>
+  <text class="pl" x="132" y="497">Default in default, acceptEdits and plan. You see</text>
+  <text class="pl" x="132" y="514">the fixed command and approve it.</text>
+  <g class="chip"><rect x="58" y="536" width="62" height="22" rx="11"/><text x="89" y="547">allow</text></g>
+  <text class="pl" x="132" y="545">Default in bypassPermissions. Runs at once, and no</text>
+  <text class="pl" x="132" y="562">classifier sees it.</text>
+  <text class="pm" x="58" y="596">Set per permission mode in config.json, with io.config,</text>
+  <text class="pm" x="58" y="613">or on the dashboard. File-tool fixes always run.</text>
+</g>
+<g class="panel static-panel">
+  <rect class="frame" x="40" y="652" width="420" height="224" rx="10"/>
+  <text class="pt" x="58" y="678">When a check is slow or broken</text>
+  <text class="pl" x="58" y="704">Past 300 ms the checks that run a subprocess are skipped.</text>
+  <text class="pl" x="58" y="721">Past 2 s every remaining check is skipped, and the call</text>
+  <text class="pl" x="58" y="738">goes ahead with what was decided. Both are settings.</text>
+  <text class="pl" x="58" y="770">A check that crashes is skipped and logged, the call runs,</text>
+  <text class="pl" x="58" y="787">and you get one warning per session. A guard bug never</text>
+  <text class="pl" x="58" y="804">blocks your work.</text>
+  <text class="pl" x="58" y="836">If the io server dies, the next prompt says so once. Claude</text>
+  <text class="pl" x="58" y="853">Code does not restart it, so a new session brings it back.</text>
+</g>
+
+<!-- interactive side panel, filled by the script -->
+<foreignObject id="side" x="36" y="376" width="428" height="504" style="display: none">
+  <div xmlns="http://www.w3.org/1999/xhtml" id="side-body" style="box-sizing:border-box;height:100%;overflow:auto;padding:12px 14px;border:1.2px solid var(--stroke);border-radius:10px;background:var(--box);color:var(--fg);font:12.5px/1.45 -apple-system,'Segoe UI',Helvetica,Arial,sans-serif"></div>
+</foreignObject>
+
+<!-- badges -->
+<g id="badges">
+  <g class="badge ba" data-flow="A" data-step="1"><circle cx="249" cy="170" r="10"/><text x="249" y="170">A1</text></g>
+  <g class="badge ba" data-flow="A" data-step="2"><circle cx="600" cy="124" r="10"/><text x="600" y="124">A2</text></g>
+  <g class="badge ba" data-flow="A" data-step="3"><circle cx="835" cy="250" r="10"/><text x="835" y="250">A3</text></g>
+  <g class="badge ba" data-flow="A" data-step="4"><circle cx="1080" cy="318" r="10"/><text x="1080" y="318">A4</text></g>
+  <g class="badge ba" data-flow="A" data-step="5"><circle cx="1305" cy="300" r="10"/><text x="1305" y="300">A5</text></g>
+  <g class="badge ba" data-flow="A" data-step="6"><circle cx="1293" cy="503" r="10"/><text x="1293" y="503">A6</text></g>
+  <g class="badge ba" data-flow="A" data-step="7"><circle cx="1190" cy="550" r="10"/><text x="1190" y="550">A7</text></g>
+  <g class="badge ba" data-flow="A" data-step="8"><circle cx="1075" cy="595" r="10"/><text x="1075" y="595">A8</text></g>
+  <g class="badge ba" data-flow="A" data-step="9"><circle cx="1075" cy="687" r="10"/><text x="1075" y="687">A9</text></g>
+  <g class="badge ba" data-flow="A" data-step="10"><circle cx="1075" cy="779" r="10"/><text x="1075" y="779">A10</text></g>
+  <g class="badge ba" data-flow="A" data-step="11"><circle cx="1075" cy="877" r="10"/><text x="1075" y="877">A11</text></g>
+  <g class="badge ba" data-flow="A" data-step="12"><circle cx="960" cy="790" r="10"/><text x="960" y="790">A12</text></g>
+  <g class="badge ba" data-flow="A" data-step="13"><circle cx="1075" cy="112" r="10"/><text x="1075" y="112">A13</text></g>
+  <g class="badge ba" data-flow="A" data-step="14"><circle cx="959" cy="170" r="10"/><text x="959" y="170">A14</text></g>
+  <g class="badge ba" data-flow="A" data-step="15"><circle cx="620" cy="240" r="10"/><text x="620" y="240">A15</text></g>
+  <g class="badge ba" data-flow="A" data-step="16"><circle cx="835" cy="986" r="10"/><text x="835" y="986">A16</text></g>
+  <g class="badge ba" data-flow="A" data-step="17"><circle cx="135" cy="246" r="10"/><text x="135" y="246">A17</text></g>
+  <g class="badge bb" data-flow="B" data-step="1"><circle cx="770" cy="96" r="10"/><text x="770" y="96">B1</text></g>
+  <g class="badge bb" data-flow="B" data-step="2"><circle cx="1305" cy="330" r="10"/><text x="1305" y="330">B2</text></g>
+  <g class="badge bb" data-flow="B" data-step="3"><circle cx="1317" cy="503" r="10"/><text x="1317" y="503">B3</text></g>
+  <g class="badge bb" data-flow="B" data-step="4"><circle cx="1305" cy="595" r="10"/><text x="1305" y="595">B4</text></g>
+  <g class="badge bb" data-flow="B" data-step="5"><circle cx="1305" cy="780" r="10"/><text x="1305" y="780">B5</text></g>
+  <g class="badge bb" data-flow="B" data-step="6"><circle cx="1190" cy="500" r="10"/><text x="1190" y="500">B6</text></g>
+  <g class="badge bb" data-flow="B" data-step="7"><circle cx="1305" cy="986" r="10"/><text x="1305" y="986">B7</text></g>
+  <g class="badge bb" data-flow="B" data-step="8"><circle cx="1075" cy="986" r="10"/><text x="1075" y="986">B8</text></g>
+  <g class="badge bc" data-flow="C" data-step="1"><circle cx="590" cy="270" r="10"/><text x="590" y="270">C1</text></g>
+  <g class="badge bc" data-flow="C" data-step="2"><circle cx="480" cy="620" r="10"/><text x="480" y="620">C2</text></g>
+  <g class="badge bc" data-flow="C" data-step="3"><circle cx="835" cy="877" r="10"/><text x="835" y="877">C3</text></g>
+  <g class="badge bc" data-flow="C" data-step="4"><circle cx="588" cy="986" r="10"/><text x="588" y="986">C4</text></g>
+  <g class="badge bd" data-flow="D" data-step="1"><circle cx="1099" cy="877" r="10"/><text x="1099" y="877">D1</text></g>
+  <g class="badge bd" data-flow="D" data-step="2"><circle cx="1329" cy="780" r="10"/><text x="1329" y="780">D2</text></g>
+  <g class="badge bd" data-flow="D" data-step="3"><circle cx="612" cy="986" r="10"/><text x="612" y="986">D3</text></g>
+  <g class="badge bd" data-flow="D" data-step="4"><circle cx="251" cy="1044" r="10"/><text x="251" y="1044">D4</text></g>
+</g>
+
+<text class="help" x="20" y="1116">Opened in a browser: pick a flow to follow it, press Play to walk it step by step, and hover or focus a box to read what it does. Docs: docs/design/architecture.md.</text>
+
+<script><![CDATA[
+(function () {
+  var svg = document.documentElement;
+  if (!svg || svg.tagName.toLowerCase() !== 'svg') { return; }
+
+  var STEPS = {
+    A: { name: 'A. A guarded tool call', steps: [
+      'The model calls a shell or file tool.',
+      'Claude Code fires PreToolUse before the call runs.',
+      "The hook runner matches the event in io-guard's hooks.json.",
+      "The mcp_tool hook names the plugin's own server, plugin:io-guard:io.",
+      'The MCP client calls hook.pre_tool_use on the io server, which is already running.',
+      'The protocol layer dispatches the call by name.',
+      'The registry hands it to the hook bridge tool.',
+      'The bridge rebuilds the Event from the substituted fields.',
+      "hooks.entry runs the pipeline in this session's Context.",
+      'The pipeline selects the checks for this event, orders them and runs them, within 300 ms, or 2 s at most.',
+      'Checks call lib: values in, values out. Each decision is also one telemetry line.',
+      'Checks read the config, the probe, git and the session state from the Context.',
+      "The answer returns as the tool result, and Claude Code reads it as the hook's decision: deny, ask or allow with the rewritten input, or context only.",
+      'The permission rules and the auto-mode classifier judge the rewritten input.',
+      'The approved command runs.',
+      'A moved command body waits in the scratchpad as a file.',
+      'A refusal names its code and its fix, and the skill tells the model which tool to call instead.'
+    ] },
+    B: { name: 'B. An io tool call', steps: [
+      'The model calls an io tool, after ToolSearch loads it.',
+      'The MCP client sends tools/call to the io server.',
+      'The protocol layer checks the era and dispatches by name.',
+      'The registry hands the typed input to the tool.',
+      'The tool calls lib: the profile, the anchors, the file lock and the atomic write. Each call is one telemetry line.',
+      'A background run or a snapshot gets a handle, and a decision goes to the user.',
+      'lib replaces the file atomically, under a lock that other sessions share.',
+      'lib reads git for hunks, and io.stage writes the index.'
+    ] },
+    C: { name: 'C. Session start and the heartbeat', steps: [
+      'SessionStart, and each new prompt, run the two command hooks through hook.sh.',
+      'hook.py probes the platform, or checks the heartbeat, through lib.',
+      "The server's watchdog writes the heartbeat every 5 seconds.",
+      'lib writes the probe and the heartbeat into the plugin data folder. A heartbeat older than 30 seconds gives one warning.'
+    ] },
+    D: { name: 'D. Telemetry and the dashboard', steps: [
+      'Every check decision is one telemetry line, with no file content.',
+      'Every io tool call is one telemetry line.',
+      'lib appends them to one file per session.',
+      'The dashboard and report.py show counts and percentiles.'
+    ] }
+  };
+
+  var arrows = Array.prototype.slice.call(svg.querySelectorAll('.arrow'));
+  var badges = Array.prototype.slice.call(svg.querySelectorAll('.badge'));
+  var boxes = Array.prototype.slice.call(svg.querySelectorAll('.box'));
+  var buttons = Array.prototype.slice.call(svg.querySelectorAll('.btn[data-flow]'));
+  var side = document.getElementById('side-body');
+  var sideFrame = document.getElementById('side');
+  var staticPanels = Array.prototype.slice.call(svg.querySelectorAll('.static-panel'));
+  var current = 'all';
+  var timer = null;
+
+  function showSide(visible) {
+    sideFrame.style.display = visible ? 'block' : 'none';
+    staticPanels.forEach(function (p) { p.style.display = visible ? 'none' : 'inline'; });
+  }
+
+  function arrowsOf(flow) {
+    return arrows.filter(function (a) { return a.getAttribute('data-flows').split(' ').indexOf(flow) >= 0; });
+  }
+  function stepArrow(flow, index) {
+    var badge = badges.filter(function (b) { return b.getAttribute('data-flow') === flow && +b.getAttribute('data-step') === index + 1; })[0];
+    if (!badge) { return null; }
+    var cx = +badge.querySelector('circle').getAttribute('cx');
+    var cy = +badge.querySelector('circle').getAttribute('cy');
+    var best = null, bestDist = 1e9;
+    arrowsOf(flow).forEach(function (a) {
+      var len = a.getTotalLength();
+      for (var t = 0; t <= len; t += 4) {
+        var p = a.getPointAtLength(t);
+        var d = (p.x - cx) * (p.x - cx) + (p.y - cy) * (p.y - cy);
+        if (d < bestDist) { bestDist = d; best = a; }
+      }
+    });
+    return best;
+  }
+  function escapeHtml(text) {
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function renderSteps(flow, active) {
+    var data = STEPS[flow];
+    var html = '<div style="font-weight:700;font-size:13.5px;margin-bottom:8px">' + escapeHtml(data.name) + '</div><ol style="margin:0;padding-left:26px">';
+    data.steps.forEach(function (s, i) {
+      var on = i === active;
+      html += '<li style="margin:0 0 6px 0;' + (on ? 'font-weight:700' : '') + '">' + escapeHtml(s) + '</li>';
+    });
+    side.innerHTML = html + '</ol>';
+  }
+  function renderBox(box) {
+    var title = box.querySelector('.t').textContent;
+    var text = box.querySelector('title').textContent;
+    side.innerHTML = '<div style="font-weight:700;font-size:13.5px;margin-bottom:8px">' + escapeHtml(title) + '</div><div>' + escapeHtml(text) + '</div>';
+  }
+  function select(flow) {
+    stop();
+    current = flow;
+    buttons.forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-flow') === flow); });
+    var inFlow = flow === 'all' ? null : arrowsOf(flow);
+    var boxIds = {};
+    if (inFlow) { inFlow.forEach(function (a) { boxIds[a.getAttribute('data-from')] = 1; boxIds[a.getAttribute('data-to')] = 1; }); }
+    arrows.forEach(function (a) {
+      a.classList.remove('active');
+      a.classList.toggle('dim', !!inFlow && inFlow.indexOf(a) < 0);
+      if (inFlow && inFlow.indexOf(a) >= 0) { a.setAttribute('class', a.getAttribute('class').replace(/\bf[abcd]\b/g, '') .trim() + ' f' + flow.toLowerCase()); }
+      else { a.setAttribute('class', a.getAttribute('class').replace(/\bf[abcd]\b/g, '').trim() + ' f' + a.getAttribute('data-flows').split(' ')[0].toLowerCase()); }
+    });
+    badges.forEach(function (b) { b.classList.toggle('dim', !!inFlow && b.getAttribute('data-flow') !== flow); });
+    boxes.forEach(function (b) { b.classList.toggle('dim', !!inFlow && !boxIds[b.id]); b.classList.remove('hl'); });
+    if (inFlow) { renderSteps(flow, -1); showSide(true); }
+    else { showSide(false); }
+  }
+  function stop() {
+    if (timer) { clearInterval(timer); timer = null; }
+    arrows.forEach(function (a) { a.classList.remove('active'); });
+  }
+  function play() {
+    var flow = current === 'all' ? 'A' : current;
+    if (current !== flow) { select(flow); }
+    stop();
+    var i = 0, n = STEPS[flow].steps.length;
+    function tick() {
+      arrows.forEach(function (a) { a.classList.remove('active'); });
+      var a = stepArrow(flow, i);
+      if (a) { a.classList.add('active'); }
+      renderSteps(flow, i);
+      i = (i + 1) % n;
+    }
+    tick();
+    timer = setInterval(tick, 1600);
+  }
+
+  buttons.forEach(function (b) {
+    b.addEventListener('click', function () { select(b.getAttribute('data-flow')); });
+    b.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(b.getAttribute('data-flow')); } });
+  });
+  var playButton = svg.querySelector('#play');
+  playButton.addEventListener('click', play);
+  playButton.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); play(); } });
+
+  boxes.forEach(function (box) {
+    function show() {
+      boxes.forEach(function (b) { b.classList.remove('hl'); });
+      box.classList.add('hl');
+      showSide(true);
+      renderBox(box);
+    }
+    function hide() {
+      box.classList.remove('hl');
+      if (current === 'all') { showSide(false); }
+      else if (!timer) { renderSteps(current, -1); }
+    }
+    box.addEventListener('mouseenter', show);
+    box.addEventListener('focus', show);
+    box.addEventListener('mouseleave', hide);
+    box.addEventListener('blur', hide);
+  });
+
+  showSide(false);
+})();
+]]></script>
+</svg>
