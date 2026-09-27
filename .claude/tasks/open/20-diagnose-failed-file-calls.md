@@ -16,11 +16,11 @@ Each failed file call below was followed by a re-read and a retry. Counts are fr
 
 | Failure | Count |
 |---|---|
-| Anchor misses | 71 |
+| Anchor misses | 67 |
 | Not read yet | 82 |
-| Modified since read | 55 |
-| Missing paths | 224 |
-| Reads over the size or token limit | 20 |
+| Modified since read | 30 |
+| Missing paths | 175 |
+| Reads over the size or token limit | 11 |
 
 The tool's error names the problem but not the fix.
 
@@ -54,7 +54,7 @@ text.
 
 ## Done when
 
-- Replay over the 71 recorded misses names the intended region for at least half of them. Record the measured
+- Replay over the 67 recorded misses names the intended region for at least half of them. Record the measured
   rate.
 - Each branch has a live check on Windows, and its tests pass in CI on both platforms.
 

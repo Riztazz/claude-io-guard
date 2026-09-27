@@ -47,6 +47,7 @@ def main(argv: Sequence[str]) -> int:
             index = corpus.build(args.sources, args.out)
             counts = {name: sum(tools.values()) for name, tools in index["records"].items()}
             print(f"Wrote {sum(counts.values())} records to {args.out}: {counts}. "
+                  f"{index['copies']} copies of a call already written were skipped, "
                   f"{index['unpaired']} calls had no result, and {index['unreadable']} lines were not JSON.")
         case "replay":
             if not (args.corpus / "index.json").is_file():

@@ -3,7 +3,9 @@
 Each source is a project's transcript folder, ~/.claude/projects/<encoded path>, read with its subagent
 transcripts, and a name the project counts under. The corpus is <out>/<name>.jsonl, one Record per line, and
 <out>/index.json with the counts. A record holds the call's whole input, so a replay runs the call as it was,
-and the head of its result. The corpus holds the user's paths and content, so it stays on the machine (D8).
+and the head of its result. A resumed session writes its history into a new transcript, so one call can sit in
+several files, and several times in one: each tool use id enters once, and the index counts the copies. The
+corpus holds the user's paths and content, so it stays on the machine (D8).
 """
 import json
 from collections import Counter, defaultdict
@@ -56,6 +58,7 @@ class Tally:
     labels: Counter
     unpaired: int = 0
     unreadable: int = 0
+    copies: int = 0
 
 
 def text_of(content: Any) -> str:
@@ -129,10 +132,15 @@ def build(sources: Sequence[tuple[str, Path]], out: Path) -> dict:
     for name, folder in sources:
         folders[name].append(folder)
     tally = Tally(Counter(), Counter())
+    seen: set[str] = set()
     for name, named in folders.items():
         with (out / f"{name}.jsonl").open("wb") as corpus:
             for path in sorted(path for folder in named for path in folder.rglob("*.jsonl")):
                 for found in read_transcript(path, name, tally):
+                    if found.id in seen:
+                        tally.copies += 1
+                        continue
+                    seen.add(found.id)
                     corpus.write(json.dumps(found.to_json(), ensure_ascii=True).encode("ascii") + b"\n")
                     tally.records[(name, found.tool)] += 1
                     tally.labels.update(found.labels)
@@ -145,6 +153,7 @@ def build(sources: Sequence[tuple[str, Path]], out: Path) -> dict:
         "labels": dict(tally.labels.most_common()),
         "unpaired": tally.unpaired,
         "unreadable": tally.unreadable,
+        "copies": tally.copies,
     }
     (out / "index.json").write_bytes((json.dumps(index, indent=1) + "\n").encode("ascii"))
     return index

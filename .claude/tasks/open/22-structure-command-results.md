@@ -14,7 +14,7 @@ commit: "feat: label exit codes and summarise errors in every command result"
 
 Command results waste the agent's time in four ways:
 
-- 180 results were cut to "Output too large" and needed a second read.
+- 148 results were cut to "Output too large" and needed a second read.
 - Exit code 1 from grep or diff stops a chain for no reason.
 - Build and test failures hide behind pipes and filters.
 - Mojibake from a cp1252 console gets copied back into files.
@@ -48,6 +48,6 @@ changes nothing (`context.md`, "Hooks and MCP", row 8). PowerShell's shape is no
 
 ## Done when
 
-- Replay over the 180 saved-output results, and over a sample of exit-1 results, gives each the right label.
+- Replay over the 148 saved-output results, and over a sample of exit-1 results, gives each the right label.
 - A summary line that only quotes an error word raises no alarm (OUT-7).
-- Replay over the 236 unexpected-EOF commands lowers the budget only for the ones over 5 KB.
+- Replay over the 125 unexpected-EOF commands lowers the budget only for the ones over 5 KB.

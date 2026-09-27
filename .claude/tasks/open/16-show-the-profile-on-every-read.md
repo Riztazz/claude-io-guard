@@ -13,7 +13,7 @@ commit: "feat: tell the agent a file's endings, BOM and indent when it reads the
 ## Why
 
 Read shows a CRLF file, an LF file and a CRLF file with a BOM identically. That was verified live. So the agent
-cannot know which convention it must keep. Agents wrote `endings.py` for this and ran it 40 times.
+cannot know which convention it must keep. Agents wrote `endings.py` for this and ran it 107 times.
 
 ## What to build
 

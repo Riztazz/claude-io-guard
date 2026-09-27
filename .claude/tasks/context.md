@@ -253,33 +253,35 @@ denied, and the rerun denied all three. Ten calls each took:
 ## Baseline
 
 738 transcripts (6.4 GB, main sessions and sub-agents, 2026-06-20 to 2026-09-27) and 1,819 scratchpad scripts.
-Counts are per call. Task 31 re-measures against these.
+Task 31 re-measures against these.
 
-Task 09's replay corpus, built at 14:55 on 2026-09-27 from the same four projects, holds 180,464 calls: Bash
-98,272, Edit 26,882, Read 28,385, Write 11,331, Grep 9,004, PowerShell 5,648 and Glob 942. Five calls had no
-result. Its seed labels match the baseline. The 71 anchor misses are the same 71. `unexpected-eof` is 246, the
-baseline's 236 plus 10 from that morning's sessions. `msys-path` is 39 against 37. `guard-refused` is 14, 12 of
-them failed calls, once the rule matched only the guard's refusal text. The baseline's rule also matched
-`write-guard` as a file name in git status lines, diffs and listings, which gave 81. Task 12 renamed the label
-`hook-refused`, matching any PreToolUse hook's refusal, `PreToolUse:<tool> hook error`, so the label names no
-particular guard. The corpus rebuilt during task 12 holds 180,478 calls, 14 `hook-refused` and 248
-`unexpected-eof`.
+**Each call counts once.** A resumed session writes its history into a new transcript, and the copies keep the
+original session id, so one call can sit in several files, and several times in one. The first baseline and task
+09's corpus counted every copy: on 2026-09-27 the corpus held 180,478 records for 110,379 distinct calls. Task 37
+made the corpus keep each tool use id once, and the table below is recounted from the corpus it rebuilt that day.
+It replaces the first baseline's numbers, which counted copies. The scratchpad script counts come from the files
+on disk, so they did not change. A helper's run is a `python`, `bash` or `sh` command that names the script.
+
+The corpus labels follow the baseline's rules, with one change. Task 12 renamed `guard-refused` to
+`hook-refused`, which matches any PreToolUse hook's refusal, `PreToolUse:<tool> hook error`, rather than one
+guard's text. The baseline's rule also matched `write-guard` as a file name in git status lines, diffs and
+listings.
 
 | Measure | Count |
 |---|---|
-| Tool calls | Bash 97,579, PowerShell 5,565, Edit 26,098, Write 10,920, Read 27,858, Grep 8,894, Glob 938 |
-| Edit errors | 71 not found, 62 not read yet, 16 modified since read, 16 classifier unavailable, 8 missing path, 5 rejected, 3 EPERM, 2 identical strings, 1 multiple matches |
-| Write errors | 39 modified since read, 20 not read yet, 1 invalid input |
-| Read errors | 53 missing path, 15 token limit, 5 size limit, 8 invalid JSON |
-| Grep and Glob errors | 163 missing path, 7 rejected pattern, 4 timeouts |
-| Bash "unexpected EOF" | 236: 201 waiting for `'`, 16 for `"`, 11 for a backtick, 7 for `)` |
-| Heredoc failures by command size | Under 6 KB: 2 of 19,698. 6 to 8 KB: 32 of 222. 8 to 16 KB: 160 of 160. Largest pass 7,810 bytes, smallest failure 7,807, each apostrophe counted as 4 bytes |
-| Cost of failed long commands | 241 commands, 2.0 MB, about 531k tokens |
-| Other shell results | 97 invalid-escape warnings, 8 unicodeescape errors, 34 charmap + 4 decode + 6 ascii errors, 37 MSYS conversions, 432 git "LF will be replaced by CRLF" warnings, 180 "Output too large", 5,669 cwd resets, 12 guard refusals (1 false) |
-| Shell writes | 20,646 commands carry a heredoc, 15,129 run `python -c` (most only read), 907 `sed -i`, 5,114 redirects into a source-type file, 196 Set-Content, Out-File or WriteAll*, 118 here-strings |
+| Tool calls | 110,379: Bash 58,779, PowerShell 3,321, Edit 17,370, Write 6,347, Read 17,729, Grep 6,076, Glob 757 |
+| Edit errors | 67 not found, 62 not read yet, 12 modified since read, 8 missing path, 3 rejected, 3 EPERM, 2 classifier unavailable, 2 identical strings, 1 multiple matches |
+| Write errors | 20 not read yet, 18 modified since read, 1 invalid input |
+| Read errors | 43 missing path, 9 token limit, 2 size limit, 8 invalid JSON, 3 other |
+| Grep and Glob errors | 124 missing path, 5 rejected pattern, 3 timeouts, 3 rejected by the user, 1 invalid JSON |
+| Bash "unexpected EOF" | 125: 98 waiting for `'`, 17 for `"`, 5 for `)`, 2 for a backtick, 3 at the end of the file |
+| Heredoc failures by command size | Under 6 KB: 2 of 10,831. 6 to 8 KB: 11 of 158. 8 to 16 KB: 77 of 77. Over 16 KB: 10 of 10, one of them `ENAMETOOLONG`. Largest pass 7,810 bytes, smallest failure 7,807, each apostrophe counted as 4 bytes |
+| Cost of commands the transport failed | 122 commands failed with unexpected EOF or an unclosed heredoc: 1.0 MB, about 262k tokens at 4 bytes a token |
+| Other shell results | 72 invalid-escape warnings, 10 unicodeescape errors, 26 charmap + 16 decode + 3 ascii errors, 18 MSYS conversions, 328 git "LF will be replaced by CRLF" warnings, 148 "Output too large", 3,064 cwd resets, 8 hook refusals |
+| Shell writes | 11,076 commands carry a heredoc, 8,910 run `python -c` (most only read), 385 `sed -i`, 2,381 redirects into a source-type file, 110 Set-Content, Out-File or WriteAll*, 93 here-strings |
 | Scratchpad scripts | 1,819 (6.6 MB). 417 write files (2.9 MB, about 759k tokens). `edit()` defined in 138 scripts in 73 bodies. 306 read with `newline=''`. 194 assert one match. 117 splice between `str.index` markers. 70 refuse non-ASCII |
-| Most-run helpers | `tlog.py` 420 runs (append), `fmt_hunks.py` 197 (format changed lines), `logcheck.sh` 54 (new log lines), `endings.py` 40 (count endings) |
-| What Bash was used for | 54% of calls run Python, 16.5% only inspect, 13.5% change files, 7.3% wait or manage processes, 5.5% git, 3.6% build or editor runs |
+| Most-run helpers | `tlog.py` 183 runs (append), `fmt_hunks.py` 128 (format changed lines), `endings.py` 107 (count endings), `logcheck.sh` 83 (new log lines) |
+| What Bash was used for | 49% of calls run Python, 18.9% only inspect, 13.3% change files, 7.6% wait or manage processes, 5.6% git, 3.8% build or editor runs |
 
 ## Failure catalog and the task that covers each
 

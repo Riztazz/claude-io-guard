@@ -1198,7 +1198,9 @@ Claude Code version and the date of the last confirmation. Task 04 owns it.
 Grep, Glob or NotebookEdit call: its tool use id, project, session, whether a subagent made it, time, Claude Code
 version, cwd, permission mode, the whole input, whether it failed, the first 2,000 characters of the result and
 its full length, the structured `toolUseResult` with strings cut at 4,000 characters and lists at 200 items, and
-its labels from `cli.labels`. `corpus/` never leaves the machine (D8).
+its labels from `cli.labels`. A resumed session copies its history into a new transcript, so one call can sit
+in several files: each tool use id enters once, and `index.json` counts the skipped `copies`. `corpus/` never
+leaves the machine (D8).
 
 `python tools/replay.py` runs each record as a PreToolUse event, then as PostToolUse or PostToolUseFailure with
 the recorded result, through `default_registry()`. Each session gets an in-memory context: an empty file system,

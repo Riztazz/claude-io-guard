@@ -18,7 +18,7 @@ Agents rebuilt three primitives again and again, because no tool offered them:
 |---|---|
 | Batch edit | The CLICKER `edit()` helper exists in 73 different bodies across 138 scripts |
 | Splice between markers | 117 scripts splice text between two `str.index` markers |
-| Append a dated entry | `tlog.py` ran 420 times |
+| Append a dated entry | `tlog.py` ran 183 times |
 
 ## What to build
 

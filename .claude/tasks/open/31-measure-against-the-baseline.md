@@ -20,7 +20,8 @@ the dashboard (task 33) wait for them (D20).
 
 `tools/measure.py`, generalised from `baseline/tx_scan.py`, `baseline/tx_eof.py` and `baseline/tx_verbs.py`. It
 takes any set of project transcript folders and a date range. It uses the same classes and the same counting
-rules as the baseline, so the two sets of numbers compare. It reuses task 09's report format, and it reads the
+rules as the baseline, so the two sets of numbers compare. It counts each tool use id once, as the corpus does
+since task 37, because a resumed session copies its history into a new transcript. It reuses task 09's report format, and it reads the
 telemetry through task 28's report for the guard's own side.
 
 ## Where
@@ -34,9 +35,9 @@ four projects. Counted per 1,000 calls:
 
 | Measure | Target | Baseline |
 |---|---|---|
-| Bash commands failing in transport | 0 | 241 |
-| Edit anchor misses | At least 50% lower | 71 |
-| Not-read-yet and modified-since-read errors | At least 50% lower | 82 and 55 |
-| Git "LF will be replaced by CRLF" warnings on files the agents wrote | 0 | 432 |
+| Bash commands failing in transport | 0 | 122 |
+| Edit anchor misses | At least 50% lower | 67 |
+| Not-read-yet and modified-since-read errors | At least 50% lower | 82 and 30 |
+| Git "LF will be replaced by CRLF" warnings on files the agents wrote | 0 | 328 |
 | New scratchpad scripts that write files | At least 80% lower | 417 |
 | Hook latency p95 | Within the 300 ms budget (D16) | Not measured |

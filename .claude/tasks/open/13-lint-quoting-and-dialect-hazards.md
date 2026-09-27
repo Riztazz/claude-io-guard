@@ -17,10 +17,10 @@ what runs without an error. The baseline counts:
 
 | Hazard | Count |
 |---|---|
-| Backtick failures | 11 |
-| Trailing-backslash quotes | 16 |
-| Python invalid-escape warnings | 97 |
-| `unicodeescape` errors | 8 |
+| Backtick failures | 2 |
+| Trailing-backslash quotes | 17 |
+| Python invalid-escape warnings | 72 |
+| `unicodeescape` errors | 10 |
 | PowerShell call operators sent to bash | 5 |
 
 ## What to build

@@ -63,15 +63,16 @@ to follow each flow step by step, and hover a box to see what it does. The full 
 
 ## What it fixes
 
-The numbers come from 738 transcripts of real agent sessions, 2026-06-20 to 2026-09-27.
+The numbers come from 110,379 file and shell tool calls in 738 transcripts of real agent sessions, 2026-06-20 to
+2026-09-27. Each call counts once.
 
 | What goes wrong | How often | What io-guard does |
 |---|---|---|
-| On Windows, a Bash command longer than about 7.8 KB fails with "unexpected EOF", and a `\\` that no double quote follows loses a backslash | 241 failed commands, about 531k tokens | Moves a heredoc or `python -c` body into a file, byte-exact, and runs the file. Warns about a halved `\\` it cannot move |
-| Write turns a CRLF file into LF and drops its BOM, and Edit trims trailing spaces from the new text | 432 "LF will be replaced by CRLF" warnings | Rewrites the input in the file's own endings, BOM and indent before it runs |
-| A failed Edit says "not found" and nothing else | 71 anchor misses, 137 stale reads | Returns the closest match, the file's endings and a corrected call |
-| `sed -i`, redirects and scripts write files around the edit tools, so no check and no rewind sees them | 6,217 shell writes | Refuses a write to a file git tracks, names the tool that does it safely, and warns about a script created inside the repository |
-| Long output is cut, and exit code 1 from grep stops a chain | 180 cut results | Labels the exit code and summarises the errors |
+| On Windows, a Bash command longer than about 7.8 KB fails with "unexpected EOF", and a `\\` that no double quote follows loses a backslash | 122 failed commands, about 262k tokens | Moves a heredoc or `python -c` body into a file, byte-exact, and runs the file. Warns about a halved `\\` it cannot move |
+| Write turns a CRLF file into LF and drops its BOM, and Edit trims trailing spaces from the new text | 328 "LF will be replaced by CRLF" warnings | Rewrites the input in the file's own endings, BOM and indent before it runs |
+| A failed Edit says "not found" and nothing else | 67 anchor misses, 112 stale reads | Returns the closest match, the file's endings and a corrected call |
+| `sed -i`, redirects and scripts write files around the edit tools, so no check and no rewind sees them | 2,876 shell writes | Refuses a write to a file git tracks, names the tool that does it safely, and warns about a script created inside the repository |
+| Long output is cut, and exit code 1 from grep stops a chain | 148 cut results | Labels the exit code and summarises the errors |
 
 ## How it works
 

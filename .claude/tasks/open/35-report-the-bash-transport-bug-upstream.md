@@ -13,11 +13,13 @@ commit: "none, this is a comment on GitHub"
 ## Why
 
 anthropics/claude-code#92543 has been open since 2026-09-06. It reports two faults in the Bash tool on Windows:
-the command is cut at about 8 KB, and every backslash pair is halved.
+the command is cut at about 8 KB, and every backslash pair is halved. The halving is narrower than the issue
+says: a run of backslashes loses half its pairs only when a double quote does not follow it (`context.md`,
+"Hooks and MCP", row 25).
 
-The lead's data backs it up:
-- 160 of 160 commands between 8 and 16 KB failed.
-- The 241 failed commands cost about 531k tokens.
+The lead's data backs it up, counting each call once:
+- 77 of 77 commands between 8 and 16 KB failed, and 10 of 10 over 16 KB.
+- The 122 commands the transport failed cost about 262k tokens.
 - The error text points at quoting, so agents fix the wrong thing and resend.
 
 ## What to build

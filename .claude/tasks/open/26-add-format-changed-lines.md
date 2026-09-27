@@ -14,7 +14,7 @@ commit: "feat: run the formatter over changed hunks only, in the file's own endi
 
 clang-format over a whole file re-indents untouched code and adds namespace closers. CLICKER agents wrote two
 scripts to work around it:
-- `fmt_hunks.py`, run 197 times
+- `fmt_hunks.py`, run 128 times
 - `unformat.py`, to revert what the formatter changed
 
 A fixed `LineEnding: CRLF` on an LF file left mixed endings (BYT-3).

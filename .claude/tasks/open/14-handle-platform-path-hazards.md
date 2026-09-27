@@ -14,10 +14,10 @@ commit: "feat: keep slash arguments and device names from breaking Windows comma
 
 Three Windows traps come from the shell rather than from the agent's text:
 
-- **Path conversion.** Git Bash turns any argument that starts with a slash into a Windows path. 37 results show
+- **Path conversion.** Git Bash turns any argument that starts with a slash into a Windows path. 18 results show
   it, most of them Unreal asset paths that arrived as `C:/Program Files/Git/Game/...`.
 - **Reserved names.** `2>nul` in Git Bash creates a real file named `nul`, which Windows tools cannot delete.
-- **Working directory.** The harness moves the shell back to the project after a `cd`. That happened 5,669 times,
+- **Working directory.** The harness moves the shell back to the project after a `cd`. That happened 3,064 times,
   and each time relative paths in the next call pointed somewhere else.
 
 ## What to build
@@ -47,5 +47,5 @@ A PreToolUse check on Bash, on Windows only:
 
 - Live on Windows: a command that passes `/Game/X` to a native program delivers `/Game/X` intact, and
   `python /c/Users/.../x.py` still runs.
-- Replay catches the 37 recorded conversions.
+- Replay catches the 18 recorded conversions.
 - On macOS every rule here is off, by its `platforms` in `CheckMeta`, and a CI test on the macOS runner proves it.

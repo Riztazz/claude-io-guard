@@ -73,6 +73,17 @@ class WhatTheCorpusLeavesOut(unittest.TestCase):
                          (corpus.RESPONSE_CHARS, corpus.RESPONSE_ITEMS),
                          "long strings and lists in the response are cut")
 
+    def test_a_call_held_by_several_transcripts_enters_once(self):
+        call = [tx.tool_use("toolu_7", "Bash", {"command": "ls"}), tx.tool_result("toolu_7", "a")]
+        with TemporaryProject() as root:
+            folder = root / "projects" / "one"
+            tx.write(folder / f"{tx.SESSION}.jsonl", call + call)
+            tx.write(folder / "resumed.jsonl", call)
+            index = corpus.build([("One", folder)], root / "corpus")
+            records = list(corpus.load(root / "corpus"))
+        self.assertEqual(([record.id for record in records], index["copies"]), (["toolu_7"], 2),
+                         "a resumed session's copy of a call, in its file or another, is counted, not kept")
+
     def test_the_corpus_file_is_ascii_json_lines(self):
         with TemporaryProject() as root:
             folder = root / "p"

@@ -12,7 +12,7 @@ commit: "feat: run programs without a shell, under the user's rules, and read th
 
 ## Why
 
-54% of Bash calls run Python, and the shell string is where content gets mangled. A run tool that takes an
+49% of Bash calls run Python, and the shell string is where content gets mangled. A run tool that takes an
 argument list, or a script body as a field, has no quoting layer at all, on either platform.
 
 A run tool is also a way around the user's rules. Settings cannot match an MCP tool's arguments, so
@@ -38,7 +38,7 @@ A run tool is also a way around the user's rules. Settings cannot match an MCP t
 - **`io.status(handle)`**: reports on the process itself, never on its output file (RUN-2). An expired handle is a
   tool execution error, `HANDLE_EXPIRED`, that says how to start the run again.
 - **`io.read_log(path, since_line?)`**: returns the lines added since the last call, minus `noise_patterns` from the
-  config. It replaces `logcheck.sh`, which ran 54 times.
+  config. It replaces `logcheck.sh`, which ran 83 times.
 
 ## Where
 

@@ -17,7 +17,7 @@ The built-in tools change bytes the agent never asked to change. All three were 
 - Write drops a BOM.
 - Edit cuts trailing whitespace from new_string: `one = ` became `one =`.
 
-The baseline shows the damage: 432 git "LF will be replaced by CRLF" warnings, and 306 scratchpad scripts built only
+The baseline shows the damage: 328 git "LF will be replaced by CRLF" warnings, and 306 scratchpad scripts built only
 to keep CRLF.
 
 ## What to build
