@@ -395,7 +395,9 @@ once the Mac is back (D21).
 
 ## What the repositories look like (why every check reads the file's own convention)
 
-Surveyed on 2026-09-27, every tracked text file.
+Surveyed on 2026-09-27, every tracked text file. Task 15's `profile` reads all 5,955 of those files the same
+way the survey's rules do, for endings, BOM, UTF-8, NUL, final newline, indent and trailing whitespace, with no
+file that differs.
 
 | Repository | Config | C++ endings CRLF / LF / mixed | C++ with BOM | C++ indent tab / space / both | Markdown CRLF / LF |
 |---|---|---|---|---|---|

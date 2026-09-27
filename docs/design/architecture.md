@@ -409,6 +409,9 @@ class EolCounts:
     lf: int
     cr: int
 
+    @property
+    def dominant(self) -> Eol: ...   # the ending most lines use, for a mixed file
+
 @dataclass(frozen=True)
 class Encoding:
     utf8: bool
@@ -449,8 +452,12 @@ class Profile:
     def warnings(self) -> tuple[str, ...]: ...
 ```
 
-`target_profile(path, siblings, editorconfig, gitattributes)` returns the `Profile` a new file takes. Its
-`sha256` is empty and its counts are zero.
+`profile` reads the style from the CRLF and LF counts, as the baseline survey did. A lone CR is counted and
+warned about, and makes the style `CR` only in a file with no other ending. A UTF-16 file is counted in its
+UTF-8 form, so its own NUL bytes do not mark it binary. It profiles a megabyte in about 11 ms (task 15).
+`target_profile(siblings, editorconfig, gitattributes)` returns the `Profile` a new file takes, from the
+`.editorconfig` properties that apply to it first, then its `.gitattributes`, then the majority of its siblings.
+The caller resolves all three for the file's path. Its `sha256` is empty and its counts are zero.
 
 ## 3. Model a check
 
@@ -603,10 +610,10 @@ def would_collapse(before: int, after: int) -> bool          # task 18, with its
 
 # profile.py
 def profile(data: bytes) -> Profile
-def target_profile(path: Path, siblings: Sequence[Profile], editorconfig: Mapping[str, str],
+def target_profile(siblings: Sequence[Profile], editorconfig: Mapping[str, str],
                    gitattributes: Mapping[str, str]) -> Profile
-def convert_eol(text: str, eol: Eol) -> str
-def with_bom(data: bytes, bom: Bom) -> bytes
+def convert_eol(text: str, eol: Eol) -> str                  # task 17
+def with_bom(data: bytes, bom: Bom) -> bytes                 # task 17
 
 # anchors.py
 def find(data: bytes, anchor: bytes) -> AnchorMatch         # count, offsets, lines
