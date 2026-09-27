@@ -724,10 +724,10 @@ scoped name `plugin:io-guard:io`, and the tools are `hook.pre_tool_use`, `hook.p
       }]
     }],
     "SessionStart": [{
-      "hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/hook.sh session_start"}]
+      "hooks": [{"type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.sh\" session_start"}]
     }],
     "UserPromptSubmit": [{
-      "hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/hook.sh heartbeat"}]
+      "hooks": [{"type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.sh\" heartbeat"}]
     }]
   }
 }
@@ -766,8 +766,8 @@ disconnected server. The cost is the two risks in `review.md`, holes 3 and 4, an
 
 ### The launcher across Windows and macOS
 
-Only two things start Python. The server starts from `.mcp.json`, and the SessionStart hook starts from
-`scripts/hook.sh`. The command entry point exists for the CLI and as the documented fallback.
+Only two things start Python. The server starts from `.mcp.json`, and the SessionStart and heartbeat hooks
+start from `scripts/hook.sh`. The command entry point `hook.py` serves those two hooks and the CLI.
 
 ```json
 {
@@ -786,17 +786,21 @@ description "The command that starts Python 3.14 or later. Windows with python.o
 changes it once with `/plugin configure io-guard`. The default suits macOS, where the Command Line Tools
 provide `python3` and no `python`.
 
-`hook.sh` is POSIX sh. It runs under Git Bash on Windows and `sh` on macOS, which are the same two places the
-Bash tool exists. It resolves an interpreter with `command -v` in the order `python3`, `python`, `py -3`,
-skips any path under `WindowsApps`, runs `hook.py` with the event name, and on no interpreter prints a
-`systemMessage` naming the fix and exits 0. A Windows machine without Git Bash runs shell-form hooks through
+`hook.sh` is POSIX sh, started as `sh "${CLAUDE_PLUGIN_ROOT}/scripts/hook.sh" <event>` so it needs no
+executable bit. It runs under Git Bash on Windows and `sh` on macOS, which are the same two places the Bash
+tool exists, and it uses only shell builtins. It resolves an interpreter with `command -v` in the order
+`$CLAUDE_PLUGIN_OPTION_PYTHON`, which is the user's setting, then `python3`, `python` and `py -3`. It skips any
+path under `WindowsApps`, runs `hook.py` with the event name, and on no interpreter prints a `systemMessage`
+naming the fix and exits 0. On `session_start`, `hook.py` checks that its own Python and the one the server
+starts from are both 3.14 or later, and a failed check is the session's one warning, again a `systemMessage`
+that names the setting and the fix. A Windows machine without Git Bash runs shell-form hooks through
 PowerShell, where the launcher does not run. That machine has no Bash tool either, and the `mcp_tool` hooks
 still guard PowerShell, Edit and Write.
 
-The fallback for a harness without `mcp_tool` hooks is a settings snippet in the README: the same event
-groups as command hooks, shell form, calling `hook.sh <event>`. Hooks merge across settings levels, so the
-snippet adds to the plugin's hooks and the user removes the plugin's `mcp_tool` entries by disabling the
-plugin's `hooks` in `/hooks`.
+Every tool event goes through the `mcp_tool` hooks, and no command-hook fallback ships. Every release from
+2.1.281, the minimum, runs `mcp_tool` hooks (`docs/compat.md`). A fallback would also have nowhere to live: a
+snippet in the user's settings cannot name `${CLAUDE_PLUGIN_ROOT}`, and `/hooks` is read-only, so it cannot
+switch the plugin's own hooks off.
 
 ## 7. Serve the io tools
 
@@ -977,9 +981,10 @@ call inside a hook tool has a 500 ms timeout and a cache miss counts as unknown,
 Crash safety has four parts. `dispatch` wraps every message in the fail-open boundary, so a bug answers `{}`
 or an `isError` result and the loop continues. The reader survives a malformed line. The watchdog writes
 `${CLAUDE_PLUGIN_DATA}/sessions/<session>.alive` with the time. A `UserPromptSubmit` command hook reads that
-file once per turn and warns once when it is older than 30 seconds. Claude Code does not reconnect a stdio
-server, so a dead server is a visible warning rather than a silent gap. That hook is the only Python spawn per
-turn.
+file once per turn and warns once when it is older than 30 seconds. Claude Code restarts a server that exited
+on the next hook call, but one that cannot start leaves every hook failing open and tells the model nothing
+(`context.md`, "Hooks and MCP", row 18). The heartbeat makes that case a visible warning rather than a silent
+gap. That hook is the only Python spawn per turn.
 
 Shutdown is one ordered list: stop accepting, drain the workers with a 2 second cap, terminate background
 runs whose handles asked for it, flush telemetry, close the heartbeat.

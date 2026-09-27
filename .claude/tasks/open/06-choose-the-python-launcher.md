@@ -4,6 +4,7 @@ stage: A
 area: runtime
 created: 2026-09-27
 status: open
+claimed-by: claude-opus-5-5, session 7eeb509f
 depends-on: [03]
 findings: [SHL-3]
 platforms: [windows, macos]
@@ -50,3 +51,72 @@ things start Python: the io server, and the command hooks for SessionStart and t
 - The chosen path's p95 fits the 300 ms budget (D16), and `docs/launcher.md` holds the numbers for all three.
 - A missing or wrong interpreter gives one clear warning per session and never blocks the tool call (D7).
 - `hook.sh` passes `sh -n` in CI on the macOS runner. Its live start on the Mac waits in task 36.
+
+## Blocked on
+
+**The same push as task 05.** The CI step `sh -n plugins/io-guard/scripts/hook.sh` is in
+`.github/workflows/ci.yml`, and it has never run, because nothing has been pushed. The other three Done-when
+lines are met on Windows, below.
+
+## What changed so far
+
+- **`plugins/io-guard/.mcp.json`:** the server `io`, started from `${user_config.python}` with
+  `scripts/server.py`, and `PYTHONUTF8`, `PYTHONIOENCODING` and `IOGUARD_DATA` in its `env`.
+- **`plugins/io-guard/scripts/server.py`:** a stub server in the legacy era. Its one tool, `hook.pre_tool_use`,
+  writes a line per call to `events/<YYYY-MM>/<session>.jsonl` in the plugin data folder and returns no
+  decision. It fails open: a crash in a call answers with no decision. Task 23 replaces it.
+- **`plugins/io-guard/hooks/hooks.json`:** the no-op PreToolUse hook on `Bash|PowerShell|Edit|Write|Read`, as an
+  `mcp_tool` hook with the input map of `architecture.md`, section 6, and SessionStart as a shell-form command
+  hook, `sh "${CLAUDE_PLUGIN_ROOT}/scripts/hook.sh" session_start`. Starting it through `sh` needs no
+  executable bit.
+- **`plugins/io-guard/scripts/hook.sh`:** POSIX sh on builtins only. It tries `$CLAUDE_PLUGIN_OPTION_PYTHON`,
+  the user's setting, first, then `python3`, `python` and `py -3`. It skips anything under `WindowsApps` and
+  answers a `systemMessage` when it finds nothing. It strips its own folder from `$0` at either separator,
+  because a Windows caller may pass backslashes only.
+- **`plugins/io-guard/scripts/hook.py`:** the command-hook entry point. It records each event, and on
+  `session_start` it checks that its own Python and the server's interpreter are 3.14 or later, warning once
+  otherwise. It avoids syntax newer than 3.8 so an old Python gets far enough to say so.
+- **No command-hook fallback ships.** The task planned one for a harness where `mcp_tool` hooks fail. Task 03
+  and task 04 found them working on every supported release, and the planned snippet could not work anyway:
+  user settings cannot name `${CLAUDE_PLUGIN_ROOT}`, and `/hooks` is read-only. `architecture.md` and
+  `docs/launcher.md` say so.
+- **Tests, 36 in all, up from 19:** `tests/hooks/test_launcher.py` runs `hook.sh` under a controlled PATH and
+  `hook.py` as a subprocess. It covers no Python, the Store stub skipped, a control proving the fake stub would
+  run outside `WindowsApps`, a working Python, and a wrong setting. `tests/mcp/test_server_stub.py` drives the
+  stub server over pipes. `tests/test_plugin_files.py` checks that the marketplace, the manifest, the hooks and
+  `.mcp.json` agree.
+- **`.github/workflows/ci.yml`** gained `sh -n` on `hook.sh`. **`tools/probes/run_probe.py`** gained the
+  `hooksh` hook form and the three 100-call launch probes, and `run all` now runs only the probes with a
+  verdict.
+- **`.claude/launch.json`:** a `docs` entry that serves `docs/` on 127.0.0.1:8765, for the drawing check that
+  `.claude/rules/docs.md` asks for.
+- **Docs:** `docs/launcher.md` is new. `docs/design/architecture.md`, section 6, describes the launcher as built
+  and drops the fallback, and section 8 no longer says Claude Code never reconnects a stdio server, which task 03
+  disproved and task 03 missed there. `docs/architecture.svg`: the `hook.sh` box's hover text no longer names the
+  fallback. It parses as XML, is ASCII, and flow C plays in the browser pane with no console error.
+  `README.md`: the install step says what a wrong interpreter does. `docs/compat.md`, `docs/live-checks.md`,
+  `context.md` and `CLAUDE.md` carry the new facts and files.
+
+Evidence, on Windows 10 with Python 3.14.0 on 2026-09-27:
+
+- **Installed from the local marketplace with `python` set to `python`**, one headless session each on the CLI
+  2.1.283 and the desktop app's `claude.exe` 2.1.281: the server connected in 67 to 69 ms, and the plugin data
+  folder got `session_start` from `hook.sh`, then `PreToolUse` for Bash and for Read from the `mcp_tool` hook.
+- **Set to `io-guard-no-such-python`:** one `systemMessage` at SessionStart, quoting the setting and naming
+  `/plugin configure io-guard`. Both tool calls ran. The harness added `MCP server 'plugin:io-guard:io' not
+  connected` to each hooked call, which io-guard cannot suppress.
+- **Not set at all:** the server ran the default `python3`, the Store stub, so an unset option does fall back
+  to its default. `hook.sh` skipped the stub, ran `python`, and gave the same one warning.
+- **100 Bash calls per path**, CLI 2.1.283: `mcp_tool` p50 1.2 ms and p95 1.6 ms, exec form 53.4 and 58.0 ms,
+  through `hook.sh` 129.8 and 139.1 ms. The chosen path's p95 fits the 300 ms budget with room to spare.
+- `sh -n plugins/io-guard/scripts/hook.sh` passes under Git Bash.
+- io-guard was removed afterwards with `claude plugin marketplace remove claude-io-guard`.
+  `~/.claude/settings.json` keeps the empty `enabledPlugins`, `extraKnownMarketplaces` and `pluginConfigs`
+  objects the CLI leaves behind.
+
+Not checked:
+
+- **The CI run and macOS**, including `sh -n` on the macOS runner (Blocked on).
+- **The desktop app's own window with io-guard loaded.** Its bundled binary ran the check headless, and task
+  02 already showed the Code tab loading the plugin.
+- **Windows with no Git Bash.** Shell-form hooks run through PowerShell there, and `hook.sh` cannot start.

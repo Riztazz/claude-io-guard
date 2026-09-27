@@ -115,6 +115,20 @@ The plugin skeleton from a local marketplace, checked on 2026-09-27 with the `cl
 | A `userConfig` default counts as not set | The same install | "1 userConfig option not yet set", although `python` has the default `python3` |
 | The stub skill loads | `claude plugin details io-guard` | Skills (1) `io-guard`, about 109 tokens in every session |
 
+The launcher, checked on 2026-09-27 during task 06, with io-guard installed from the local marketplace and one
+headless session per case (`docs/launcher.md`):
+
+| Claim | Test | Result |
+|---|---|---|
+| `.mcp.json` and `hooks.json` start the stub server and the hooks | `python` set, the CLI 2.1.283 and the desktop's 2.1.281 | The server connected in 67 to 69 ms in the legacy era. SessionStart ran through `hook.sh`, and the `mcp_tool` hook recorded the Bash and Read calls |
+| A dotted tool name works in an `mcp_tool` hook | `hook.pre_tool_use` | Called on both versions |
+| `${CLAUDE_PLUGIN_DATA}` substitutes in `.mcp.json` `env` | The stub server's `IOGUARD_DATA` | It wrote into the plugin data folder |
+| An unset `userConfig` option falls back to its `default` | Installed with no `--config` | The server ran `python3`, the Store stub: "Python was not found; run without arguments to install from the Microsoft Store" |
+| `CLAUDE_PLUGIN_OPTION_PYTHON` reaches a command hook | `python` set to `io-guard-no-such-python` | `hook.py` quoted that value in its warning |
+| On Windows the harness starts an MCP server's command through `cmd.exe` | The same wrong setting | Server stderr: "'io-guard-no-such-python' is not recognized as an internal or external command, operable program or batch file." |
+| A server that never started: every hooked call gets its own notice | The same wrong setting | Each PreToolUse hook answered `MCP server 'plugin:io-guard:io' not connected`, non-blocking, and both tool calls ran |
+| Hook paths, 100 Bash calls each on the CLI 2.1.283 | `launch-mcp`, `launch-exec`, `launch-hooksh` | `mcp_tool` p50 1.2 ms, p95 1.6 ms. Exec form 53.4 and 58.0 ms. Through `hook.sh` 129.8 and 139.1 ms |
+
 ### Hooks and MCP
 
 Checked on 2026-09-27 with the probes in `tools/probes/`, task 03: `claude -p` 2.1.283 with Haiku 4.5 (Sonnet 5 for
@@ -204,8 +218,6 @@ denied, and the rerun denied all three. Ten calls each took:
 
 - How claude.ai reaches a private repository added for oneself.
 - `${user_config.*}` in a hook's `command`. The docs say a shell-form `command` rejects it (Doc facts).
-- Whether `${user_config.python}` resolves to its `default` when the user never set it. `claude plugin install`
-  reports the option as not yet set. Task 06 depends on the answer.
 - The Bash tool's behaviour on macOS. Expected: no halving and no 8 KB limit, because no MS-CRT quoting is involved.
   Waits for the Mac (D21), and so does `bash --version` through the Bash tool there.
 - What the desktop shows the user when the io server cannot start. The stream reports the hook's error, and the

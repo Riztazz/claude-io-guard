@@ -1,0 +1,38 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|Edit|Write|Read",
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "plugin:io-guard:io",
+            "tool": "hook.pre_tool_use",
+            "input": {
+              "hook_event_name": "${hook_event_name}",
+              "session_id": "${session_id}",
+              "tool_use_id": "${tool_use_id}",
+              "prompt_id": "${prompt_id}",
+              "tool_name": "${tool_name}",
+              "cwd": "${cwd}",
+              "scratchpad_dir": "${scratchpad_dir}",
+              "permission_mode": "${permission_mode}",
+              "agent_id": "${agent_id}",
+              "tool_input": "${tool_input}"
+            }
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.sh\" session_start"
+          }
+        ]
+      }
+    ]
+  }
+}

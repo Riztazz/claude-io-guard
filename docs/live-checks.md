@@ -39,6 +39,10 @@ Confirmed with the `claude` CLI at 2.1.283 and the desktop app on 2.1.281, durin
 | The desktop Code tab loads a plugin from a local marketplace | the lead, in the Code tab | 2.1.281 | waits for the Mac | 2026-09-27 |
 | After an app restart, the desktop runs a cached copy of that plugin, not the marketplace folder | the io-probe server log | 2.1.281 | waits for the Mac | 2026-09-27 |
 | The desktop Code tab loads plugins synced from claude.ai, hooks and MCP servers included | this repository's sessions | 2.1.281 | waits for the Mac | 2026-09-27 |
+| io-guard's `.mcp.json` and `hooks.json` start its server and hooks, from the `python` setting | a headless session with io-guard installed | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+| An unset `userConfig` option falls back to its default | io-guard installed with no `--config` | 2.1.283 | waits for the Mac | 2026-09-27 |
+| A wrong `python` setting gives one warning, and every tool call still runs | io-guard installed with a wrong setting | 2.1.283 | waits for the Mac | 2026-09-27 |
+| An `mcp_tool` hook answers in about 1.2 ms, against 53 ms in exec form and 130 ms through `hook.sh`, over 100 calls | `launch-mcp`, `launch-exec`, `launch-hooksh` | 2.1.283 | waits for the Mac | 2026-09-27 |
 
 ## Hooks and MCP
 
@@ -72,4 +76,3 @@ Confirmed with `tools/probes/run_probe.py`, whose `verdicts` command rechecks ev
 - Whether the desktop prompts for an MCP tool in manual mode. The CLI does.
 - Whether Cowork renders an MCP App or shows an elicitation form.
 - How large a `${tool_input}` substitution can get, and `${tool_response}`. Task 08 checks both.
-- Whether `${user_config.python}` falls back to its default when the user never set it. Task 06 checks it.

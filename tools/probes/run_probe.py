@@ -11,7 +11,8 @@
 A run writes to workbench/probes/<id>/<time>/: the plugin it loaded, the work folder the session ran in, the
 session's stream-json output, the debug log, the hook and server log, and summary.json. workbench/ is
 gitignored, because the logs hold local paths. brief, timing, verdicts and show read the latest run of a
-probe. verdicts prints pass or FAIL per probe against the result context.md records.
+probe. verdicts prints pass or FAIL per probe against the result context.md records. run all runs every probe
+that has a verdict. The launch probes, which time 100 hook calls each for docs/launcher.md, run by name.
 assemble builds the plugin alone, wrapped in a local marketplace, for a probe a person runs by hand in the
 desktop app. IOPROBE_CLAUDE names the claude binary to run, for example the desktop app's bundled copy, and
 defaults to claude on PATH. context.md, "Hooks and MCP", records what each probe found.
@@ -48,6 +49,10 @@ TWO_RUNS = "Run these two Bash commands one at a time, each in its own tool call
            "or error you saw."
 TEN_ECHOES = "Run these ten Bash commands one at a time, each in its own Bash tool call, in order: " + \
              ", ".join(f"echo n{n}" for n in range(1, 11)) + ". Then reply DONE."
+HUNDRED_ECHOES = "Run the Bash command echo n1, then echo n2, and so on up to echo n100: one hundred " \
+                 "commands, one at a time, each in its own Bash tool call, never two in one message. Then " \
+                 "reply DONE."
+HOOK_SH = (REPO / "plugins" / "io-guard" / "scripts" / "hook.sh").as_posix()
 SED = "Read diff.txt. Then run this exact Bash command: sed -i 's/a/b/' diff.txt\nThen reply DONE."
 THREE_FEATURES = "Call these three tools from the io-probe server once each, in order: probe_elicit, " \
                  "probe_progress, probe_app. Then quote each result word for word."
@@ -164,6 +169,12 @@ PROBES = {
     "mcp-permit": Probe(17, "record", server=True, extra_args=PERMIT,
                         prompt="Call these three tools from the io-probe server once each, in order: "
                                "probe_plain, probe_read, probe_destructive. Then reply DONE."),
+    "launch-mcp": Probe(0, "record", hooks=BASH_GATE, server=True, allowed=("Bash",),
+                        prompt=HUNDRED_ECHOES, max_turns=115),
+    "launch-exec": Probe(0, "record", hooks=BASH_PRE, allowed=("Bash",), prompt=HUNDRED_ECHOES,
+                         max_turns=115),
+    "launch-hooksh": Probe(0, "record", hooks=(("PreToolUse", "Bash", "hooksh"),), allowed=("Bash",),
+                           prompt=HUNDRED_ECHOES, max_turns=115),
     "dead-server": Probe(18, "record", hooks=BASH_GATE, server=True, allowed=("Bash",),
                          extra={"die_after_gate": 1}, check=("first.txt", "second.txt"), prompt=TWO_RUNS),
     "dead-for-good": Probe(18, "record", hooks=BASH_GATE, server=True, allowed=("Bash",),
@@ -182,6 +193,8 @@ def handler(form: str, timeout: int | None) -> dict:
             entry = {"type": "command", "command": f'"{PYTHON.as_posix()}" {script} shell'}
         case "mcp":
             entry = {"type": "mcp_tool", "server": SERVER, "tool": "hook_gate", "input": GATE_INPUT}
+        case "hooksh":
+            entry = {"type": "command", "command": f'sh "{HOOK_SH}" pre_tool_use'}
         case _:
             raise ValueError(f"unknown hook form {form}")
     if timeout is not None:
@@ -438,7 +451,8 @@ def main(argv: list[str]) -> int:
                 print(f"{probe.item:>2} {name}")
         case ["run", *names] if names:
             with ThreadPoolExecutor(max_workers=4) as pool:
-                for out in pool.map(run, list(PROBES) if names == ["all"] else names):
+                checked = [name for name in PROBES if name in VERDICTS]
+                for out in pool.map(run, checked if names == ["all"] else names):
                     print(out)
         case ["brief", *names] if names:
             for name in names:

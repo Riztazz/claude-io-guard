@@ -6,8 +6,9 @@ plugin's marketplace: github.com/Riztazz/claude-io-guard.
 
 ## Layout
 
-The tasks build most of this. Today the two manifests, the plugin's stub skill, `tests/` with its fixtures and
-helpers, `tools/probes/`, `.github/workflows/ci.yml`, `.claude/`, `docs/`, `workbench/` and this file exist.
+The tasks build most of this. Today the marketplace, the plugin's manifest, hooks, launcher, stub server and
+stub skill, `tests/` with its fixtures and helpers, `tools/probes/`, `.github/workflows/ci.yml`, `.claude/`,
+`docs/`, `workbench/` and this file exist.
 
 ```
 .claude-plugin/marketplace.json   the catalog
@@ -22,6 +23,7 @@ docs/design/review.md             Fable's review of the plan, and the lead's ans
 docs/architecture.svg             the architecture drawn, interactive on GitHub Pages or served from localhost
 docs/compat.md                    each Claude Code feature io-guard uses, the version, the probe, the fallback
 docs/live-checks.md               each live fact, with the platform, the version and the date last confirmed
+docs/launcher.md                  how io-guard starts Python on each platform, and what each hook path costs
 .claude/tasks/                    the build plan: README.md, context.md, open/, done/, baseline/
 .claude/rules/this-repo.md        the rules for this repository
 .claude/rules/docs.md             which doc each kind of change must update, the drawing included
@@ -64,6 +66,8 @@ Each line works once the task that builds it has landed.
 - Fixtures: `python -m tests.support.fixtures` rewrites the generated fixtures and `tests/fixtures/MANIFEST.sha256`
 - The checks on one command, offline: `python tools/ioguard.py check "<command>"`
 - The plugin for one CLI session: `claude --plugin-dir plugins/io-guard`
+- The drawing, served for the browser pane: the `docs` entry in `.claude/launch.json`, at
+  `http://127.0.0.1:8765/architecture.svg`
 - The harness facts, after a Claude Code update: `python tools/probes/run_probe.py run all`, then
   `python tools/probes/run_probe.py verdicts`. `IOPROBE_CLAUDE` points it at the desktop app's own `claude.exe`
 - The plugin in the desktop app, which is the lead's main surface: run

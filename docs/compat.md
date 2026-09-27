@@ -57,3 +57,4 @@ reference names no version for that, so the floor rests on the probes instead. O
 | MCP tools prompt in default mode, whatever their annotations | 2.1.281 | `mcp-prompts`, `mcp-permit` | The README's settings snippet allows the read-only io tools |
 | A plugin enabled on claude.ai loads in Claude Code | 2.1.273, docs | the desktop loaded `@synced` plugins | Install from the marketplace |
 | `userConfig` options appear in `/config` | 2.1.269, docs | not probed | `/plugin configure io-guard` |
+| An unset `userConfig` option falls back to its default, and reaches hooks as `CLAUDE_PLUGIN_OPTION_<KEY>` | 2.1.283 | the task 06 install checks | Nothing: the server and `hook.sh` both read the setting this way |

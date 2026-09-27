@@ -77,7 +77,9 @@ Once the first release is out:
 2. You need Claude Code 2.1.281 or later and Python 3.14 or later. [`docs/compat.md`](docs/compat.md) says why
    2.1.281, and what io-guard does when a Claude Code feature it uses is missing.
 3. On Windows with Python from python.org, run `/plugin configure io-guard` and set the Python interpreter to
-   `python`. The default is `python3`, which on Windows is often the Microsoft Store stub.
+   `python`. The default is `python3`, which on Windows is often the Microsoft Store stub. When the setting
+   doesn't start Python 3.14 or later, io-guard says so once at the start of each session, and checks nothing
+   until it's fixed.
 
 Until 1.0, installs follow the latest commit. From 1.0 on, releases are tagged.
 
