@@ -54,7 +54,10 @@ tightens.
 - **A subprocess is `lib.proc.run` with an argument list and a timeout.** Never `shell=True`. Git runs as
   `git -c core.quotepath=false` with `-z` wherever paths are parsed.
 - **A check reads `ctx.platform` and `ctx.probe`, never `sys.platform`.** Every platform difference lives behind a
-  `lib` function that takes the `Platform`.
+  `lib` function that takes the `Platform`. The environment is `ctx.env` and the data folder `ctx.data_dir`, never
+  `os.environ`, so a test sets both.
+- **A setting that names a variable, a command or a path to run is the user's alone** (D24):
+  `project_may_set=False`. A variable such as `PYTHONSTARTUP` or `BASH_ENV` runs a program.
 - **Lines stop at 110 characters**, code and comments alike (D17).
 - **A module is named for its operation**, a value that crosses modules is a frozen dataclass, and every public
   function has type hints.

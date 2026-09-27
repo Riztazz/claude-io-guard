@@ -100,6 +100,12 @@ places to write to or approve commands.
 **The time budget:** past 300 ms, the checks that start a subprocess are skipped. Past 2 s, every remaining check is
 skipped and the call goes ahead. Both are settings.
 
+**Shell defaults:** at session start, io-guard gives every later Bash call `PYTHONUTF8=1` and
+`PYTHONIOENCODING=utf-8`, so a Python print of a non-ASCII character works through a cp1252 console. On Windows
+it adds `DOTNET_CLI_UI_LANGUAGE=en` and `VSLANG=1033`, so build tools report in English. The lists are the settings
+`checks.session.probe.env` and `checks.session.probe.env_windows`, and only your own `config.json` can change them,
+because a variable such as `PYTHONSTARTUP` can run a program.
+
 **Recommended Claude Code settings**, proposed until the release confirms them:
 
 ```json

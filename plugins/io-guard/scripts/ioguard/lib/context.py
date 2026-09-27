@@ -13,6 +13,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Protocol
 
 from ioguard.lib import bytesio
@@ -39,6 +40,7 @@ class Process:
 class ToolVersion:
     path: str
     version: str
+    stamp: str | None = None     # the file's size and mtime when measured, so an unchanged tool is not rerun
 
 
 class GitPort(Protocol):
@@ -56,6 +58,7 @@ class FsPort(Protocol):
     def stat(self, path: Path) -> FileStat | None: ...
     def exists(self, path: Path) -> bool: ...
     def holders(self, path: Path) -> tuple[Process, ...]: ...
+    def make_folders(self, path: Path) -> None: ...
 
 
 class Clock(Protocol):
@@ -65,8 +68,8 @@ class Clock(Protocol):
 
 @dataclass(frozen=True)
 class Probe:
-    """What the session probe found about this machine. Task 10 takes it at SessionStart and saves it as
-    probe.json in the plugin data folder. A field io-guard has not probed is None."""
+    """What the session probe found about this machine. checks.session_probe takes it at SessionStart and
+    saves it as probe.json in the plugin data folder. A field io-guard has not probed is None."""
     os: str
     bash: ToolVersion | None
     pwsh: ToolVersion | None
@@ -77,30 +80,42 @@ class Probe:
     transport_budget: int | None     # bytes, None where no cut exists or none was measured
     halving: bool | None             # whether the Bash tool halves backslashes, None when not probed
     claude_code_version: str | None
-    dirty_at_start: tuple[Path, ...]
+    dirty_at_start: tuple[Path, ...] | None   # None when git could not answer, () outside a repository
     taken_at: datetime | None
 
     @classmethod
     def unprobed(cls, platform: Platform) -> "Probe":
-        """What is known before task 10's probe has run: the platform and this Python."""
+        """What is known before the session probe has run: the platform and this Python."""
         python = ToolVersion(sys.executable, ".".join(str(part) for part in sys.version_info[:3]))
         return cls(os=platform.os, bash=None, pwsh=None, python=python, git=None, console_encoding=None,
                    fs_case_insensitive=platform.case_insensitive, transport_budget=None, halving=None,
-                   claude_code_version=None, dirty_at_start=(), taken_at=None)
+                   claude_code_version=None, dirty_at_start=None, taken_at=None)
 
     @classmethod
     def from_json(cls, raw: Mapping[str, Any]) -> "Probe":
         def version(key: str) -> ToolVersion | None:
             value = raw.get(key)
-            return None if value is None else ToolVersion(value["path"], value["version"])
-        taken = raw.get("taken_at")
+            return None if value is None else ToolVersion(value["path"], value["version"], value.get("stamp"))
+        taken, dirty = raw.get("taken_at"), raw.get("dirty_at_start")
         return cls(os=raw["os"], bash=version("bash"), pwsh=version("pwsh"), python=version("python"),
                    git=version("git"), console_encoding=raw.get("console_encoding"),
                    fs_case_insensitive=raw["fs_case_insensitive"],
                    transport_budget=raw.get("transport_budget"),
                    halving=raw.get("halving"), claude_code_version=raw.get("claude_code_version"),
-                   dirty_at_start=tuple(Path(path) for path in raw.get("dirty_at_start", ())),
+                   dirty_at_start=None if dirty is None else tuple(Path(path) for path in dirty),
                    taken_at=None if taken is None else datetime.fromisoformat(taken))
+
+    def to_json(self) -> dict:
+        def version(tool: ToolVersion | None) -> dict | None:
+            return None if tool is None else {"path": tool.path, "version": tool.version, "stamp": tool.stamp}
+        dirty = self.dirty_at_start
+        return {"os": self.os, "bash": version(self.bash), "pwsh": version(self.pwsh),
+                "python": version(self.python), "git": version(self.git),
+                "console_encoding": self.console_encoding, "fs_case_insensitive": self.fs_case_insensitive,
+                "transport_budget": self.transport_budget, "halving": self.halving,
+                "claude_code_version": self.claude_code_version,
+                "dirty_at_start": None if dirty is None else [str(path) for path in dirty],
+                "taken_at": None if self.taken_at is None else self.taken_at.isoformat()}
 
 
 @dataclass(eq=False)
@@ -153,6 +168,9 @@ class LiveFs:
     def holders(self, path: Path) -> tuple[Process, ...]:
         raise NotImplementedError("Finding the process that holds a file arrives with lib.locks in task 19.")
 
+    def make_folders(self, path: Path) -> None:
+        path.mkdir(parents=True, exist_ok=True)
+
 
 def load_probe(data_dir: Path | None, platform: Platform) -> Probe:
     path = None if data_dir is None else data_dir / "probe.json"
@@ -172,6 +190,8 @@ class Context:
     session: SessionState
     telemetry: Telemetry
     config_report: LoadReport | None = None
+    env: Mapping[str, str] = field(default_factory=dict)   # the environment, so no check reads os.environ
+    data_dir: Path | None = None                           # the plugin data folder, None without one
 
     @classmethod
     def live(cls, data_dir: Path | None, project: Path,
@@ -186,7 +206,7 @@ class Context:
         return cls(config=report.config, probe=load_probe(data_dir, platform), platform=platform, git=Git(),
                    fs=LiveFs(), clock=SystemClock(), session=SessionState(),
                    telemetry=Telemetry(data_dir, enabled=report.config.get("telemetry.enabled")),
-                   config_report=report)
+                   config_report=report, env=MappingProxyType(dict(os.environ)), data_dir=data_dir)
 
     @classmethod
     def fake(cls, files: Mapping[Path, bytes] | None = None, **overrides: Any) -> "Context":

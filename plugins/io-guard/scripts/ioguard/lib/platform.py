@@ -1,6 +1,6 @@
 """The platform io-guard runs on, detected once. Every platform difference reads it, never sys.platform.
 
-Task 10 adds the session probe: the shells, their versions and the transport budget.
+lib.probing measures the rest of the machine at session start: the shells, their versions and the console.
 """
 import sys
 from dataclasses import dataclass

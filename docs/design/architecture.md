@@ -39,6 +39,7 @@ plugins/io-guard/
         decisions.py               Verdict, Rewrite, Decision, compose
         telemetry.py               Telemetry, TraceContext
         platform.py                Platform, detect
+        probing.py                 tool_version, find, claude_version, console_encoding, case_insensitive
         text.py                    visible, snippet, wrap, head
         rules.py                   permission rules: load, match_argv
       checks/                      policy, one module per check
@@ -192,6 +193,7 @@ class FsPort(Protocol):
     def stat(self, path: Path) -> Optional[FileStat]: ...
     def exists(self, path: Path) -> bool: ...
     def holders(self, path: Path) -> tuple[Process, ...]: ...
+    def make_folders(self, path: Path) -> None: ...
 
 class Clock(Protocol):
     def now(self) -> datetime: ...
@@ -209,13 +211,14 @@ class Probe:
     transport_budget: Optional[int]  # bytes, None where no cut exists or none was measured
     halving: Optional[bool]          # the Bash tool halves backslashes, None when not probed
     claude_code_version: Optional[str]
-    dirty_at_start: tuple[Path, ...]
+    dirty_at_start: Optional[tuple[Path, ...]]   # None when git could not answer, () outside a repository
     taken_at: Optional[datetime]
 
     @classmethod
-    def unprobed(cls, platform: Platform) -> "Probe": ...   # before task 10's probe: the platform and Python
+    def unprobed(cls, platform: Platform) -> "Probe": ...   # before the session probe: the platform and Python
     @classmethod
     def from_json(cls, raw: Mapping[str, Any]) -> "Probe": ...
+    def to_json(self) -> dict: ...
 
 class SessionState:
     read_hashes: MutableMapping[Path, str]      # sha256 of the bytes the agent last saw
@@ -238,9 +241,11 @@ class Context:
     session: SessionState
     telemetry: Telemetry
     config_report: Optional[LoadReport] = None   # what loading the config found, for the one user message
+    env: Mapping[str, str] = {}                  # the environment, so no check reads os.environ
+    data_dir: Optional[Path] = None              # the plugin data folder
 
     @classmethod
-    def live(cls, data_dir: Path, project: Path,
+    def live(cls, data_dir: Optional[Path], project: Path,
              check_keys: Optional[Mapping[str, Mapping[str, ConfigKey]]] = None) -> "Context": ...
     @classmethod
     def fake(cls, files: Optional[Mapping[Path, bytes]] = None, **overrides: Any) -> "Context": ...
@@ -251,7 +256,18 @@ cannot import the registry, so the caller passes `check_keys`, the registry's `k
 validate. A probe field nobody has measured is `None`, never a guess. `Context.fake` builds in-memory ports
 for tests from `lib.fakes`: a file system that takes a mapping of path to bytes, a git that answers what it
 was given, and a clock that moves only when told. A check receives a `Context` and reads it. No check writes
-into it except `session`, and only through its typed fields.
+into it except `session`, and only through its typed fields. A check reads the environment from `ctx.env`,
+never from `os.environ`, and the plugin data folder from `ctx.data_dir`.
+
+The session probe (`checks/session_probe.py`, task 10) writes `probe.json` at SessionStart, in the command hook
+because `CLAUDE_ENV_FILE` belongs to a hook process. It measures Git Bash, pwsh and git with `--version` in
+parallel, and a `ToolVersion` carries a `stamp`, the file's size and mtime, so an unchanged tool keeps its
+version without running again. The Claude Code version comes from the hook's `AI_AGENT`, then from
+`CLAUDE_CODE_EXECPATH`. On Windows `transport_budget` is the Bash tool's cut, 7,807 bytes with each apostrophe
+counted as four, and `halving` is true, until `FIXED_IN` names the release that fixes #92543. The policy margin
+below the cut, `transport.budget_bytes`, is task 11's key. The probe then appends `export` lines for the shell
+defaults to `CLAUDE_ENV_FILE`, which reaches Bash calls and not PowerShell ones (`context.md`, row 23). A
+session's first probe took 143 ms on Windows, and one that keeps every version about 55 ms.
 
 ### Result and the codes
 

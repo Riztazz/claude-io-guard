@@ -49,7 +49,8 @@ reference names no version for that, so the floor rests on the probes instead. O
 | PostToolUseFailure fires for a failed Read or Bash call, with `error` and `additionalContext` | 2.1.281 | `failures` | No diagnosis after the call (task 20) |
 | `bashEditDiff` in a Bash result, with `bashEditDiffEnabled: true` | 2.1.281 | `bash-diff-on`, `bash-diff-off` | git status and modification times only (task 21) |
 | `updatedToolOutput` in the tool's own output shape, and `classifierContext` | 2.1.281 | `updated-output` | `additionalContext` only (task 22) |
-| `CLAUDE_ENV_FILE` for a SessionStart hook | 2.1.281 | `env-file` | Bash runs without io-guard's UTF-8 settings (task 10) |
+| `CLAUDE_ENV_FILE` for a SessionStart hook, reaching Bash calls and not PowerShell ones | 2.1.281 | `env-file`, `live-probe` | Bash runs without io-guard's UTF-8 settings (task 10) |
+| A hook's environment names the Claude Code version in `AI_AGENT` | 2.1.281 | `live-probe` | `probe.json` has no version, and the Windows transport rules stay on |
 | Exec-form command hooks, which start a program with no shell | 2.1.281 | `time-exec`, `time-shell` | Shell form through Git Bash, about 33 ms slower |
 | The legacy MCP era by default, and the 2026-07-28 era with `MCP_PROTOCOL_NEGOTIATION=auto` | 2.1.281 | `era-legacy`, `era-auto` | The server answers both eras (D9) |
 | A modern `input_required` result resumes the call | 2.1.281 | `features-modern` | Ask through a hook instead |

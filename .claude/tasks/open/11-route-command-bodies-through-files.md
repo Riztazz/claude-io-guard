@@ -44,8 +44,11 @@ A PreToolUse check on Bash, and on PowerShell where the forms exist:
   with `updatedInput`. `allow` answers `allow` with `updatedInput`. The defaults: `refuse` in auto and dontAsk, `ask`
   in default, acceptEdits and plan, `allow` in bypassPermissions. The body file is written in every mode, so the
   fix points at a file that exists.
-- **Budget.** After any rewrite, a command still over the budget from task 10 is refused with `TRANSPORT_BUDGET`.
-  Its fix says to Write the script and run the file.
+- **Budget.** After any rewrite, a command still over the budget is refused with `TRANSPORT_BUDGET`. Its fix says
+  to Write the script and run the file. The budget is the smallest of three: the key `transport.budget_bytes`,
+  6,000 by default, which this task adds, `ctx.probe.transport_budget`, the Bash tool's cut that task 10's probe
+  records (7,807 on Windows, None where no cut exists), and `SessionState.budget_override` from task 22. With
+  no cut in the probe, the check applies no budget.
 - **Backslashes.** On Windows, a `\\` left in a command that was not moved gets `BACKSLASH_TRANSPORT`: refused,
   with the moved-body fix.
 - **Report every rewrite**, for example "moved a 9.1 KB heredoc body to <file>, ran python <file>".

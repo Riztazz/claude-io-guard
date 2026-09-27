@@ -102,6 +102,10 @@ ANSWERS = "Do these in order, one tool call each, and never retry. 1. Run the Ba
           "tool result."
 REFUSE_MODE = "Run this exact Bash command: echo IOGUARD_ORIGINAL\nIf it is refused, do what the refusal " \
               "says, once. Then quote word for word the refusal and the output."
+ARROW = 'python -c "print(chr(0x2192))"'
+DEFAULTS = f"Run these commands one at a time, each in its own tool call, and never retry. 1. Bash: " \
+           f"{ARROW} 2. Bash: env -u PYTHONUTF8 -u PYTHONIOENCODING {ARROW} 3. PowerShell: {ARROW} " \
+           "4. PowerShell: Write-Output \"utf8=$env:PYTHONUTF8\" Then reply DONE."
 BASH_PRE = (("PreToolUse", "Bash", "exec"),)
 BASH_GATE = (("PreToolUse", "Bash", "mcp"),)
 FILE_AND_SHELL = ("Bash", "PowerShell", "Read", "Edit", "Write")
@@ -224,6 +228,7 @@ PROBES = {
     "live-answers": Probe(22, "", guard="refuse,rewrite,note", permission="bypassPermissions",
                           setup={"s.txt": b"one\n"}, prompt=ANSWERS),
     "live-refuse": Probe(0, "", guard="rewrite", permission="dontAsk", allowed=("Bash",), prompt=REFUSE_MODE),
+    "live-probe": Probe(0, "", guard="", allowed=("Bash", "PowerShell"), prompt=DEFAULTS),
 }
 
 
@@ -407,6 +412,8 @@ def run(name: str) -> Path:
     (out / "stream.jsonl").write_bytes(b"".join(lines))
     if probe.guard is not None:
         copy_telemetry(lines, log)
+        if (GUARD_DATA / "probe.json").is_file():
+            shutil.copyfile(GUARD_DATA / "probe.json", out / "guard-probe.json")
     details = summarise(out / "stream.jsonl", log, work, probe)
     versions = [note["version"] for note in details["notes"] if isinstance(note, dict) and "version" in note]
     summary = {"probe": name, "item": probe.item, "claude": versions[0] if versions else None,
@@ -474,6 +481,17 @@ def context_reached(name: str, needle: str) -> bool:
             if attachment.get("type") == "hook_additional_context" and needle in json.dumps(attachment):
                 return True
     return False
+
+
+def defaults_applied(summary: dict, name: str) -> bool:
+    """The arrow printed through Bash, the same command without the defaults failed, and the session probe
+    named the Claude Code version."""
+    folder, _ = latest(name)
+    saved = folder / "guard-probe.json"
+    probe = json.loads(saved.read_bytes()) if saved.is_file() else {}
+    outputs = [str(result["content"]) for result in summary["results"]]
+    return (len(outputs) >= 2 and chr(0x2192) in outputs[0] and "UnicodeEncodeError" in outputs[1]
+            and probe.get("claude_code_version") is not None)
 
 
 def every_call_denied(summary: dict) -> bool:
@@ -544,6 +562,7 @@ VERDICTS = {
     and context_reached(n, "IOGUARD-TEST-NOTE PreToolUse Read")
     and context_reached(n, "IOGUARD-TEST-NOTE PostToolUse Read"),
     "live-refuse": lambda s, n: "Run this command instead" in seen(s) and "IOGUARD_REWRITTEN" in seen(s),
+    "live-probe": defaults_applied,
 }
 
 

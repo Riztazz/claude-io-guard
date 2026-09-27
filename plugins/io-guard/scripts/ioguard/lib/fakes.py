@@ -33,6 +33,7 @@ class FakeFs:
         self.readonly = readonly
         self.held = dict(holders or {})
         self.writes: list[Path] = []
+        self.folders: set[Path] = set()
 
     def read_bytes(self, path: Path, limit: int | None = None) -> bytes:
         if path not in self.files:
@@ -55,6 +56,9 @@ class FakeFs:
 
     def holders(self, path: Path) -> tuple[Process, ...]:
         return self.held.get(path, ())
+
+    def make_folders(self, path: Path) -> None:
+        self.folders.add(path)
 
 
 class FakeGit:

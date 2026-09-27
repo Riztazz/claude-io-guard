@@ -73,6 +73,8 @@ Confirmed with `tools/probes/run_probe.py`, whose `verdicts` command rechecks ev
 | 20. A Write of 145,599 bytes reaches an `mcp_tool` hook whole | `guard-large` | 2.1.283 | waits for the Mac | 2026-09-27 |
 | 21. A `--plugin-dir` plugin takes its `userConfig` from `--settings`, under `pluginConfigs["<name>@inline"]` | by hand, task 08 | 2.1.283 | waits for the Mac | 2026-09-27 |
 | 22. PreToolUse `additionalContext` reaches the model, with or without a permission decision | `live-answers` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+| 23. `CLAUDE_ENV_FILE` reaches Bash calls and not PowerShell calls | `live-probe` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+| 24. A hook's environment names the Claude Code version in `AI_AGENT` | `live-probe` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 
 ## io-guard itself
 
@@ -85,6 +87,7 @@ match `.claude/tasks/context.md`, "The hook entry point".
 | A check that raises on every event leaves every call running, and the other checks still answer | `live-broken` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | A rewrite in `allow` mode runs the new command, and a refusal's fix reaches the model | `live-answers` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | A rewrite in `refuse` mode gives the model the command to run instead, and it runs it | `live-refuse` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+| The session probe writes `probe.json` in 54 to 143 ms, and its env file lets Bash's Python print U+2192 | `live-probe` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 
 ## Not checked yet
 

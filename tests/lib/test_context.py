@@ -1,5 +1,6 @@
 """Context.fake gives in-memory ports a test controls. Context.live builds the real ones from disk."""
 import json
+import os
 import shutil
 import tempfile
 import unittest
@@ -67,9 +68,14 @@ class LiveContexts(unittest.TestCase):
 
     def test_without_a_probe_file_the_probe_says_what_is_unknown(self):
         probe = Context.live(self.data, self.project).probe
-        self.assertEqual((probe.os, probe.halving, probe.transport_budget, probe.taken_at),
-                         (detect().os, None, None, None),
-                         "before task 10's probe has run, unmeasured fields are None, never a guess")
+        measured = (probe.os, probe.halving, probe.transport_budget, probe.dirty_at_start, probe.taken_at)
+        self.assertEqual(measured, (detect().os, None, None, None, None),
+                         "before the session probe has run, unmeasured fields are None, never a guess")
+
+    def test_a_live_context_carries_the_environment_and_the_data_folder(self):
+        ctx = Context.live(self.data, self.project)
+        self.assertEqual((ctx.data_dir, ctx.env.get("PATH")), (self.data, os.environ.get("PATH")),
+                         "a check reads both from the context, never from os.environ")
 
     def test_a_probe_file_is_read_back(self):
         written = {"os": "win32", "bash": {"path": "bash.exe", "version": "5.2"}, "pwsh": None,
@@ -80,7 +86,7 @@ class LiveContexts(unittest.TestCase):
         (self.data / "probe.json").write_bytes(json.dumps(written).encode("ascii"))
         probe = Context.live(self.data, self.project).probe
         self.assertEqual((probe.transport_budget, probe.halving, probe.bash.version), (6000, True, "5.2"),
-                         "a live context loads the probe task 10 saved")
+                         "a live context loads the probe the session probe saved")
 
     def test_live_file_ports_round_trip_bytes(self):
         target = self.project / "a.txt"
