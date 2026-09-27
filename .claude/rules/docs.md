@@ -15,7 +15,8 @@
 
 - **In the drawing, one fact has several copies, and they change together:** the box and its hover text in `<title>`,
   the arrow and its badge, and the step text in the script's `STEPS`. GitHub shows only the boxes, the arrows and the
-  badges, so the static picture has to be right on its own.
+  badges, so the static picture has to be right on its own. The README links the interactive copy, which GitHub Pages
+  serves from `docs/` on `main` after each push.
 - **Check the drawing after every edit.** It parses as well-formed XML, for example with Python's
   `xml.dom.minidom`, and it is ASCII. Then serve `docs/` on localhost with `python -m http.server` and open
   `architecture.svg` there: the browser pane shows a local file only as a static snapshot. Pick each flow, press

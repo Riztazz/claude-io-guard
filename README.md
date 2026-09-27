@@ -6,10 +6,11 @@ returns a structured error for the rest. One codebase runs on Windows and macOS.
 **Status: in design.** The design is finished and the build plan is in `.claude/tasks/`, but no code ships yet. This
 page describes the plugin the plan builds.
 
-<img src="docs/architecture.svg" alt="io-guard's architecture: Claude Code's tools on top, the plugin's io server, checks and lib in the middle, and the files on disk at the bottom, with four numbered flows" width="100%">
+<a href="https://riztazz.github.io/claude-io-guard/architecture.svg"><img src="docs/architecture.svg" alt="io-guard's architecture: Claude Code's tools on top, the plugin's io server, checks and lib in the middle, and the files on disk at the bottom, with four numbered flows" width="100%"></a>
 
-Open [`docs/architecture.svg`](docs/architecture.svg) in a browser to follow each flow step by step, and hover a box
-to see what it does. The full design is [`docs/design/architecture.md`](docs/design/architecture.md).
+GitHub shows the drawing as a still image. **[Open the interactive drawing](https://riztazz.github.io/claude-io-guard/architecture.svg)**
+to follow each flow step by step, and hover a box to see what it does. The full design is
+[`docs/design/architecture.md`](docs/design/architecture.md).
 
 ## What it fixes
 

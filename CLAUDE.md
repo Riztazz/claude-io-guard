@@ -17,7 +17,7 @@ tools/                            corpus, replay, report, measure, and the iogua
 workbench/                        copies of the lead's project files to test on, local and gitignored
 docs/design/architecture.md       the design every task builds from, with every contract
 docs/design/review.md             Fable's review of the plan, and the lead's answers
-docs/architecture.svg             the architecture drawn, interactive when opened in a browser
+docs/architecture.svg             the architecture drawn, interactive on GitHub Pages or served from localhost
 .claude/tasks/                    the build plan: README.md, context.md, open/, done/, baseline/
 .claude/rules/this-repo.md        the rules for this repository
 .claude/rules/docs.md             which doc each kind of change must update, the drawing included

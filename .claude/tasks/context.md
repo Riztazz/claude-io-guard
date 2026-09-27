@@ -34,6 +34,7 @@ which it answers, is `docs/design/review.md`. Both reviews use the task numbers 
 | D20 | The task files are numbered in build order, and every dependency points to a lower number. Hunk staging and the dashboard come after the measured result | The lead asked for one linear order |
 | D21 | The lead's Mac is down from 2026-09-27 for the foreseeable future. Live checks run on Windows only, CI still runs macOS on GitHub's runners, and the live macOS checks wait in task 36. Code assumes the Mac has Python 3.14 | Nothing can be checked live on a Mac until it is back |
 | D22 | Telemetry copied into a clone goes in `events/`, and a report page written into a clone goes in `reports/`. Both are gitignored at the root, beside `corpus/`. Chosen by the lead on 2026-09-27 | No task named an export path, and D8 keeps telemetry out of git. A bare `*.jsonl` would also hide the conformance scripts in `tests/mcp/requests/` |
+| D23 | GitHub Pages serves `docs/` from `main`, and the README links the drawing there: `https://riztazz.github.io/claude-io-guard/architecture.svg`. `docs/.nojekyll` makes Pages serve the folder as files. Chosen by the lead on 2026-09-27 | GitHub shows an SVG in a README, and in the file view, as an image with no script. `raw.githubusercontent.com` and `gist.githubusercontent.com` both send `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox`, which blocks it too. Pages sends no such header, checked with curl on 2026-09-27 |
 
 ## Surfaces
 
