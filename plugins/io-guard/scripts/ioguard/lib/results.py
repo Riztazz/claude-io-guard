@@ -80,6 +80,12 @@ CODES: tuple[CodeSpec, ...] = (
     CodeSpec("INLINE_SCRIPT_INVALID", Layer.TRANSPORT, Severity.REFUSED,
              "The Python program in this command does not compile.",
              "Fix the line the message names, then run the command again.", "0.1"),
+    CodeSpec("MSYS_PATH", Layer.TRANSPORT, Severity.FIXED,
+             "Git Bash would turn an argument that starts with a slash into a path under its install "
+             "folder, so io-guard kept it as written.", "Nothing to do.", "0.1"),
+    CodeSpec("RESERVED_NAME", Layer.TRANSPORT, Severity.REFUSED,
+             "The path is a Windows device name, such as nul or con, which Windows tools cannot open or "
+             "delete as a file.", "Use /dev/null in Bash, or another name for a file.", "0.1"),
 )
 Code = Enum("Code", {spec.code: spec.code for spec in CODES})
 SPECS: dict[Code, CodeSpec] = {Code[spec.code]: spec for spec in CODES}

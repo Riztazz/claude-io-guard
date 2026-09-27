@@ -3,9 +3,9 @@
 A Claude Code plugin that checks what an agent sends to the file and shell tools, fixes what it safely can, and
 returns a structured error for the rest. One codebase runs on Windows and macOS.
 
-**Status: in build.** The plugin installs, and its hooks answer every file and shell call. Four checks run so
-far: the session probe, the Bash body move, the shell-write refusal and the quoting and dialect lint. The build
-plan is in `.claude/tasks/`, and this page describes the plugin the plan builds.
+**Status: in build.** The plugin installs, and its hooks answer every file and shell call. Five checks run so
+far: the session probe, the Bash body move, the shell-write refusal, the quoting and dialect lint, and the Git
+Bash path fix. The build plan is in `.claude/tasks/`, and this page describes the plugin the plan builds.
 
 ## Five fixes, by example
 
@@ -73,6 +73,7 @@ The numbers come from 110,379 file and shell tool calls in 738 transcripts of re
 | A failed Edit says "not found" and nothing else | 67 anchor misses, 112 stale reads | Returns the closest match, the file's endings and a corrected call |
 | `sed -i`, redirects and scripts write files around the edit tools, so no check and no rewind sees them | 2,876 shell writes | Refuses a write to a file git tracks, names the tool that does it safely, and warns about a script created inside the repository |
 | Bash reads a command differently from what was meant: a Windows path's last backslash escapes its quote, a backtick inside double quotes runs as a command, PowerShell syntax goes to the Bash tool, a Python body doesn't compile | 29 failed commands, and 11 more that ran and did the wrong thing | Rewrites the path with forward slashes, and refuses the rest with the fix |
+| On Windows, Git Bash turns an argument such as `/Name/X` or `/F` into a path before a Windows program sees it, and `2>nul` writes a file named `nul` | 17 results show a converted path, 163 commands pass such an argument, 3 redirect to `nul` | Names those arguments in `MSYS2_ARG_CONV_EXCL`, and writes `cmd //c` and `/dev/null` |
 | Long output is cut, and exit code 1 from grep stops a chain | 148 cut results | Labels the exit code and summarises the errors |
 
 ## How it works

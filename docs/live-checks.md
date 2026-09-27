@@ -27,6 +27,9 @@ publishes it.
 | Write writes LF over a CRLF file and drops its BOM | 2.1.281 | waits for the Mac | 2026-09-27 |
 | Read shows CRLF, LF and a BOM the same way | 2.1.281 | waits for the Mac | 2026-09-27 |
 | Python prints through the cp1252 console code page | 2.1.281 | not a macOS issue | 2026-09-27 |
+| Git Bash 5.2.37 hands a Windows program `/Game/X` as `C:/Program Files/Git/Game/X`, `/PID` as `C:/Program Files/Git/PID`, `/F` as `F:/` and `/p:x` as `p:x`, and turns `/c/Users` and `/tmp` into Windows paths | 2.1.281 | not a macOS issue | 2026-09-27 |
+| `MSYS2_ARG_CONV_EXCL` keeps the prefixes it names, case-sensitive, and `/c/...` still converts. `MSYS_NO_PATHCONV=1` stops every conversion, `/c/...` included | 2.1.281 | not a macOS issue | 2026-09-27 |
+| `cmd /c` opens cmd without running the command, because `/c` arrives as `C:/`. `2>nul` writes a real file named `nul` | 2.1.281 | not a macOS issue | 2026-09-27 |
 
 The PowerShell calls `shell.lint` refuses, confirmed through the PowerShell tool on PowerShell 7.6.6 during task
 13. Each is an error in PowerShell itself, so any host shows it.

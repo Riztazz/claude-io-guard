@@ -1,13 +1,15 @@
-"""Paths as the agent names them, turned into one absolute form.
-
-Task 14 adds reserved names, links and write roots.
-"""
+"""Paths as the agent names them, turned into one absolute form, and the arguments Git Bash rewrites as
+paths."""
 import ntpath
 import posixpath
+import re
 import unicodedata
+from collections.abc import Collection
 from pathlib import Path
 
 from ioguard.lib.platform import Platform
+
+SLASH_ARGUMENT = re.compile(r"^(--?[\w-]+[=:])?(/(?!/)[^/;]*)(/)?")
 
 
 def normalise(raw: str, cwd: Path, platform: Platform) -> Path:
@@ -24,3 +26,23 @@ def normalise(raw: str, cwd: Path, platform: Platform) -> Path:
     if platform.macos:
         folded = unicodedata.normalize("NFC", folded)
     return Path(folded)
+
+
+def msys_prefix(word: str, posix_roots: Collection[str]) -> str | None:
+    """The prefix that keeps Git Bash from converting word when it passes word to a Windows program, or None
+    when the conversion is wanted or never happens.
+
+    Git Bash rewrites an argument that starts with a slash, or an --option= followed by one, into a Windows
+    path under its own install folder, and a lone /F into the drive F:/. A drive with a path after it, such as
+    /c/Users, and the roots in posix_roots are paths meant for that rewrite. Any other first segment, such as
+    /Game/, /PID or the switch /F, is a name the program expects as written. A doubled slash already escapes
+    the rewrite."""
+    match = SLASH_ARGUMENT.match(word)
+    if match is None:
+        return None
+    head, segment, slash = match[1] or "", match[2], match[3] or ""
+    name = segment[1:]
+    drive = re.fullmatch(r"[A-Za-z]", name) and slash
+    if not name or drive or name.lower() in posix_roots:
+        return None
+    return head + segment + slash

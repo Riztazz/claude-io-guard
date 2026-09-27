@@ -52,6 +52,7 @@ reference names no version for that, so the floor rests on the probes instead. O
 | `CLAUDE_ENV_FILE` for a SessionStart hook, reaching Bash calls and not PowerShell ones | 2.1.281 | `env-file`, `live-probe` | Bash runs without io-guard's UTF-8 settings (task 10) |
 | A hook's environment names the Claude Code version in `AI_AGENT` | 2.1.281 | `live-probe` | `probe.json` has no version, and the Windows transport rules stay on |
 | On Windows the Bash tool cuts a command near 7.8 KB and halves a run of backslashes that no double quote follows (#92543) | every release probed | this session's Bash tool, `live-move-ask` | Setting `FIXED_IN` in `checks/session_probe.py` to the fixing release turns both rules off for it (task 11) |
+| On Windows the Bash tool runs Git Bash 5.2.37, which turns a slash argument for a Windows program into a path, and skips the prefixes `MSYS2_ARG_CONV_EXCL` names | 2.1.281 | this session's Bash tool, task 14 | `win.paths` exports a variable Git Bash ignores, and the arguments convert as before |
 | Exec-form command hooks, which start a program with no shell | 2.1.281 | `time-exec`, `time-shell` | Shell form through Git Bash, about 33 ms slower |
 | The legacy MCP era by default, and the 2026-07-28 era with `MCP_PROTOCOL_NEGOTIATION=auto` | 2.1.281 | `era-legacy`, `era-auto` | The server answers both eras (D9) |
 | A modern `input_required` result resumes the call | 2.1.281 | `features-modern` | Ask through a hook instead |

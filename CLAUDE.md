@@ -7,11 +7,11 @@ plugin's marketplace: github.com/Riztazz/claude-io-guard.
 ## Layout
 
 The tasks build most of this. Today the marketplace, the plugin's manifest, hooks, launcher, stub skill, the
-`ioguard` package's runtime core (`lib/` and the pipeline in `checks/`, with four checks: the session probe,
-`shell.writes`, `transport.body` and `shell.lint`), the hook entry point and bridge in `hooks/`, the corpus
-and replay commands in `cli/` with their `tools/` scripts, a stub server that serves only the hook tools,
-`tests/` with its fixtures and helpers, `tools/probes/`, `.github/workflows/ci.yml`, `.claude/`, `docs/`,
-`workbench/` and this file exist.
+`ioguard` package's runtime core (`lib/` and the pipeline in `checks/`, with five checks: the session probe,
+`shell.writes`, `transport.body`, `shell.lint` and `win.paths`), the hook entry point and bridge in `hooks/`,
+the corpus and replay commands in `cli/` with their `tools/` scripts, a stub server that serves only the hook
+tools, `tests/` with its fixtures and helpers, `tools/probes/`, `.github/workflows/ci.yml`, `.claude/`,
+`docs/`, `workbench/` and this file exist.
 
 ```
 .claude-plugin/marketplace.json   the catalog

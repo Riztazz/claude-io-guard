@@ -29,7 +29,7 @@ plugins/io-guard/
         shell.py                   scan, commands, budget_length, moved, the hazards bash reads differently
         pwsh.py                    commands, blanked, file_calls
         python_source.py           compile_report: a Python body's syntax error or warning, without running it
-        paths.py                   normalise, reserved, link_target, inside, same_file
+        paths.py                   normalise, msys_prefix, reserved, link_target, inside, same_file
         git.py                     Git, the GitPort implementation
         locks.py                   holders, file_lock
         proc.py                    run, Pump, background
@@ -52,7 +52,7 @@ plugins/io-guard/
         transport_body.py          BODY_MOVED_TO_FILE, TRANSPORT_BUDGET, BACKSLASH_TRANSPORT
         shell_writes.py            SHELL_WRITE, scratch script warning
         lint.py                    shell.lint: quoting, escapes, dialect, Python bodies, PIPE_HIDES_EXIT
-        win_paths.py               MSYS_PATH, device names, cmd quirks
+        win_paths.py               win.paths: MSYS_PATH for slash arguments and cmd /c, RESERVED_NAME for nul
         conform_write.py           EOL_CONVERTED, BOM_RESTORED
         conform_edit.py            TRAILING_WS_STRIPPED avoidance, INDENT_MISMATCH
         verify_write.py            profile drift after Edit and Write
@@ -348,7 +348,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Transport | `BODY_MOVED_TO_FILE`, `TRANSPORT_BUDGET`, `BACKSLASH_TRANSPORT`, the last a warning (D25) | 11, in `CODES` |
 | Transport | `SHELL_WRITE`, a warning for a new script inside a repository (GIT-1) | 12, in `CODES` |
 | Transport | `BACKTICK_IN_DOUBLE_QUOTES`, `TRAILING_BACKSLASH_QUOTE`, `DIALECT_MISMATCH`, `POWERSHELL_TRAP`, `PIPE_HIDES_EXIT`, `INLINE_SCRIPT_INVALID` | 13, in `CODES` |
-| Transport | `MSYS_PATH`, `RESERVED_NAME` | 14 |
+| Transport | `MSYS_PATH`, `RESERVED_NAME` | 14, in `CODES` |
 | Bytes | `EOL_CONVERTED`, `BOM_RESTORED`, `TRAILING_WS_STRIPPED`, `INDENT_MISMATCH` | 17 |
 | Bytes | `EOL_MISMATCH`, `BOM_CHANGED`, `ENCODING_INVALID`, `NON_ASCII_ADDED`, `CONTROL_BYTES_ADDED`, `SIZE_COLLAPSED`, `UNINTENDED_CHANGE` | 18 |
 | Stale | `ANCHOR_NOT_FOUND`, `ANCHOR_AMBIGUOUS`, `STALE_VIEW`, `NOT_READ` | 20 |
@@ -534,7 +534,8 @@ rewrite whose fields are not all in `writes` is a bug, and the pipeline fails op
 `CHECKS` in the task that builds it. A test registers one class into an empty registry to test a check alone.
 No import-time discovery, no decorators, one list. `transport.body` runs after `shell.writes`, so a command
 refused for its write never has a body moved into a file first. `shell.lint` runs after `transport.body`, so it
-compiles a moved body from its file, as Python will read it.
+compiles a moved body from its file, as Python will read it. `win.paths` runs after `shell.lint`, so its
+rewrite lands on a command nothing refused.
 
 ### The pipeline
 
@@ -643,7 +644,8 @@ def blanked(command: str) -> str                            # strings and commen
 def compile_report(source: str) -> Optional[CompileReport]  # the SyntaxError, or the SyntaxWarnings
 
 # paths.py
-def normalise(raw: str, cwd: Path, platform: Platform) -> Path
+def normalise(raw: str, cwd: Path, platform: Platform) -> Path   # a Windows path with forward slashes
+def msys_prefix(word: str, posix_roots: Collection[str]) -> Optional[str]   # task 14: what Git Bash must keep
 def reserved(path: Path) -> Optional[str]                   # "nul", "com1"
 def link_target(path: Path) -> Optional[Path]               # junction or symlink
 def inside(path: Path, roots: Sequence[Path], platform: Platform) -> Optional[Path]
@@ -711,7 +713,7 @@ Policy data lives in `io-guard.json`. The file carries no comments, so its keys 
   "schema": 1,
   "checks": {
     "transport.body": {"enabled": true},
-    "win.paths": {"enabled": true, "prefixes": ["/Game/", "/Script/", "/Engine/"]},
+    "win.paths": {"enabled": true, "prefixes": []},
     "verify.write": {"enabled": true, "ascii_only": [".md", ".py"]}
   },
   "transport": {
@@ -744,7 +746,9 @@ the code that reads it, because a key nothing reads is a validation error in wai
 `schema`, `pipeline.*`, `transport.rewrite_mode.*` and `telemetry.*`, task 10 `checks.session.probe.env` and
 `env_windows`, task 11 `transport.budget_bytes`, and task 13 `checks.shell.lint.build_commands`, the commands
 whose exit code a pipe hides, each as its first words, such as `make` or `npm test`. A project names its own
-builds there, and its list replaces the default one. Each other key arrives with its check. A key marked
+builds there, and its list replaces the default one. Task 14 added `checks.win.paths.posix_roots`,
+`msys_programs` and `prefixes`. The check finds the slash arguments Git Bash would convert on its own, so
+`prefixes` is only for a name that looks like a POSIX root. Each other key arrives with its check. A key marked
 `project_narrows`, such as the budget, takes a lower number from a project file and refuses a higher one.
 
 **The rewrite mode is the user's (D12).** For each permission mode the user layer sets `refuse`, `ask` or `allow`.

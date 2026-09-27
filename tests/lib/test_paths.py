@@ -2,7 +2,7 @@
 import unittest
 from pathlib import Path
 
-from ioguard.lib.paths import normalise
+from ioguard.lib.paths import msys_prefix, normalise
 from ioguard.lib.platform import Platform, detect
 
 WINDOWS = Platform("win32", True)
@@ -26,6 +26,15 @@ class PathsNormalise(unittest.TestCase):
         decomposed = "cafe" + chr(0x301) + ".txt"
         self.assertEqual(normalise(decomposed, Path("/w"), MACOS).name, "caf" + chr(0xE9) + ".txt",
                          "on macOS a decomposed name is normalised to NFC, the form a user types")
+
+    def test_git_bash_keeps_a_name_and_converts_a_path(self):
+        cases = {"/Game/X/Y": "/Game/", "/PID": "/PID", "/p:Config=Debug": "/p:Config=Debug",
+                 "--map=/Game/L": "--map=/Game/", "/c/Users/x": None, "/F": "/F", "/tmp/a": None, "//c": None,
+                 "-I/usr/x": None, "relative/x": None, "/": None}
+        for word, prefix in cases.items():
+            with self.subTest(word=word):
+                self.assertEqual(msys_prefix(word, ("tmp", "usr")), prefix,
+                                 "a name keeps its slash, and a drive or POSIX root is converted as meant")
 
     def test_detect_names_this_platform(self):
         import sys

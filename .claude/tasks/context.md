@@ -82,6 +82,11 @@ assignment to one of 12 read-only automatic variables such as `$PID` or `$HOME`,
 `export`, and `> /dev/null` on Windows. A `pwsh` start that parses one command takes 191 to 218 ms, so the check
 parses PowerShell itself rather than through `pwsh`. `docs/live-checks.md` has each error text.
 
+Task 14 checked Git Bash 5.2.37 through this session's Bash tool: a slash argument for a Windows program
+becomes a path under Git's install folder, a lone `/F` becomes `F:/`, and `/p:x` loses its slash.
+`MSYS2_ARG_CONV_EXCL` keeps the prefixes it names while `/c/...` and `/tmp/...` still convert, and
+`MSYS_NO_PATHCONV=1` stops all of them. `cmd /c` runs nothing, and `2>nul` writes a real file named `nul`.
+
 Rules through a junction, checked on 2026-09-27 with Claude Code 2.1.281 and 2.1.283:
 
 - **Claude Code loads a rule, or an `@` import, only when its real path is inside the project.** A junction's real
