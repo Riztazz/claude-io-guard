@@ -48,12 +48,12 @@ class TheProfileLine(unittest.TestCase):
                                  "an image, a vanished file or a file past max_bytes adds nothing")
 
 
-class TheHashOfWhatWasRead(unittest.TestCase):
-    def test_the_session_keeps_the_hash(self):
-        data = b"one\ntwo\n"
+class TheProfileOfWhatWasRead(unittest.TestCase):
+    def test_the_session_keeps_the_profile(self):
+        data = b"one\r\ntwo\r\n"
         _, ctx, event = read(data)
-        self.assertEqual(ctx.session.read_hashes[event.file_path], profile(data).sha256,
-                         "the freshness checks compare a later write with these bytes")
+        self.assertEqual(ctx.session.read_profiles[event.file_path], profile(data),
+                         "the checks that compare a later change with these bytes read this profile")
 
     def test_a_megabyte_adds_little_time(self):
         data = b"".join(b"    line %06d of a large source file\r\n" % number for number in range(26000))

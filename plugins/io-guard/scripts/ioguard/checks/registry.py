@@ -11,6 +11,7 @@ from ioguard.checks.read_profile import ReadProfile
 from ioguard.checks.session_probe import SessionProbe
 from ioguard.checks.shell_writes import ShellWrites
 from ioguard.checks.transport_body import TransportBody
+from ioguard.checks.touched import Touched
 from ioguard.checks.verify_command import VerifyCommand
 from ioguard.checks.verify_write import VerifyWrite
 from ioguard.checks.win_paths import WinPaths
@@ -81,7 +82,7 @@ class Registry:
 
 
 CHECKS: tuple[type[Check], ...] = (SessionProbe, Location, LockHolders, ShellWrites, TransportBody, Lint,
-                                   WinPaths, ConformWrite, ConformEdit, VerifyWrite, VerifyCommand,
+                                   WinPaths, ConformWrite, ConformEdit, VerifyWrite, VerifyCommand, Touched,
                                    ReadProfile, DiagnoseFailure, DiagnoseRefused)
 
 

@@ -3,10 +3,10 @@
 The Read tool shows a CRLF file, an LF file and a file with a BOM the same way (BYT-4), so the agent cannot
 see the convention a write has to keep. After each Read the check profiles the file's bytes on disk and adds
 one line, such as io-guard: CRLF, BOM, UTF-8, tabs, 1,284 lines, and one more when the bytes hold a hazard.
-It keeps the hash of the whole file in the session, also after a Read of a few lines, for the checks that
-compare a later write with what the agent saw. A binary file, such as an image the Read tool shows as a
-picture, gets its hash and no line. A file past max_bytes gets neither, because the check would profile only
-the part of it that fits.
+It keeps the profile of the whole file in the session, also after a Read of a few lines, for the checks that
+compare a later change with what the agent saw, such as shell.touched. A binary file, such as an image the
+Read tool shows as a picture, gets its profile kept and no line. A file past max_bytes gets neither, because
+the check would profile only the part of it that fits.
 """
 from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.lib.config import ConfigKey
@@ -41,7 +41,7 @@ class ReadProfile(Check):
             return Decision.observe(self.meta.id)
         found = profile(data)
         with ctx.session.lock:
-            ctx.session.read_hashes[event.file_path] = found.sha256
+            ctx.session.read_profiles[event.file_path] = found
         if found.binary:
             return Decision.observe(self.meta.id)
         lines = [f"io-guard: {found.line()}"]

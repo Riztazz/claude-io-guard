@@ -63,8 +63,8 @@ plugins/io-guard/
         conform_edit.py            conform.edit: INDENT_MISMATCH, new_string in the indent around the match
         verify_write.py            verify.write: the file after an Edit or Write against its snapshot, repairs
         verify_command.py          verify.command: the user's verify command on the written file
-        touched.py                 TOUCHED_BY_SHELL, new files
-        read_profile.py            read.profile: the profile line after Read, and the hash in read_hashes
+        touched.py                 shell.touched: TOUCHED_BY_SHELL, the files a shell command changed or made
+        read_profile.py            read.profile: the profile line after Read, and the profile in read_profiles
         diagnose.py                diagnose.failure after a failed call, diagnose.refused at the next hook
         command_results.py         EXIT_BENIGN, ERRORS_IN_OUTPUT, OUTPUT_SAVED, MOJIBAKE
         commit_policy.py           task 29
@@ -243,9 +243,15 @@ class Snapshot:
     data: Optional[bytes]                        # the bytes too, up to verify.write's snapshot_bytes
     tool_input: Mapping[str, Any]                # the input the tool runs with, after io-guard's rewrites
 
+@dataclass(frozen=True)
+class ShellSnapshot:                             # task 21, before a Bash or PowerShell command
+    root: Optional[Path]                         # the session's repository, None outside one
+    status: Optional[frozenset[tuple[str, str]]] # (path from root, XY) from git status, None when git fails
+    stats: Mapping[Path, Optional[FileStat]]     # each read file's size and time
+
 class SessionState:
-    read_hashes: MutableMapping[Path, str]      # sha256 of the bytes the agent last saw
-    snapshots: MutableMapping[str, Snapshot]     # by tool_use_id, from PreToolUse to PostToolUse, 16 at most
+    read_profiles: MutableMapping[Path, Profile] # the bytes the agent last read, or wrote through verify.write
+    snapshots: MutableMapping[str, Snapshot | ShellSnapshot]   # by tool_use_id, until PostToolUse, 16 at most
     warned: MutableSet[str]                      # one user warning per key per session
     budget_override: Optional[int]               # learned from an EOF failure
     tracked: MutableMapping[Path, bool]          # whether git tracks a path, asked once by shell.writes
@@ -275,6 +281,8 @@ class Context:
              check_keys: Optional[Mapping[str, Mapping[str, ConfigKey]]] = None) -> "Context": ...
     @classmethod
     def fake(cls, files: Optional[Mapping[Path, bytes]] = None, **overrides: Any) -> "Context": ...
+
+def repository_root(git: GitPort, path: Path) -> Optional[Path]: ...   # None outside one or when git fails
 ```
 
 `Context.live` builds the real ports and loads the probe and the config from `${CLAUDE_PLUGIN_DATA}`. `lib`
@@ -377,7 +385,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Bytes | `BOM_CHANGED`, `ENCODING_INVALID`, `NON_ASCII_ADDED`, `CONTROL_BYTES_ADDED`, `SIZE_COLLAPSED`, `UNINTENDED_CHANGE`, all warnings | 18, in `CODES` |
 | Stale | `ANCHOR_NOT_FOUND`, `ANCHOR_AMBIGUOUS`, `STALE_VIEW`, all warnings on a call that already failed | 20, in `CODES` |
 | Stale | `NOT_READ`, not built: the tool's own "not read yet" error already names the Read to make | - |
-| Stale | `TOUCHED_BY_SHELL` | 21 |
+| Stale | `TOUCHED_BY_SHELL`, a warning | 21, in `CODES` |
 | Read | `PATH_NOT_FOUND`, `READ_TOO_LARGE`, `PATTERN_INVALID`, `SEARCH_TOO_BROAD`, all warnings | 20, in `CODES` |
 | Output | `EXIT_BENIGN`, `OUTPUT_SAVED`, `ERRORS_IN_OUTPUT`, `MOJIBAKE` | 22 |
 | Internal | `GUARD_ERROR`, `REWRITE_CONFLICT`, `BUDGET_EXCEEDED` | 07, in `CODES` |
@@ -700,6 +708,7 @@ def compile_report(source: str) -> Optional[CompileReport]  # the SyntaxError, o
 
 # paths.py
 def normalise(raw: str, cwd: Path, platform: Platform) -> Path   # a Windows path with forward slashes
+def shown(path: Path, cwd: Path) -> str                     # from cwd when under it, and cwd as words
 def msys_prefix(word: str, posix_roots: Collection[str]) -> Optional[str]   # task 14: what Git Bash must keep
 def reserved(path: Path) -> Optional[str]                   # "nul" for nul.txt, the name before the first dot
 def link_target(path: Path) -> Optional[Path]               # through a junction or symlink, None through none
@@ -810,7 +819,9 @@ the largest file that gets a profile line after a Read. Task 18 added `verify`, 
 `checks.verify.write.repair`, `ascii_only`, `collapse_percent`, `snapshot_bytes` of 2 MB and `max_bytes` of
 16 MB, and `checks.verify.command.timeout_ms` of 10 s and `output_chars` of 2,000. `verify` and `ascii_only`
 default to empty, so io-guard runs no program and accepts non-ASCII until a user or a project names them. The
-example above shows them set. Each other key arrives with its check. A key marked `project_narrows`, such as
+example above shows them set. Task 20 added `checks.diagnose.*.find_limit`, `part_bytes` and `tail_bytes`, and
+task 21 `skip_trees`, empty by default, and `checks.shell.touched.listed`. Each other key arrives with its
+check. A key marked `project_narrows`, such as
 the budget, takes a lower number from a project file and refuses a higher one. A key with a `shape`, such as
 `verify`, has its inner values checked too, and a wrong one drops the file like any other error.
 

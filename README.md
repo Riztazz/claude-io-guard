@@ -3,12 +3,12 @@
 A Claude Code plugin that checks what an agent sends to the file and shell tools, fixes what it safely can, and
 returns a structured error for the rest. One codebase runs on Windows and macOS.
 
-**Status: in build.** The plugin installs, and its hooks answer every file and shell call. Fourteen checks run
+**Status: in build.** The plugin installs, and its hooks answer every file and shell call. Fifteen checks run
 so far: the session probe, where a write lands, what holds a locked file, the Bash body move, the shell-write
 refusal, the quoting and dialect lint, the Git Bash path fix, the endings and BOM fix for Write, the indent fix
 for Edit, the check of each written file against the file before it, your own verify command after a write, the
-profile line after a Read, and the diagnosis of a failed file call, both after it fails and after Claude Code
-refuses it. The build plan is in
+files a shell command changed, the profile line after a Read, and the diagnosis of a failed file call, both
+after it fails and after Claude Code refuses it. The build plan is in
 `.claude/tasks/`, and this page describes the plugin the plan builds.
 
 ## Five fixes, by example
@@ -80,6 +80,7 @@ The numbers come from 110,379 file and shell tool calls in 738 transcripts of re
 | Write turns a CRLF file into LF and drops its BOM, and an Edit's new text comes indented with spaces in a file indented with tabs, or the other way round | 328 "LF will be replaced by CRLF" warnings | Rewrites Write content in the file's own endings, BOM and final newline, and an Edit's new text in the indent of the lines around it, before either runs. A new file takes its endings from `.editorconfig`, `.gitattributes` or the files beside it |
 | A write leaves damage no tool reports: letters a code page lost as U+FFFD, control bytes, lines changed outside the edit, a file cut short | Never reported, so the transcripts can't count it | Compares each written file with the file before it, puts back a lost BOM or line endings, and names the rest with its lines. An optional git pre-commit hook checks the staged files the same way |
 | An Edit fails with EPERM because a program holds the file, or a write hits a read-only file | 3 EPERM failures | Names the program and its process id after the failure. Refuses a read-only file before the write, with `git lfs lock` when the file is lockable |
+| A formatter or a script changes a file the model has read, or rewrites its endings, and nothing says so | 30 "modified since read" failures | After each shell command, names the files it changed, created or deleted, tells the model to read the changed ones again, and names what it did to their endings or BOM |
 | Read shows a CRLF file, an LF file and a file with a BOM the same way | Agents ran a script of their own 107 times to find out | Adds one line after each Read, such as `io-guard: CRLF, BOM, UTF-8, tabs, 1,284 lines`, and a warning for mixed endings, invalid UTF-8, NUL or private-use bytes |
 | A failed Edit says "not found" and nothing else, and a failed Read, Grep or Glob names the problem but not the fix | 67 anchor misses, 112 stale reads, 175 missing paths | With the model's next call, returns the closest match, the file's endings and a corrected call. After a failed Read, Grep or Glob, names the paths that exist, the parts of a file that fit, or a pattern ripgrep accepts |
 | `sed -i`, redirects and scripts write files around the edit tools, so no check and no rewind sees them | 2,876 shell writes | Refuses a write to a file git tracks, names the tool that does it safely, and warns about a script created inside the repository |
@@ -185,6 +186,10 @@ Your list replaces the default one.
 write lost go back on, and the model is told to read the file again. Turn that off with
 `checks.verify.write.repair`. To have non-ASCII flagged in some files, list their extensions in
 `checks.verify.write.ascii_only`, such as `[".py", ".md"]`. It's empty by default.
+
+**Trees a report leaves out:** after a shell command, io-guard names the files it changed. To leave out a tree
+whose changes are noise, such as generated assets, list its glob in `skip_trees`, such as `["Content/**"]`. A
+project file may set it.
 
 **Your verify commands:** io-guard can run a command of yours on each file the model writes, and hand its output
 to the model. Name them by extension in your own `config.json`, and add a project's own under its folder:

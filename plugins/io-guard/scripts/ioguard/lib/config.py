@@ -106,6 +106,8 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
                                    project_forbids=(False,)),
     "telemetry.retention_days": ConfigKey(int, 90, "Days a telemetry file is kept."),
     "telemetry.debug": ConfigKey(bool, False, "Write tracebacks to the debug log."),
+    "skip_trees": ConfigKey(list, [], "Globs, from the repository root, such as Content/**, whose changes a "
+                            "shell command's report leaves out."),
     "verify": ConfigKey(dict, {}, "The command io-guard runs on a file after each Edit or Write, per file "
                         "extension, and per project root for one project only.", project_may_set=False,
                         shape=verify.shape_problem),

@@ -116,6 +116,12 @@ file as it was and its `old_string` the region meant: `closest` named that regio
 transcript on the machine the numbers are 133 misses, 39 judged and 27 named (69%). `closest` took 4.3 ms at p50
 and 51 ms at most. The first version matched with a regular expression that backtracked for 2.6 s on one miss.
 
+Task 21's `live-touched` passed on both releases: after `clang-format -i` on a file the model had read, it saw
+`TOUCHED_BY_SHELL: This command changed a.cpp, read before it.`, and after a script turned a read file's CRLF
+into LF, `EOL_MISMATCH: This command changed conv.txt from CRLF to LF line endings.` With 20 read files,
+`shell.touched` adds 128 ms to a command on CLICKER at p50, 71 ms before it and 57 ms after, 143 ms on
+OrbitalDrift and 92 ms on SmartTablesHost (10 commands each). `git status` alone takes 37 to 64 ms there.
+
 Rules through a junction, checked on 2026-09-27 with Claude Code 2.1.281 and 2.1.283:
 
 - **Claude Code loads a rule, or an `@` import, only when its real path is inside the project.** A junction's real

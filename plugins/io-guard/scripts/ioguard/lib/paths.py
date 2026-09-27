@@ -31,6 +31,15 @@ def normalise(raw: str, cwd: Path, platform: Platform) -> Path:
     return Path(folded)
 
 
+def shown(path: Path, cwd: Path) -> str:
+    """path as a message names it: from cwd when under it, whole otherwise, and cwd itself in words."""
+    try:
+        relative = path.relative_to(cwd).as_posix()
+    except ValueError:
+        return path.as_posix()
+    return "the current folder" if relative == "." else relative
+
+
 def reserved(path: Path) -> str | None:
     """The Windows device name path's file name stands for, such as nul for nul.txt, or None. Windows reads
     the name before the first dot, trailing spaces dropped, without case."""

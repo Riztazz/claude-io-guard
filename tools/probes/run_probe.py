@@ -144,6 +144,11 @@ DIAGNOSED = ("ANCHOR_NOT_FOUND: old_string of the refused Edit matches line 4 of
              "READ_TOO_LARGE: big.txt holds",
              "PATTERN_INVALID: ripgrep rejected the pattern", "STALE_VIEW: old_string and new_string",
              "PATH_NOT_FOUND: missing-dir does not exist")
+TOUCHED = ("Do these in order, one tool call each, and never retry. 1. Read a.cpp. 2. Read conv.txt. 3. Run "
+           "the Bash command: clang-format -i a.cpp 4. Run the Bash command: python conv.py Then reply DONE.")
+TOUCHED_FILES = {"a.cpp": b"int   main( ){return 0;}\n", "conv.txt": b"one\r\ntwo\r\n",
+                 "conv.py": b"import pathlib\npath = pathlib.Path('conv.txt')\n"
+                            b"path.write_bytes(path.read_bytes().replace(b'\\r\\n', b'\\n'))\n"}
 CONFORM_OFF = json.dumps({"checks": {"conform.write": {"enabled": False}}}).encode("ascii")
 READ_ONLY = "Read Hero.uasset. Then use the Edit tool once on Hero.uasset to replace v1 with v2, and use " \
             "no other tool. Then quote word for word the error or note that came back."
@@ -318,6 +323,8 @@ PROBES = {
                            setup={"a.cpp": DIAGNOSE_CPP,
                                   "big.txt": b"".join(b"line %06d of a large file to read whole\n" % n
                                                       for n in range(9000))}),
+    "live-touched": Probe(0, "", guard="", allowed=("Read", "Bash"), git=True, prompt=TOUCHED,
+                          check=("a.cpp", "conv.txt"), setup=TOUCHED_FILES),
     "live-verify-direct": Probe(0, "", guard="", permission="acceptEdits", allowed=("Read", "Write", "Edit"),
                                 prompt=VERIFY_DIRECT, check=("keep.txt",), max_turns=10,
                                 setup={"keep.txt": b"\xef\xbb\xbfalpha\r\nbeta\r\n",
@@ -717,6 +724,9 @@ VERDICTS = {
     "live-locked": lambda s, n: s["files"]["keep.txt"] == "alpha\n"
     and context_reached(n, "FILE_LOCKED: Python (process"),
     "live-diagnose": lambda s, n: all(context_reached(n, needle) for needle in DIAGNOSED),
+    "live-touched": lambda s, n: all(context_reached(n, needle) for needle in (
+        "TOUCHED_BY_SHELL: This command changed a.cpp, read before it",
+        "EOL_MISMATCH: This command changed conv.txt from CRLF to LF line endings.")),
     "edit-refusals": lambda s, n: hooks_started(s, "Edit") == set() and all(
         text in seen(s) for text in ("File has not been read yet", "String to replace not found",
                                      "Found 2 matches", "No changes to make")),

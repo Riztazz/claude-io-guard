@@ -26,8 +26,8 @@ io-guard needs Claude Code 2.1.281 or later. It's the oldest release every probe
 the desktop app's bundled 2.1.281 passed all 28 verdicts, and so did the CLI at 2.1.283. Task 08 added six
 probes the same day. Five passed on both releases, and `guard-large`, which costs about 33,000 output tokens,
 ran on 2.1.283 only. Task 17 added `write-quiet`, `edit-trailing` and `live-conform`, task 18
-`live-verify` and `live-verify-direct`, task 19 `live-read-only` and `live-locked`, and task 20 `edit-refusals`,
-`other-refusals` and `live-diagnose`, all of which passed on both.
+`live-verify` and `live-verify-direct`, task 19 `live-read-only` and `live-locked`, task 20 `edit-refusals`,
+`other-refusals` and `live-diagnose`, and task 21 `live-touched`, all of which passed on both.
 
 The design review named 2.1.281 as the first release whose `mcp_tool` hooks wait for their server. Today's hooks
 reference names no version for that, so the floor rests on the probes instead. Older releases aren't tested.

@@ -68,15 +68,6 @@ def span(match: anchors.Match) -> str:
     return f"line {first:,}" if first == last else f"lines {first:,}-{last:,}"
 
 
-def shown(path: Path, cwd: Path) -> str:
-    """path from cwd when it is under cwd, whole otherwise."""
-    try:
-        relative = path.relative_to(cwd).as_posix()
-    except ValueError:
-        return path.as_posix()
-    return "the current folder" if relative == "." else relative
-
-
 def quoted(value: str, instead: str) -> str:
     """value as a JSON string the model can copy exactly, or instead when it is too long to quote."""
     return json.dumps(value) if len(value) <= CORRECTION_CHARS else instead
@@ -204,15 +195,15 @@ class Diagnosis:
         if self.path is None:
             return ()
         cwd, tool = self.failed.cwd, self.failed.tool
-        where = shown(self.path, cwd)
+        where = paths.shown(self.path, cwd)
         if tool in ("Grep", "Glob"):
             folder = self.existing(self.path)
-            message = f"{where} does not exist. The nearest folder that does is {shown(folder, cwd)}."
+            message = f"{where} does not exist. The nearest folder that does is {paths.shown(folder, cwd)}."
             fix = Fix(tool, {}, f"Call {tool} again with a path under that folder.")
             return (self.result(Code.PATH_NOT_FOUND, message, fix, nearest=folder.as_posix()),)
         nearby = self.nearby()
         if nearby:
-            listed = ", ".join(shown(path, cwd) for path in nearby[:SHOWN])
+            listed = ", ".join(paths.shown(path, cwd) for path in nearby[:SHOWN])
             message = f"{where} does not exist. Paths with the same name: {listed}."
             fix = Fix(tool, {}, f"Call {tool} again with one of those paths.")
         else:
@@ -274,7 +265,7 @@ class Diagnosis:
         return (self.result(Code.PATTERN_INVALID, message, fix),)
 
     def too_broad(self, seconds: int) -> tuple[Result, ...]:
-        where = shown(self.path, self.failed.cwd) if self.path is not None else "the current folder"
+        where = paths.shown(self.path, self.failed.cwd) if self.path is not None else "the current folder"
         message = f"The {self.failed.tool} search in {where} ran out of time after {seconds} seconds."
         return (self.result(Code.SEARCH_TOO_BROAD, message),)
 

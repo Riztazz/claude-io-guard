@@ -20,21 +20,13 @@ from pathlib import Path
 
 from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.lib import paths
-from ioguard.lib.context import Context
+from ioguard.lib.context import Context, repository_root
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.git import GitError
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity
 
 LOCK_ERROR = re.compile(r"\b(EPERM|EBUSY|EACCES)\b")
-
-
-def root_of(ctx: Context, path: Path) -> Path | None:
-    """The repository holding path, or None outside one or when git cannot say."""
-    try:
-        return ctx.git.root(path)
-    except GitError:
-        return None
 
 
 def relative(path: Path, root: Path | None) -> str:
@@ -86,7 +78,7 @@ class Location(Check):
             lockable = False
         fix = None
         if lockable:
-            name = relative(path, root_of(ctx, path))
+            name = relative(path, repository_root(ctx.git, path))
             fix = Fix("Bash", {"command": f"git lfs lock {name}"},
                       f"Lock it with git lfs lock {name} from the repository root, then call "
                       f"{event.tool_name} again.")
@@ -96,10 +88,10 @@ class Location(Check):
         """A note when path runs through a link into another repository, and a warning once per session when
         the session's own repository tracks it."""
         target = ctx.fs.link_target(path)
-        owner = None if target is None else root_of(ctx, target)
+        owner = None if target is None else repository_root(ctx.git, target)
         if owner is None:
             return ()
-        project = root_of(ctx, event.cwd)
+        project = repository_root(ctx.git, event.cwd)
         if project is not None and owner == project:
             return ()
         found = [self.result(Code.LINKED_PATH, f"{path.name} is {target.as_posix()} through a link, in the "

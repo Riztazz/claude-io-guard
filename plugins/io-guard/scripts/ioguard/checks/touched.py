@@ -1,0 +1,144 @@
+"""Tell the agent which files a shell command changed, and what it did to the bytes of the ones it had read.
+
+A formatter, a script or git can change a file behind the agent's back (STL-1, BYT-2), and an Edit after
+that still applies (context.md, "Hooks and MCP", row 5), so this is the one warning the agent gets. Before a
+Bash or PowerShell command the check keeps git status for the session's repository, and the size and time of
+each file the agent has read or written. After it, a read file whose size or time moved is named with the step
+to read it again, and verify.write's comparison with its last profile names what the command did to its
+endings, BOM, encoding or indent. New untracked files are named (GIT-2), and so are tracked files the command
+changed or deleted. A bashEditDiff in the tool's response, which Claude Code sends only with
+bashEditDiffEnabled, adds its files. Changes under the skip_trees globs are left out.
+"""
+import fnmatch
+from pathlib import Path
+
+from ioguard.checks.base import Check, CheckMeta, Cost
+from ioguard.checks.verify_write import Written, compare
+from ioguard.lib import paths
+from ioguard.lib.config import ConfigKey
+from ioguard.lib.context import Context, ShellSnapshot, repository_root
+from ioguard.lib.decisions import Decision, Verdict
+from ioguard.lib.events import Event, HookEvent, Tool
+from ioguard.lib.git import GitError
+from ioguard.lib.profile import profile
+from ioguard.lib.results import Code, Fix, Layer, Result, Severity
+
+LISTED = 8                   # paths each part of the report names before it gives the rest as a count
+
+
+def status(ctx: Context, root: Path | None) -> frozenset[tuple[str, str]] | None:
+    """Each changed or untracked path from root with its XY code, or None when git cannot say."""
+    if root is None:
+        return None
+    try:
+        return frozenset((entry.path, entry.index + entry.worktree) for entry in ctx.git.status(root).entries)
+    except GitError:
+        return None
+
+
+def in_words(items: list[str]) -> str:
+    """"a", "a and b", "a, b and c"."""
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def named(found: list[Path], cwd: Path, limit: int) -> str:
+    """Paths for a message: "a.cpp", "a.cpp and b.h", "a, b, c and 4 more"."""
+    shown = [paths.shown(path, cwd) for path in found[:limit]]
+    rest = len(found) - len(shown)
+    return in_words(shown + [f"{rest} more"] if rest else shown)
+
+
+class Touched(Check):
+    meta = CheckMeta(
+        id="shell.touched", layer=Layer.STALE,
+        events=frozenset({HookEvent.PRE_TOOL_USE, HookEvent.POST_TOOL_USE, HookEvent.POST_TOOL_USE_FAILURE}),
+        tools=frozenset({Tool.BASH, Tool.POWERSHELL}), platforms=frozenset({"win32", "darwin"}),
+        severity=Severity.WARNING, cost=Cost.EXPENSIVE, reads=frozenset({"command"}), writes=frozenset(),
+        after=frozenset(), config={"listed": ConfigKey(int, LISTED, "The paths each part of the report names "
+                                                       "before it gives the rest as a count.")},
+        codes=frozenset({Code.TOUCHED_BY_SHELL, Code.EOL_MISMATCH, Code.BOM_CHANGED, Code.ENCODING_INVALID,
+                         Code.CONTROL_BYTES_ADDED, Code.INDENT_MISMATCH}),
+        description="Tells the agent which files a shell command changed, and what it did to their bytes.")
+
+    def run(self, event: Event, ctx: Context) -> Decision:
+        if event.tool_use_id is None:
+            return Decision.observe(self.meta.id)
+        if event.kind is HookEvent.PRE_TOOL_USE:
+            root = repository_root(ctx.git, event.cwd)
+            with ctx.session.lock:
+                read = list(ctx.session.read_profiles)
+            snapshot = ShellSnapshot(root, status(ctx, root), {path: ctx.fs.stat(path) for path in read})
+            ctx.session.keep_snapshot(event.tool_use_id, snapshot)
+            return Decision.observe(self.meta.id)
+        before = ctx.session.take_snapshot(event.tool_use_id)
+        if not isinstance(before, ShellSnapshot):
+            return Decision.observe(self.meta.id)
+        found = self.report(before, event, ctx)
+        if not found:
+            return Decision.observe(self.meta.id)
+        return Decision(self.meta.id, Verdict.ALLOW, results=found)
+
+    def report(self, before: ShellSnapshot, event: Event, ctx: Context) -> tuple[Result, ...]:
+        skipped = ctx.config.get("skip_trees")
+
+        def kept(path: Path) -> bool:
+            relative = paths.shown(path, before.root) if before.root is not None else path.as_posix()
+            return not any(fnmatch.fnmatch(relative, glob) for glob in skipped)
+
+        moved = {path: ctx.fs.stat(path) for path, stat in before.stats.items() if kept(path)}
+        read = sorted(path for path, stat in moved.items() if stat is not None and stat != before.stats[path])
+        read += sorted(path for path in self.diffed(event) if path in before.stats and path not in read)
+        deleted = sorted(path for path, stat in moved.items()
+                         if stat is None and before.stats[path] is not None)
+        created, changed = [], []
+        after = status(ctx, before.root)
+        if before.status is not None and after is not None:
+            for name, code in sorted(after - before.status):
+                path = before.root / name
+                if not kept(path) or path in read or path in deleted:
+                    continue
+                (created if code == "??" else deleted if "D" in code else changed).append(path)
+        limit, cwd = self.options["listed"], event.cwd
+        parts = ([f"changed {named(read, cwd, limit)}, read before it"] if read else []) + \
+                ([f"changed {named(changed, cwd, limit)}"] if changed else []) + \
+                ([f"created {named(created, cwd, limit)}"] if created else []) + \
+                ([f"deleted {named(deleted, cwd, limit)}"] if deleted else [])
+        if not parts:
+            return ()
+        advice = (f"Read {named(read, cwd, limit)} again before the next Edit." if read else
+                  "Delete any new file the task does not need, and keep the rest on purpose.")
+        found = [Result.of(Code.TOUCHED_BY_SHELL, f"This command {in_words(parts)}.", event.tool_name,
+                           ctx.platform.os,
+                           fix=Fix("Read", {}, advice),
+                           evidence={"read": [path.as_posix() for path in read],
+                                     "changed": [path.as_posix() for path in changed],
+                                     "created": [path.as_posix() for path in created],
+                                     "deleted": [path.as_posix() for path in deleted]})]
+        for path in read:
+            found.extend(self.drift(path, event, ctx))
+        return tuple(found)
+
+    @staticmethod
+    def diffed(event: Event) -> list[Path]:
+        """The files a bashEditDiff in the tool's response names, when Claude Code sent one."""
+        listed = (event.tool_response or {}).get("files")
+        if not isinstance(listed, list):
+            return []
+        return [paths.normalise(entry["filePath"], event.cwd, event.platform) for entry in listed
+                if isinstance(entry, dict) and isinstance(entry.get("filePath"), str)]
+
+    @staticmethod
+    def drift(path: Path, event: Event, ctx: Context) -> tuple[Result, ...]:
+        """What the command did to a read file's bytes, against the profile the agent last had of it."""
+        with ctx.session.lock:
+            last = ctx.session.read_profiles.get(path)
+        try:
+            data = ctx.fs.read_bytes(path)
+        except OSError:
+            return ()
+        with ctx.session.lock:
+            ctx.session.read_profiles[path] = profile(data)
+        if last is None or last.binary:
+            return ()
+        return compare(Written(path, "This command", last, None, data, None, False), event.tool_name,
+                       ctx.platform.os, 0)

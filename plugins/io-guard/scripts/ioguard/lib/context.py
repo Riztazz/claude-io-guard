@@ -18,7 +18,7 @@ from typing import Any, Protocol
 
 from ioguard.lib import bytesio, locks, paths
 from ioguard.lib.config import Config, ConfigKey, ConfigLayer, LoadReport, Scope, defaults, load
-from ioguard.lib.git import Git, GitStatus, LineRange
+from ioguard.lib.git import Git, GitError, GitStatus, LineRange
 from ioguard.lib.locks import Process
 from ioguard.lib.platform import Platform, detect
 from ioguard.lib.profile import Profile
@@ -130,6 +130,15 @@ class Snapshot:
     tool_input: Mapping[str, Any]
 
 
+@dataclass(frozen=True)
+class ShellSnapshot:
+    """A repository's changes, and the size and time of each file the agent has read, just before a shell
+    command."""
+    root: Path | None                                  # None outside a repository
+    status: frozenset[tuple[str, str]] | None          # (path from root, XY), None when git could not say
+    stats: Mapping[Path, FileStat | None]
+
+
 SNAPSHOTS_KEPT = 16     # a call the user refuses leaves its snapshot, so the oldest one past this goes
 
 
@@ -137,8 +146,8 @@ SNAPSHOTS_KEPT = 16     # a call the user refuses leaves its snapshot, so the ol
 class SessionState:
     """What io-guard learns during one session. One lock guards every field, because the io server runs
     several workers."""
-    read_hashes: dict[Path, str] = field(default_factory=dict)    # sha256 of the bytes the agent last saw
-    snapshots: dict[str, Snapshot] = field(default_factory=dict)  # by tool_use_id, until PostToolUse
+    read_profiles: dict[Path, Profile] = field(default_factory=dict)   # the bytes last read or written
+    snapshots: dict[str, Snapshot | ShellSnapshot] = field(default_factory=dict)   # by tool_use_id
     warned: set[str] = field(default_factory=set)                 # one user warning per key per session
     budget_override: int | None = None                            # learned from an EOF failure
     tracked: dict[Path, bool] = field(default_factory=dict)       # git's answer per path, asked once
@@ -153,13 +162,14 @@ class SessionState:
             self.warned.add(key)
             return True
 
-    def keep_snapshot(self, tool_use_id: str, snapshot: Snapshot) -> None:
+    def keep_snapshot(self, tool_use_id: str, snapshot: Snapshot | ShellSnapshot) -> None:
+        """Keep what a call looked like before it ran, for its PostToolUse, until the PostToolUse takes it."""
         with self.lock:
             self.snapshots[tool_use_id] = snapshot
             while len(self.snapshots) > SNAPSHOTS_KEPT:
                 del self.snapshots[next(iter(self.snapshots))]
 
-    def take_snapshot(self, tool_use_id: str) -> Snapshot | None:
+    def take_snapshot(self, tool_use_id: str) -> Snapshot | ShellSnapshot | None:
         """The snapshot kept for this call, removed from the session, or None."""
         with self.lock:
             return self.snapshots.pop(tool_use_id, None)
@@ -221,6 +231,14 @@ class LiveFs:
             if seen >= limit:
                 break
         return tuple(found)
+
+
+def repository_root(git: GitPort, path: Path) -> Path | None:
+    """The repository that holds path, or None outside one or when git cannot say."""
+    try:
+        return git.root(path)
+    except GitError:
+        return None
 
 
 def plugin_data(env: Mapping[str, str]) -> Path | None:

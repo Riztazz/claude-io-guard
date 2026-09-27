@@ -7,7 +7,8 @@ back while repair is on. The harness records a file as its own write left it, so
 agent to read the file before the next Edit. The rest is reported and left as it is: bytes that stop being
 UTF-8 or gain U+FFFD, new control bytes, non-ASCII in a file the project keeps ASCII, a new indent style, a
 file far smaller than the call should have left, and lines outside the edit that differ from what the call
-asked for. The pre-commit script runs the same comparison on the staged diff.
+asked for. The pre-commit script runs the same comparison on the staged diff. A file the agent has read keeps
+its new profile in the session, so shell.touched blames a later shell command only for what that command did.
 """
 import re
 from dataclasses import dataclass
@@ -61,8 +62,8 @@ def compare(written: Written, tool: str, platform: str, collapse_percent: int) -
     found = drift(before or profile(b""), after)
     results = []
 
-    def add(code: Code, message: str, **evidence) -> None:
-        results.append(Result.of(code, message, tool, platform, file=path, evidence=evidence,
+    def add(code: Code, message: str, fix: Fix | None = None, **evidence) -> None:
+        results.append(Result.of(code, message, tool, platform, file=path, evidence=evidence, fix=fix,
                                  severity=Severity.WARNING))
 
     def located(pattern: re.Pattern) -> tuple[int, ...]:
@@ -72,7 +73,8 @@ def compare(written: Written, tool: str, platform: str, collapse_percent: int) -
     if before is not None and found.eol:
         old, new = (style.value for style in found.eol)
         add(Code.EOL_MISMATCH, f"{what} changed {name} from {old} to {new} line endings.", before=old,
-            after=new)
+            after=new, fix=Fix("Write", {}, f"Unless the task asked for {new}, write {name} back with {old} "
+                                            f"line endings."))
     if before is not None and found.bom:
         change = "removed the BOM of" if found.bom[1] is Bom.NONE else "added a BOM to"
         add(Code.BOM_CHANGED, f"{what} {change} {name}.", before=found.bom[0].value, after=found.bom[1].value)
@@ -143,7 +145,7 @@ class VerifyWrite(Check):
             ctx.session.keep_snapshot(event.tool_use_id, self.snapshot(event, ctx))
             return Decision.observe(self.meta.id)
         snapshot = ctx.session.take_snapshot(event.tool_use_id)
-        if event.kind is not HookEvent.POST_TOOL_USE or snapshot is None:
+        if event.kind is not HookEvent.POST_TOOL_USE or not isinstance(snapshot, Snapshot):
             return Decision.observe(self.meta.id)
         try:
             data = ctx.fs.read_bytes(snapshot.path, self.options["max_bytes"] + 1)
@@ -155,6 +157,9 @@ class VerifyWrite(Check):
         repaired = self.repair(snapshot, data, event, ctx)
         if repaired is not None:
             data = repaired[1]
+        with ctx.session.lock:
+            if snapshot.path in ctx.session.read_profiles:
+                ctx.session.read_profiles[snapshot.path] = profile(data)
         kept = {extension.lower() for extension in self.options["ascii_only"]}
         written = Written(snapshot.path, f"This {event.tool_name}", before,
                           None if snapshot.data is None else text_of(snapshot.data), data,

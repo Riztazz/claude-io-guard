@@ -203,6 +203,17 @@ class TheSnapshotHoldsWhatTheToolRan(unittest.TestCase):
         self.assertEqual(codes(outcome), [Code.UNINTENDED_CHANGE],
                          "a formatter after the write changed line 2")
 
+    def test_a_read_file_keeps_the_profile_of_what_the_agent_wrote(self):
+        ctx = Context.fake(files={CWD / "a.txt": b"one\r\n"}, config=config(False), platform=WINDOWS)
+        ctx.session.read_profiles[CWD / "a.txt"] = profile(b"one\r\n")
+        given = {"file_path": str(CWD / "a.txt"), "content": "two\n"}
+        pre, post = events.pre_tool_use("Write", given, CWD), events.post_tool_use("Write", given, {}, CWD)
+        Pipeline(REGISTRY).run(Event.from_hook_json(pre, Surface.MCP_HOOK, WINDOWS), ctx)
+        ctx.fs.files[CWD / "a.txt"] = b"two\n"
+        Pipeline(REGISTRY).run(Event.from_hook_json(post, Surface.MCP_HOOK, WINDOWS), ctx)
+        self.assertEqual(ctx.session.read_profiles[CWD / "a.txt"].sha256, profile(b"two\r\n").sha256,
+                         "the agent's own write, repaired to CRLF, is the profile a later command sees")
+
     def test_a_new_file_written_as_asked_is_quiet(self):
         outcome, _ = call("Write", {"content": "x\n"}, None, b"x\n")
         self.assertEqual(codes(outcome), [], "a new file has nothing before it to lose")
