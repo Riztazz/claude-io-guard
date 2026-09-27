@@ -19,6 +19,8 @@ workbench/                        copies of the lead's project files to test on,
 docs/design/architecture.md       the design every task builds from, with every contract
 docs/design/review.md             Fable's review of the plan, and the lead's answers
 docs/architecture.svg             the architecture drawn, interactive on GitHub Pages or served from localhost
+docs/compat.md                    each Claude Code feature io-guard uses, the version, the probe, the fallback
+docs/live-checks.md               each live fact, with the platform, the version and the date last confirmed
 .claude/tasks/                    the build plan: README.md, context.md, open/, done/, baseline/
 .claude/rules/this-repo.md        the rules for this repository
 .claude/rules/docs.md             which doc each kind of change must update, the drawing included
@@ -59,6 +61,8 @@ Each line works once the task that builds it has landed.
 - Tests: `python -m unittest discover -s tests -t .`
 - The checks on one command, offline: `python tools/ioguard.py check "<command>"`
 - The plugin for one CLI session: `claude --plugin-dir plugins/io-guard`
+- The harness facts, after a Claude Code update: `python tools/probes/run_probe.py run all`, then
+  `python tools/probes/run_probe.py verdicts`. `IOPROBE_CLAUDE` points it at the desktop app's own `claude.exe`
 - The plugin in the desktop app, which is the lead's main surface: run
   `claude plugin marketplace add <path to this clone>`, then `claude plugin install io-guard@claude-io-guard`
 

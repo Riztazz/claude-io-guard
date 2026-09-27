@@ -74,7 +74,8 @@ Once the first release is out:
 
 1. In claude.ai, open Customize > Plugins and add `Riztazz/claude-io-guard`. Or, in Claude Code, run
    `/plugin marketplace add Riztazz/claude-io-guard`, then `/plugin install io-guard@claude-io-guard`.
-2. You need Claude Code 2.1.281 or later and Python 3.14 or later.
+2. You need Claude Code 2.1.281 or later and Python 3.14 or later. [`docs/compat.md`](docs/compat.md) says why
+   2.1.281, and what io-guard does when a Claude Code feature it uses is missing.
 3. On Windows with Python from python.org, run `/plugin configure io-guard` and set the Python interpreter to
    `python`. The default is `python3`, which on Windows is often the Microsoft Store stub.
 
@@ -116,13 +117,16 @@ The repository is also the plugin's marketplace. The shipped plugin is `plugins/
 ```
 plugins/io-guard/     the plugin: manifest, hooks, the io server, the skill
 tests/                the unittest suite and the byte fixtures
-tools/                corpus, replay, report and measure scripts
-docs/                 the architecture drawing, the design and its review
+tools/                corpus, replay, report and measure scripts, and the harness probes
+docs/                 the architecture drawing, the design and its review, and the harness pages
 .claude/tasks/        the build plan: one file per task, in build order
 ```
 
 - Start with [`.claude/tasks/README.md`](.claude/tasks/README.md), then `context.md` beside it, then the design.
 - Run the tests with `python -m unittest discover -s tests -t .`.
+- After a Claude Code update, run `python tools/probes/run_probe.py run all`, then `verdicts`, to recheck every
+  harness fact io-guard relies on. [`docs/compat.md`](docs/compat.md) lists the features, and
+  [`docs/live-checks.md`](docs/live-checks.md) says when each was last confirmed.
 - The author's own working rules and skills are linked in from a private kit and are not part of this repository. A
   release copies a snapshot of them into `docs/kit-snapshot/`.
 

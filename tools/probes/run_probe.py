@@ -4,14 +4,17 @@
     python tools/probes/run_probe.py run <id> [<id> ...] | all
     python tools/probes/run_probe.py brief <id> [<id> ...]
     python tools/probes/run_probe.py timing <id> [<id> ...]
+    python tools/probes/run_probe.py verdicts [<id> ...]
     python tools/probes/run_probe.py show <id>
     python tools/probes/run_probe.py assemble <id> <folder>
 
 A run writes to workbench/probes/<id>/<time>/: the plugin it loaded, the work folder the session ran in, the
 session's stream-json output, the debug log, the hook and server log, and summary.json. workbench/ is
-gitignored, because the logs hold local paths. brief, timing and show read the latest run of a probe.
+gitignored, because the logs hold local paths. brief, timing, verdicts and show read the latest run of a
+probe. verdicts prints pass or FAIL per probe against the result context.md records.
 assemble builds the plugin alone, wrapped in a local marketplace, for a probe a person runs by hand in the
-desktop app. context.md, "Hooks and MCP", records what each probe found.
+desktop app. IOPROBE_CLAUDE names the claude binary to run, for example the desktop app's bundled copy, and
+defaults to claude on PATH. context.md, "Hooks and MCP", records what each probe found.
 """
 import json
 import os
@@ -296,7 +299,8 @@ def run(name: str) -> Path:
     plugin, work, log = out / "plugin", out / "work", out / "probe.jsonl"
     assemble(name, probe, plugin, log)
     prepare_work(probe, work)
-    argv = ["claude", "-p", probe.prompt, "--plugin-dir", str(plugin), "--output-format", "stream-json",
+    claude = os.environ.get("IOPROBE_CLAUDE", "claude")
+    argv = [claude, "-p", probe.prompt, "--plugin-dir", str(plugin), "--output-format", "stream-json",
             "--verbose", "--include-hook-events", "--debug-file", str(out / "debug.txt"),
             "--permission-mode", probe.permission, "--model", probe.model,
             "--max-turns", str(probe.max_turns), *probe.extra_args]
@@ -317,9 +321,11 @@ def run(name: str) -> Path:
         exit_code = session.wait()
         killer.cancel()
     (out / "stream.jsonl").write_bytes(b"".join(lines))
-    summary = {"probe": name, "item": probe.item, "exit": exit_code,
-               "seconds": round(time.time() - started, 1), "hook_ms": hook_durations(lines, arrivals),
-               **summarise(out / "stream.jsonl", log, work, probe)}
+    details = summarise(out / "stream.jsonl", log, work, probe)
+    versions = [note["version"] for note in details["notes"] if isinstance(note, dict) and "version" in note]
+    summary = {"probe": name, "item": probe.item, "claude": versions[0] if versions else None,
+               "exit": exit_code, "seconds": round(time.time() - started, 1),
+               "hook_ms": hook_durations(lines, arrivals), **details}
     write_json(out / "summary.json", summary)
     return out
 
@@ -335,7 +341,8 @@ def brief(name: str) -> dict:
     hook_keys = ("subtype", "hook_name", "outcome", "exit_code", "output", "stderr")
     log_keys = ("form", "answer", "received", "sent", "gate_args", "env_file_written", "dying")
     return {
-        "probe": name, "exit": summary["exit"], "seconds": summary["seconds"],
+        "probe": name, "claude": summary.get("claude"), "exit": summary["exit"],
+        "seconds": summary["seconds"],
         "tools": [f"{tool['name']} {json.dumps(tool['input'])[:240]}" for tool in summary["tools"]],
         "results": [json.dumps(result)[:400] for result in summary["results"]],
         "final": summary["final"], "files": summary["files"], "hook_ms": summary["hook_ms"],
@@ -356,6 +363,70 @@ def timing(name: str) -> str | None:
             f"max={times[-1]} ms")
 
 
+def seen(summary: dict) -> str:
+    """Everything the model saw and said in a run, as one string to search."""
+    return json.dumps([summary["results"], summary["final"]])
+
+
+def logged(summary: dict, needle: str) -> bool:
+    return any(needle in json.dumps(line) for line in summary["probe_log"])
+
+
+def debug_has(name: str, needle: str) -> bool:
+    folder, _ = latest(name)
+    return needle in (folder / "debug.txt").read_bytes().decode("utf-8", "replace")
+
+
+def every_call_denied(summary: dict) -> bool:
+    """Every probe tool the model called was denied for want of permission, and it called at least one."""
+    called = {tool["name"] for tool in summary["tools"] if tool["name"].startswith(MCP)}
+    denied = {denial.get("tool_name") for denial in summary["final"]["permission_denials"]}
+    return bool(called) and called <= denied
+
+
+BOM_CRLF = b"\xef\xbb\xbfline one\r\nline two\r\n".decode("latin-1")
+VERDICTS = {
+    "rewrite-allow": lambda s, n: "IOPROBE_REWRITTEN" in seen(s),
+    "write-bytes": lambda s, n: s["files"]["probe.txt"] == BOM_CRLF,
+    "edit-extend": lambda s, n: s["files"]["edit.txt"] == "alpha BETA gamma\n",
+    "read-context": lambda s, n: "IOPROBE-READ-CONTEXT" in seen(s),
+    "failures": lambda s, n: logged(s, '"PostToolUseFailure", "tool_name": "Read"')
+    and logged(s, '"PostToolUseFailure", "tool_name": "Bash"')
+    and not logged(s, '"PostToolUseFailure", "tool_name": "Edit"'),
+    "bash-diff-off": lambda s, n: not logged(s, "bashEditDiff"),
+    "bash-diff-on": lambda s, n: logged(s, '"bashEditDiff": {"files"'),
+    "env-file": lambda s, n: "export=env-file" in seen(s) and "plain=env-file" in seen(s),
+    "updated-output": lambda s, n: "IOPROBE-UPDATED-OUTPUT" in seen(s),
+    "time-exec": lambda s, n: len(s["hook_ms"]) >= 10,
+    "time-shell": lambda s, n: len(s["hook_ms"]) >= 10,
+    "hook-crash": lambda s, n: s["files"]["ran.txt"] is not None,
+    "hook-timeout": lambda s, n: s["files"]["ran.txt"] is not None,
+    "hook-badjson": lambda s, n: s["files"]["ran.txt"] is not None,
+    "time-mcp": lambda s, n: sum('"gate_args"' in json.dumps(line) for line in s["probe_log"]) == 10,
+    "mcp-gate": lambda s, n: s["files"]["gated.txt"] is None and "IOPROBE-MCP-DENY" in seen(s),
+    "mcp-subst": lambda s, n: logged(s, '"number": "60000"') and logged(s, '"replace_all": "true"'),
+    "ask-prompt": lambda s, n: logged(s, '"input": {"command": "echo IOPROBE_REWRITTEN"'),
+    "auto-control": lambda s, n: debug_has(n, "Slow permission decision"),
+    "auto-allow": lambda s, n: debug_has(n, "Hook approved tool use for Bash, bypassing permission prompt"),
+    "era-legacy": lambda s, n: logged(s, '"received": {"method": "initialize"'),
+    "era-auto": lambda s, n: logged(s, '"method": "server/discover"') and "DONE" in seen(s),
+    "mcp-features": lambda s, n: "IOPROBE-ELICIT" in seen(s) and "IOPROBE-PROGRESS" in seen(s),
+    "features-modern": lambda s, n: logged(s, '"inputResponses"'),
+    "mcp-prompts": lambda s, n: every_call_denied(s),
+    "mcp-permit": lambda s, n: sum('"name": "probe_permit"' in json.dumps(line)
+                                   for line in s["probe_log"] if "received" in line) == 3,
+    "dead-server": lambda s, n: s["files"]["second.txt"] is not None and logged(s, "die_after_gate reached"),
+    "dead-for-good": lambda s, n: s["files"]["second.txt"] is not None and logged(s, "stays dead"),
+}
+
+
+def verdict(name: str) -> str:
+    folder, summary = latest(name)
+    check = VERDICTS.get(name)
+    outcome = "no verdict" if check is None else ("pass" if check(summary, name) else "FAIL")
+    return f"{outcome:<10} {name:<16} claude {summary.get('claude')}  {folder.name}"
+
+
 def print_json(value: dict) -> None:
     sys.stdout.buffer.write(json.dumps(value, indent=1).encode("ascii") + b"\n")
 
@@ -372,6 +443,9 @@ def main(argv: list[str]) -> int:
         case ["brief", *names] if names:
             for name in names:
                 print_json(brief(name))
+        case ["verdicts", *names]:
+            for name in names or [name for name in PROBES if name in VERDICTS]:
+                print(verdict(name))
         case ["timing", *names] if names:
             for name in names:
                 print(timing(name) or f"{name}: no PreToolUse hook timed")

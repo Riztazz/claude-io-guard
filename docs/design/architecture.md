@@ -1103,7 +1103,9 @@ Three kinds of extension, with a different answer each.
 - `supportedVersions` in `server/discover` lists the MCP revisions the server implements. A new revision is
   added beside the old ones, never in place of them.
 - Python 3.14 is the floor (D15), and CI runs the floor and the newest release on both platforms.
-- The minimum Claude Code version is 2.1.281, the first with `mcp_tool` hooks that wait for their server.
+- The minimum Claude Code version is 2.1.281, the oldest release every probe passed on (`docs/compat.md`).
+  The docs name no first version for `mcp_tool` hooks that wait for their server, so the floor rests on the
+  probes.
 
 ## 14. Draw it
 
