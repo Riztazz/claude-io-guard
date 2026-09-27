@@ -9,5 +9,6 @@
   "tool_input": "{\"file_path\":\"C:\\\\project\\\\s.txt\",\"old_string\":\"one\",\"new_string\":\"ONE\",\"replace_all\":false}",
   "tool_name": "Edit",
   "tool_response": "{\"filePath\":\"s.txt\",\"oldString\":\"one\",\"newString\":\"ONE\",\"originalFile\":\"one\\n\",\"structuredPatch\":[{\"oldStart\":1,\"oldLines\":1,\"newStart\":1,\"newLines\":1,\"lines\":[\"-one\",\"+ONE\"]}],\"userModified\":false,\"replaceAll\":false}",
-  "tool_use_id": "toolu_01PROBE"
+  "tool_use_id": "toolu_01PROBE",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--project\\00000000-0000-4000-8000-000000000000.jsonl"
 }

@@ -29,7 +29,7 @@ plugins/io-guard/
         editorconfig.py            parse, matches, properties: the .editorconfig properties for one file
         drift.py                   drift, edited, changed_lines, restored: what a write changed in a file's bytes
         verify.py                  shape_problem, command_for: the user's verify commands per extension
-        anchors.py                 find, closest, unique_anchor
+        anchors.py                 find, blind, closest, unique_anchor: where an old_string is, or nearly is
         shell.py                   scan, commands, budget_length, moved, the hazards bash reads differently
         pwsh.py                    commands, blanked, file_calls
         python_source.py           compile_report: a Python body's syntax error or warning, without running it
@@ -45,7 +45,8 @@ plugins/io-guard/
         telemetry.py               Telemetry, TraceContext
         platform.py                Platform, detect
         probing.py                 tool_version, find, claude_version, console_encoding, case_insensitive
-        text.py                    visible, snippet, wrap, head
+        text.py                    visible, snippet, head
+        transcript.py              refusals: the calls Claude Code refused before any hook, from the transcript
         rules.py                   permission rules: load, match_argv
       checks/                      policy, one module per check
         base.py                    Check, CheckMeta, Cost
@@ -64,7 +65,7 @@ plugins/io-guard/
         verify_command.py          verify.command: the user's verify command on the written file
         touched.py                 TOUCHED_BY_SHELL, new files
         read_profile.py            read.profile: the profile line after Read, and the hash in read_hashes
-        diagnose.py                PostToolUseFailure branches
+        diagnose.py                diagnose.failure after a failed call, diagnose.refused at the next hook
         command_results.py         EXIT_BENIGN, ERRORS_IN_OUTPUT, OUTPUT_SAVED, MOJIBAKE
         commit_policy.py           task 29
       hooks/
@@ -151,6 +152,7 @@ class Event:
     prompt_id: Optional[str]
     cwd: Path
     scratchpad: Optional[Path]
+    transcript: Optional[Path]       # the session's transcript, from transcript_path
     permission_mode: PermissionMode
     agent_id: Optional[str]
     surface: Surface
@@ -199,6 +201,7 @@ class GitPort(Protocol):
 
 class FsPort(Protocol):
     def read_bytes(self, path: Path, limit: Optional[int] = None) -> bytes: ...
+    def read_tail(self, path: Path, limit: int) -> bytes: ...       # the last whole lines in limit bytes
     def write_atomic(self, path: Path, data: bytes) -> WriteReport: ...
     def stat(self, path: Path) -> Optional[FileStat]: ...
     def exists(self, path: Path) -> bool: ...
@@ -206,6 +209,7 @@ class FsPort(Protocol):
     def make_folders(self, path: Path) -> None: ...
     def list_dir(self, path: Path) -> tuple[Path, ...]: ...   # the files in a folder, sorted, () when none
     def link_target(self, path: Path) -> Optional[Path]: ...  # where a path through a link really is
+    def find_named(self, root: Path, name: str, limit: int) -> tuple[Path, ...]: ...  # a bounded walk
 
 class Clock(Protocol):
     def now(self) -> datetime: ...
@@ -351,7 +355,7 @@ class Result:
     platform: str
 
     def to_json(self) -> dict: ...
-    def render(self) -> str: ...     # "CODE: what happened. What to do."
+    def render(self) -> str: ...     # "CODE: what happened. What to do.", the fix on its own line after quoted lines
 ```
 
 `CODES` is the one declaration. The `Code` enum, the skill's code table, the telemetry vocabulary and the
@@ -371,9 +375,10 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Transport | `MSYS_PATH`, `RESERVED_NAME` | 14, in `CODES` |
 | Bytes | `EOL_CONVERTED`, `BOM_RESTORED`, `EOL_MISMATCH`, `INDENT_MISMATCH` | 17, in `CODES` |
 | Bytes | `BOM_CHANGED`, `ENCODING_INVALID`, `NON_ASCII_ADDED`, `CONTROL_BYTES_ADDED`, `SIZE_COLLAPSED`, `UNINTENDED_CHANGE`, all warnings | 18, in `CODES` |
-| Stale | `ANCHOR_NOT_FOUND`, `ANCHOR_AMBIGUOUS`, `STALE_VIEW`, `NOT_READ` | 20 |
+| Stale | `ANCHOR_NOT_FOUND`, `ANCHOR_AMBIGUOUS`, `STALE_VIEW`, all warnings on a call that already failed | 20, in `CODES` |
+| Stale | `NOT_READ`, not built: the tool's own "not read yet" error already names the Read to make | - |
 | Stale | `TOUCHED_BY_SHELL` | 21 |
-| Read | `PATH_NOT_FOUND`, `READ_TOO_LARGE`, `PATTERN_INVALID`, `SEARCH_TOO_BROAD` | 20 |
+| Read | `PATH_NOT_FOUND`, `READ_TOO_LARGE`, `PATTERN_INVALID`, `SEARCH_TOO_BROAD`, all warnings | 20, in `CODES` |
 | Output | `EXIT_BENIGN`, `OUTPUT_SAVED`, `ERRORS_IN_OUTPUT`, `MOJIBAKE` | 22 |
 | Internal | `GUARD_ERROR`, `REWRITE_CONFLICT`, `BUDGET_EXCEEDED` | 07, in `CODES` |
 | Internal | `SERVER_DOWN`, `HANDLE_EXPIRED`, `CANCELLED` | 23 |
@@ -546,7 +551,7 @@ class Registry:
 
 CHECKS: tuple[type[Check], ...] = (SessionProbe, Location, LockHolders, ShellWrites, TransportBody, Lint,
                                    WinPaths, ConformWrite, ConformEdit, VerifyWrite, VerifyCommand, Touched,
-                                   ReadProfile, Diagnose, CommandResults, CommitPolicy)
+                                   ReadProfile, DiagnoseFailure, DiagnoseRefused, CommandResults, CommitPolicy)
 
 def default_registry() -> Registry:
     registry = Registry()
@@ -629,6 +634,7 @@ Each module lists its public functions. Every one takes values and returns value
 ```python
 # bytesio.py
 def read_bytes(path: Path, limit: Optional[int] = None) -> bytes
+def read_tail(path: Path, limit: int) -> bytes               # task 20: from the first line break it holds
 def write_atomic(path: Path, data: bytes, retries: int = 5) -> WriteReport
 
 # drift.py, task 18
@@ -657,10 +663,11 @@ def matches(glob: str, relative: str) -> bool               # *, **, ?, [set], [
 def properties(path: Path, read: Callable[[Path], Optional[str]]) -> dict[str, str]
                                                             # up the folders to root = true, nearer wins
 
-# anchors.py
-def find(data: bytes, anchor: bytes) -> AnchorMatch         # count, offsets, lines
-def closest(data: bytes, anchor: bytes, limit: int = 3) -> tuple[Candidate, ...]
-def unique_anchor(data: bytes, offset: int, minimum: int = 1) -> bytes
+# anchors.py, task 20: text as the Edit tool reads it, every ending as LF and no BOM
+def find(text: str, anchor: str) -> tuple[Match, ...]       # each place, not overlapping, with its lines
+def blind(text: str, anchor: str) -> tuple[Match, ...]      # each place with spaces and tabs ignored
+def closest(text: str, anchor: str, limit: int = 3) -> tuple[Candidate, ...]  # blind, or scored windows
+def unique_anchor(text: str, match: Match) -> str           # whole lines around match, below then above
 
 # shell.py, task 11
 def scan(command: str) -> Scan              # heredocs, python -c bodies, halving hazards, quoting states
@@ -742,11 +749,13 @@ def trace_from(tool_use_id: Optional[str], traceparent: Optional[str]) -> TraceC
 # platform.py
 def detect() -> Platform
 
-# text.py
-def visible(text: str) -> str                 # tab, CR, BOM, private-use shown as markers
-def snippet(data: bytes, line: int, around: int = 2) -> str
-def wrap(text: str, column: int) -> str
-def head(text: str, limit: int = 200) -> str
+# text.py, task 20
+def visible(text: str) -> str                 # [TAB], [CR], [BOM], [SP] at a line's end, [U+E0A0]
+def snippet(text: str, first: int, last: int, around: int = 2) -> str   # numbered as the Read tool does
+def head(text: str, limit: int) -> str        # cut, with the count of what was cut
+
+# transcript.py, task 20
+def refusals(tail: bytes) -> tuple[Refusal, ...]   # the refused calls after the last call that ran
 
 # rules.py
 def load_rules(user_settings: Path, project_settings: Sequence[Path]) -> Rules
@@ -890,7 +899,7 @@ scoped name `plugin:io-guard:io`, and the tools are `hook.pre_tool_use`, `hook.p
 {
   "hooks": {
     "PreToolUse": [{
-      "matcher": "Bash|PowerShell|Edit|Write|Read",
+      "matcher": "Bash|PowerShell|Edit|Write|Read|Grep|Glob",
       "hooks": [{
         "type": "mcp_tool",
         "server": "plugin:io-guard:io",
@@ -903,6 +912,7 @@ scoped name `plugin:io-guard:io`, and the tools are `hook.pre_tool_use`, `hook.p
           "tool_name": "${tool_name}",
           "cwd": "${cwd}",
           "scratchpad_dir": "${scratchpad_dir}",
+          "transcript_path": "${transcript_path}",
           "permission_mode": "${permission_mode}",
           "agent_id": "${agent_id}",
           "tool_input": "${tool_input}"
@@ -922,6 +932,11 @@ scoped name `plugin:io-guard:io`, and the tools are `hook.pre_tool_use`, `hook.p
 PostToolUse and PostToolUseFailure bind the same way to `hook.post_tool_use` and
 `hook.post_tool_use_failure`, with `"tool_response": "${tool_response}"` and `"error": "${error}"` added to the
 map.
+
+An Edit or Write that Claude Code rejects as a `<tool_use_error>`, such as an `old_string` it cannot find, fires
+no hook at all (`context.md`, "Hooks and MCP", row 30). The transcript still records the call and its error.
+So at the session's next hook, `diagnose.refused` reads the transcript's last 256 KB from `transcript_path`,
+takes the refusals after the last call that ran, and answers each once, before the model tries again (D28).
 
 `hooks.bridge.call` receives the map, runs `run_event` with `Surface.MCP_HOOK`, which reads it through
 `Event.from_fields`, and returns the answer JSON as the tool's text content. The harness reads that text exactly

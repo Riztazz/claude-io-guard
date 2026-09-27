@@ -52,6 +52,7 @@ class GitPort(Protocol):
 
 class FsPort(Protocol):
     def read_bytes(self, path: Path, limit: int | None = None) -> bytes: ...
+    def read_tail(self, path: Path, limit: int) -> bytes: ...  # the last whole lines within limit bytes
     def write_atomic(self, path: Path, data: bytes) -> bytesio.WriteReport: ...
     def stat(self, path: Path) -> FileStat | None: ...
     def exists(self, path: Path) -> bool: ...
@@ -59,6 +60,8 @@ class FsPort(Protocol):
     def make_folders(self, path: Path) -> None: ...
     def list_dir(self, path: Path) -> tuple[Path, ...]: ...    # the files in a folder, sorted, () when none
     def link_target(self, path: Path) -> Path | None: ...      # where a path through a link really is
+    def find_named(self, root: Path, name: str, limit: int) -> tuple[Path, ...]: ...
+                                                               # files named name under root, in limit entries
 
 
 class Clock(Protocol):
@@ -176,6 +179,9 @@ class LiveFs:
     def read_bytes(self, path: Path, limit: int | None = None) -> bytes:
         return bytesio.read_bytes(path, limit)
 
+    def read_tail(self, path: Path, limit: int) -> bytes:
+        return bytesio.read_tail(path, limit)
+
     def write_atomic(self, path: Path, data: bytes) -> bytesio.WriteReport:
         return bytesio.write_atomic(path, data)
 
@@ -204,6 +210,17 @@ class LiveFs:
 
     def link_target(self, path: Path) -> Path | None:
         return paths.link_target(path)
+
+    def find_named(self, root: Path, name: str, limit: int) -> tuple[Path, ...]:
+        """Files named name, without case, under root, from the first limit entries a walk meets."""
+        wanted, found, seen = name.casefold(), [], 0
+        for folder, folders, files in os.walk(root):
+            folders[:] = [child for child in folders if not child.startswith(".")]
+            seen += len(files) + len(folders)
+            found += [Path(folder) / file for file in files if file.casefold() == wanted]
+            if seen >= limit:
+                break
+        return tuple(found)
 
 
 def plugin_data(env: Mapping[str, str]) -> Path | None:

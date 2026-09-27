@@ -3,11 +3,12 @@
 A Claude Code plugin that checks what an agent sends to the file and shell tools, fixes what it safely can, and
 returns a structured error for the rest. One codebase runs on Windows and macOS.
 
-**Status: in build.** The plugin installs, and its hooks answer every file and shell call. Twelve checks run so
-far: the session probe, where a write lands, what holds a locked file, the Bash body move, the shell-write
+**Status: in build.** The plugin installs, and its hooks answer every file and shell call. Fourteen checks run
+so far: the session probe, where a write lands, what holds a locked file, the Bash body move, the shell-write
 refusal, the quoting and dialect lint, the Git Bash path fix, the endings and BOM fix for Write, the indent fix
-for Edit, the check of each written file against the file before it, your own verify command after a write, and
-the profile line after a Read. The build plan is in
+for Edit, the check of each written file against the file before it, your own verify command after a write, the
+profile line after a Read, and the diagnosis of a failed file call, both after it fails and after Claude Code
+refuses it. The build plan is in
 `.claude/tasks/`, and this page describes the plugin the plan builds.
 
 ## Five fixes, by example
@@ -37,8 +38,11 @@ With       The content is rewritten to CRLF with the BOM before Write runs. git 
 ```
 The call   Edit: client.py, old_string "    retries = 3"
 Without    String to replace not found in file.
-With       ANCHOR_NOT_FOUND, with the closest match: line 48 holds "\tretries = 3", a tab where the call has
-           four spaces. The corrected Edit call comes with it.
+With       Claude Code refuses the Edit before any hook runs, so the answer comes with the model's next call:
+           ANCHOR_NOT_FOUND: old_string of the refused Edit matches line 48 of client.py once spaces and
+           tabs are ignored. client.py uses LF line endings. The file reads:
+           48| [TAB]retries = 3
+           Call Edit again with old_string "\tretries = 3".
 ```
 
 **A write through the shell.** No check sees it, and rewind can't undo it.
@@ -77,7 +81,7 @@ The numbers come from 110,379 file and shell tool calls in 738 transcripts of re
 | A write leaves damage no tool reports: letters a code page lost as U+FFFD, control bytes, lines changed outside the edit, a file cut short | Never reported, so the transcripts can't count it | Compares each written file with the file before it, puts back a lost BOM or line endings, and names the rest with its lines. An optional git pre-commit hook checks the staged files the same way |
 | An Edit fails with EPERM because a program holds the file, or a write hits a read-only file | 3 EPERM failures | Names the program and its process id after the failure. Refuses a read-only file before the write, with `git lfs lock` when the file is lockable |
 | Read shows a CRLF file, an LF file and a file with a BOM the same way | Agents ran a script of their own 107 times to find out | Adds one line after each Read, such as `io-guard: CRLF, BOM, UTF-8, tabs, 1,284 lines`, and a warning for mixed endings, invalid UTF-8, NUL or private-use bytes |
-| A failed Edit says "not found" and nothing else | 67 anchor misses, 112 stale reads | Returns the closest match, the file's endings and a corrected call |
+| A failed Edit says "not found" and nothing else, and a failed Read, Grep or Glob names the problem but not the fix | 67 anchor misses, 112 stale reads, 175 missing paths | With the model's next call, returns the closest match, the file's endings and a corrected call. After a failed Read, Grep or Glob, names the paths that exist, the parts of a file that fit, or a pattern ripgrep accepts |
 | `sed -i`, redirects and scripts write files around the edit tools, so no check and no rewind sees them | 2,876 shell writes | Refuses a write to a file git tracks, names the tool that does it safely, and warns about a script created inside the repository |
 | Bash reads a command differently from what was meant: a Windows path's last backslash escapes its quote, a backtick inside double quotes runs as a command, PowerShell syntax goes to the Bash tool, a Python body doesn't compile | 29 failed commands, and 11 more that ran and did the wrong thing | Rewrites the path with forward slashes, and refuses the rest with the fix |
 | On Windows, Git Bash turns an argument such as `/Name/X` or `/F` into a path before a Windows program sees it, and `2>nul` writes a file named `nul` | 17 results show a converted path, 163 commands pass such an argument, 3 redirect to `nul` | Names those arguments in `MSYS2_ARG_CONV_EXCL`, and writes `cmd //c` and `/dev/null` |

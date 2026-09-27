@@ -55,7 +55,8 @@ class FakeFs:
         return FileStat(len(self.files[path]), self.writes.count(path), path in self.readonly)
 
     def exists(self, path: Path) -> bool:
-        return path in self.files
+        """A file given to the fake, or a folder that holds one or was made."""
+        return path in self.files or path in self.folders or any(path in file.parents for file in self.files)
 
     def holders(self, path: Path) -> tuple[Process, ...]:
         return self.held.get(path, ())
@@ -65,6 +66,17 @@ class FakeFs:
 
     def list_dir(self, path: Path) -> tuple[Path, ...]:
         return tuple(sorted(file for file in self.files if file.parent == path))
+
+    def read_tail(self, path: Path, limit: int) -> bytes:
+        data = self.read_bytes(path)
+        if len(data) <= limit:
+            return data
+        tail = data[-limit:]
+        return tail[tail.find(b"\n") + 1:] if b"\n" in tail else b""
+
+    def find_named(self, root: Path, name: str, limit: int) -> tuple[Path, ...]:
+        return tuple(sorted(file for file in self.files
+                            if file.name.casefold() == name.casefold() and root in file.parents))[:limit]
 
     def link_target(self, path: Path) -> Path | None:
         return next((target / path.relative_to(link) for link, target in self.links.items()

@@ -9,5 +9,6 @@
   "tool_input": "{\"file_path\":\"C:\\\\project\\\\s.txt\"}",
   "tool_name": "Read",
   "tool_response": "{\"type\":\"text\",\"file\":{\"filePath\":\"s.txt\",\"content\":\"one\\n\",\"numLines\":2,\"startLine\":1,\"totalLines\":2}}",
-  "tool_use_id": "toolu_01PROBE"
+  "tool_use_id": "toolu_01PROBE",
+  "transcript_path": "C:\\Users\\user\\.claude\\projects\\C--project\\00000000-0000-4000-8000-000000000000.jsonl"
 }

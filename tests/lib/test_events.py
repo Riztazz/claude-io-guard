@@ -44,6 +44,13 @@ class EventsFromTheHarness(unittest.TestCase):
                          (HookEvent.SESSION_START, PermissionMode.DEFAULT, Tool.OTHER),
                          "SessionStart carries no permission_mode, so the event reads as default")
 
+    def test_the_transcript_path_is_read_from_either_surface(self):
+        raw = recorded("pre_tool_use_edit")
+        harness = Event.from_hook_json(raw, Surface.COMMAND_HOOK, WINDOWS)
+        mapped = Event.from_fields(as_fields(raw), WINDOWS)
+        self.assertEqual((harness.transcript, mapped.transcript), (Path(raw["transcript_path"]),) * 2,
+                         "the transcript path arrives as the harness JSON and as the mcp_tool map carry it")
+
     def test_a_failed_read_carries_its_error(self):
         event = Event.from_hook_json(recorded("post_tool_use_failure_read"), Surface.COMMAND_HOOK, WINDOWS)
         self.assertTrue(event.error.startswith("File does not exist."),

@@ -122,6 +122,28 @@ VERIFY_DIRECT = "Do these in order, one tool call each, and never read keep.txt 
                 "keep.txt. 2. Use the Write tool on keep.txt with two lines: gamma and delta. 3. Use the " \
                 "Edit tool on keep.txt to replace gamma with GAMMA. If a step fails, quote its error word " \
                 "for word and stop. Then reply DONE."
+EDIT_REFUSALS = ("Do these in order, one tool call each, and never retry a failed step. 1. Use the Edit "
+                 "tool on unread.txt to replace alpha with beta, without reading it first. 2. Read f.txt. "
+                 "3. Use the Edit tool on f.txt to replace nine with ten. 4. Use the Edit tool on f.txt to "
+                 "replace x with y, with replace_all false. 5. Use the Edit tool on f.txt to replace one "
+                 "with one. Then quote each tool's error word for word.")
+OTHER_REFUSALS = ("Do these in order, one tool call each, and never retry a failed step. 1. Read big.txt "
+                  "whole, with no offset or limit. 2. Grep for the pattern ( in this folder. 3. Grep for x "
+                  "in the path missing-dir. 4. Glob for *.txt in the path missing-dir. 5. Use the Edit tool "
+                  "on missing.txt to replace a with b. 6. Use the Write tool on kept.txt with the content x, "
+                  "without reading it first. Then quote each tool's error word for word.")
+DIAGNOSE = ("Do these in order, one tool call each, and never retry or fix a failed step. 1. Read "
+            "a.cpp. 2. Use the Edit tool on a.cpp to replace the text '    int b = 2;' (four spaces "
+            "first) with '    int b = 3;'. 3. Read a.cpp again. 4. Use the Edit tool on a.cpp to replace "
+            "'int a = 1;' with 'int a = 9;'. 5. Read missing.txt. 6. Read big.txt whole, with no offset or "
+            "limit. 7. Grep for the pattern f(x in this folder. 8. Use the Edit tool on a.cpp to replace "
+            "'void f()' with 'void f()'. 9. Glob for *.txt in the path missing-dir. Then reply DONE.")
+DIAGNOSE_CPP = b"void f()\r\n{\r\n\tint a = 1;\r\n\tint b = 2;\r\n\tint a = 1;\r\n}\r\n"
+DIAGNOSED = ("ANCHOR_NOT_FOUND: old_string of the refused Edit matches line 4 of a.cpp",
+             "ANCHOR_AMBIGUOUS: ", "PATH_NOT_FOUND: missing.txt does not exist",
+             "READ_TOO_LARGE: big.txt holds",
+             "PATTERN_INVALID: ripgrep rejected the pattern", "STALE_VIEW: old_string and new_string",
+             "PATH_NOT_FOUND: missing-dir does not exist")
 CONFORM_OFF = json.dumps({"checks": {"conform.write": {"enabled": False}}}).encode("ascii")
 READ_ONLY = "Read Hero.uasset. Then use the Edit tool once on Hero.uasset to replace v1 with v2, and use " \
             "no other tool. Then quote word for word the error or note that came back."
@@ -184,6 +206,14 @@ PROBES = {
     "failures": Probe(5, "context_failure", allowed=("Read", "Edit", "Bash"), max_turns=14,
                       hooks=(("PostToolUseFailure", "", "exec"), ("PostToolUse", "", "exec")),
                       setup={"fail.txt": b"one\ntwo\n"}, prompt=FAILURES),
+    "edit-refusals": Probe(5, "record", allowed=("Read", "Edit"), max_turns=12, prompt=EDIT_REFUSALS,
+                           hooks=(("PreToolUse", "Edit", "exec"), ("PostToolUseFailure", "", "exec")),
+                           setup={"f.txt": b"one\ntwo\nx\nx\n", "unread.txt": b"alpha\n"}),
+    "other-refusals": Probe(5, "record", allowed=("Read", "Edit", "Write", "Grep", "Glob"), max_turns=14,
+                            prompt=OTHER_REFUSALS,
+                            hooks=(("PreToolUse", "", "exec"), ("PostToolUseFailure", "", "exec")),
+                            setup={"big.txt": b"".join(b"line %06d of a large file to read whole\n" % n
+                                                       for n in range(9000)), "kept.txt": b"kept\n"}),
     "bash-diff-off": Probe(6, "record", hooks=(("PostToolUse", "Bash", "exec"),), allowed=("Read", "Bash"),
                            git=True, setup={"diff.txt": b"a\n"}, check=("diff.txt",), prompt=SED),
     "bash-diff-on": Probe(6, "record", hooks=(("PostToolUse", "Bash", "exec"),), allowed=("Read", "Bash"),
@@ -283,6 +313,11 @@ PROBES = {
                             setup={".gitattributes": b"*.uasset lockable\n", "Hero.uasset": b"hero v1\n"}),
     "live-locked": Probe(0, "", guard="", permission="acceptEdits", allowed=("Read", "Edit"), prompt=LOCKED,
                          check=("keep.txt",), extra={"hold": "keep.txt"}, setup={"keep.txt": b"alpha\n"}),
+    "live-diagnose": Probe(0, "", guard="", permission="acceptEdits", prompt=DIAGNOSE, max_turns=16,
+                           allowed=("Read", "Edit", "Grep", "Glob"),
+                           setup={"a.cpp": DIAGNOSE_CPP,
+                                  "big.txt": b"".join(b"line %06d of a large file to read whole\n" % n
+                                                      for n in range(9000))}),
     "live-verify-direct": Probe(0, "", guard="", permission="acceptEdits", allowed=("Read", "Write", "Edit"),
                                 prompt=VERIFY_DIRECT, check=("keep.txt",), max_turns=10,
                                 setup={"keep.txt": b"\xef\xbb\xbfalpha\r\nbeta\r\n",
@@ -612,6 +647,12 @@ KEPT_CONFORMED = b"\xef\xbb\xbfgamma\r\ndelta\r\n".decode("latin-1")
 KEPT_EDITED = tuple((b"\xef\xbb\xbfGAMMA\r\ndelta" + end).decode("latin-1") for end in (b"", b"\r\n"))
 
 
+def hooks_started(summary: dict, tool: str) -> set[str]:
+    """The hook names, such as PreToolUse:Edit, that started for one tool in a run."""
+    return {event["hook_name"] for event in summary["hook_events"]
+            if event.get("subtype") == "hook_started" and event.get("hook_name", "").endswith(f":{tool}")}
+
+
 def repaired_then_edited(summary: dict, name: str, calls: list[str]) -> bool:
     """verify.write put back the BOM and CRLF a Write dropped, the calls ran in order with no error, and the
     Edit after the repair landed in the file's own bytes. The model decides the final newline."""
@@ -675,6 +716,13 @@ VERDICTS = {
     and "READ_ONLY: Hero.uasset is read-only. Lock it with git lfs lock Hero.uasset" in seen(s),
     "live-locked": lambda s, n: s["files"]["keep.txt"] == "alpha\n"
     and context_reached(n, "FILE_LOCKED: Python (process"),
+    "live-diagnose": lambda s, n: all(context_reached(n, needle) for needle in DIAGNOSED),
+    "edit-refusals": lambda s, n: hooks_started(s, "Edit") == set() and all(
+        text in seen(s) for text in ("File has not been read yet", "String to replace not found",
+                                     "Found 2 matches", "No changes to make")),
+    "other-refusals": lambda s, n: hooks_started(s, "Edit") | hooks_started(s, "Write") == set()
+    and {"PostToolUseFailure:Read", "PostToolUseFailure:Grep", "PostToolUseFailure:Glob"}
+    <= hooks_started(s, "Read") | hooks_started(s, "Grep") | hooks_started(s, "Glob"),
 }
 
 

@@ -59,6 +59,12 @@ class AtomicWrites(unittest.TestCase):
         self.target.write_bytes(b"0123456789")
         self.assertEqual(bytesio.read_bytes(self.target, 4), b"0123", "read_bytes honours its limit")
 
+    def test_a_tail_holds_whole_lines_only(self):
+        self.target.write_bytes(b"first line\nsecond\nthird\n")
+        self.assertEqual((bytesio.read_tail(self.target, 12), bytesio.read_tail(self.target, 100)),
+                         (b"third\n", b"first line\nsecond\nthird\n"),
+                         "a tail starts after the line the limit cut, and a short file comes back whole")
+
 
 if __name__ == "__main__":
     unittest.main()

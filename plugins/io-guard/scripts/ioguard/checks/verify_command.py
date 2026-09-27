@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from ioguard.checks.base import Check, CheckMeta, Cost
-from ioguard.lib import probing, proc, verify
+from ioguard.lib import probing, proc, text, verify
 from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
@@ -49,10 +49,8 @@ class VerifyCommand(Check):
         timeout_ms = self.options["timeout_ms"]
         done = proc.run(argv, event.cwd, ctx.env, timeout_ms / 1000)
         shown = " ".join(command)
-        output = (done.stdout + done.stderr).decode("utf-8", "replace").strip()
-        limit = self.options["output_chars"]
-        if len(output) > limit:
-            output = output[:limit] + f"\n[{len(output) - limit:,} more characters]"
+        output = text.head((done.stdout + done.stderr).decode("utf-8", "replace").strip(),
+                           self.options["output_chars"])
         if done.start_error:
             lines = (f"io-guard could not start the verify command {shown}: {done.start_error}",)
         elif done.timed_out:

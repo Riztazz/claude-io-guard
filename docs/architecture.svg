@@ -230,7 +230,7 @@
       "hooks.entry runs the pipeline in this session's Context.",
       'The pipeline selects the checks for this event, orders them and runs them, within 300 ms, or 2 s at most.',
       'Checks call lib: values in, values out. Each decision is also one telemetry line.',
-      'Checks read the config, the probe, git and the session state from the Context.',
+      'Checks read the config, the probe, git and the session state from the Context, and the end of the transcript, for a call Claude Code refused before any hook ran.',
       "The answer returns as the tool result, and Claude Code reads it as the hook's decision: deny, ask or allow with a rewritten command, a fixed Write or Edit input that leaves the decision to Claude Code, or context only.",
       'The permission rules and the auto-mode classifier judge the rewritten input.',
       'The approved command runs.',

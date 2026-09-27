@@ -60,11 +60,16 @@ class HookPyTest(unittest.TestCase):
 
 
 class EveryEventGetsItsAnswer(HookPyTest):
-    def test_with_no_check_every_recorded_event_answers_an_empty_object(self):
-        for event_name in RECORDED:
+    def test_with_nothing_to_say_every_recorded_event_answers_an_empty_object(self):
+        for event_name in ("PreToolUse", "PostToolUse", "SessionStart"):
             with self.subTest(event=event_name):
                 self.assertEqual(self.hook(recorded(event_name)), {},
                                  "with nothing to say, the answer is {} and the call goes on")
+
+    def test_the_recorded_missing_read_gets_its_diagnosis(self):
+        reply = self.hook(recorded("PostToolUseFailure"))["hookSpecificOutput"]
+        self.assertTrue(reply["additionalContext"].startswith("PATH_NOT_FOUND: "),
+                        "a Read of a missing file is answered with the paths that exist")
 
     def test_every_recorded_event_carries_the_checks_context_under_its_own_name(self):
         for event_name in RECORDED:
@@ -72,8 +77,8 @@ class EveryEventGetsItsAnswer(HookPyTest):
                 reply = self.hook(recorded(event_name), checks="note")
                 self.assertEqual(reply["hookSpecificOutput"]["hookEventName"], event_name,
                                  "the answer names the event it answers")
-                self.assertTrue(reply["hookSpecificOutput"]["additionalContext"].startswith(injected.NOTE),
-                                "the check's line reaches the model as additionalContext")
+                self.assertIn(injected.NOTE, reply["hookSpecificOutput"]["additionalContext"],
+                              "the check's line reaches the model as additionalContext")
 
     def test_a_post_tool_use_answer_carries_the_replaced_output_and_the_classifier_note(self):
         reply = self.hook(recorded("PostToolUse"), checks="output")["hookSpecificOutput"]

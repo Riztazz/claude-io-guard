@@ -26,8 +26,8 @@ io-guard needs Claude Code 2.1.281 or later. It's the oldest release every probe
 the desktop app's bundled 2.1.281 passed all 28 verdicts, and so did the CLI at 2.1.283. Task 08 added six
 probes the same day. Five passed on both releases, and `guard-large`, which costs about 33,000 output tokens,
 ran on 2.1.283 only. Task 17 added `write-quiet`, `edit-trailing` and `live-conform`, task 18
-`live-verify` and `live-verify-direct`, and task 19 `live-read-only` and `live-locked`, all of which passed on
-both.
+`live-verify` and `live-verify-direct`, task 19 `live-read-only` and `live-locked`, and task 20 `edit-refusals`,
+`other-refusals` and `live-diagnose`, all of which passed on both.
 
 The design review named 2.1.281 as the first release whose `mcp_tool` hooks wait for their server. Today's hooks
 reference names no version for that, so the floor rests on the probes instead. Older releases aren't tested.
@@ -46,12 +46,13 @@ reference names no version for that, so the floor rests on the probes instead. O
 | `updatedInput` with no `permissionDecision` applies, and the harness asks or approves as it would have (D26) | 2.1.281 | `write-quiet` | Answer `ask` with the conformed Write or Edit input, so no prompt is skipped |
 | A hook's `allow` skips the auto-mode classifier | 2.1.281 | `auto-control`, `auto-allow` | Nothing changes. `refuse` is already the auto-mode default (D12) |
 | PostToolUse `additionalContext` reaches the model | 2.1.281 | `read-context`, `live-read-profile` | The file's profile only in `io.read` (task 16) |
+| `${transcript_path}` substitutes in an `mcp_tool` map, and the transcript records a refused Edit or Write with its `<tool_use_error>` | 2.1.281 | `live-diagnose`, `guard-fields` | A refused Edit or Write gets no diagnosis. A failed Read, Grep or Glob still does (task 20) |
 | A failed Edit or Write names EPERM, EBUSY or EACCES in PostToolUseFailure's `error` when another process holds the file | 2.1.281 | `live-locked` | No holder is named, and the model sees the tool's own error alone (task 19) |
 | An Edit straight after io-guard put back a file's endings and BOM goes through with no new Read | 2.1.281 | `live-verify-direct` | The repair's line already asks the agent to read the file again first (task 18) |
 | PreToolUse `additionalContext` reaches the model, with or without a permission decision | 2.1.281 | `live-answers` | Say it after the call, in PostToolUse |
 | `${tool_response}` and `${error}` substitute into an `mcp_tool` hook's map as JSON text and plain text | 2.1.281 | `guard-fields` | PostToolUse checks see no output (tasks 18, 21, 22) |
 | A 145,599-byte Write arrives whole in `${tool_input}` | 2.1.283 | `guard-large` | A large Write goes unchecked |
-| PostToolUseFailure fires for a failed Read or Bash call, with `error` and `additionalContext` | 2.1.281 | `failures` | No diagnosis after the call (task 20) |
+| PostToolUseFailure fires for a failed Read, Grep, Glob or Bash call, with `error` and `additionalContext` | 2.1.281 | `failures`, `other-refusals`, `live-diagnose` | No diagnosis after the call (task 20) |
 | `bashEditDiff` in a Bash result, with `bashEditDiffEnabled: true` | 2.1.281 | `bash-diff-on`, `bash-diff-off` | git status and modification times only (task 21) |
 | `updatedToolOutput` in the tool's own output shape, and `classifierContext` | 2.1.281 | `updated-output` | `additionalContext` only (task 22) |
 | `CLAUDE_ENV_FILE` for a SessionStart hook, reaching Bash calls and not PowerShell ones | 2.1.281 | `env-file`, `live-probe` | Bash runs without io-guard's UTF-8 settings (task 10) |

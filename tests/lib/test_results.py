@@ -29,6 +29,11 @@ class ResultsRender(unittest.TestCase):
         self.assertEqual(result.render(), "REWRITE_CONFLICT: Two fixes collided. Run it again.",
                          "a result renders as CODE: message, then the fix's text")
 
+    def test_a_message_with_quoted_lines_puts_the_fix_on_its_own_line(self):
+        result = Result.of(Code.STALE_VIEW, "Line 1 reads:\n1| x", "Edit", "win32")
+        self.assertEqual(render(result), f"STALE_VIEW: Line 1 reads:\n1| x\n{spec(Code.STALE_VIEW).fix}",
+                         "the fix never runs on from the last quoted line")
+
     def test_without_a_fix_the_codes_own_advice_follows(self):
         result = Result.of(Code.GUARD_ERROR, "A check failed.", "Edit", "darwin")
         self.assertEqual(render(result), f"GUARD_ERROR: A check failed. {spec(Code.GUARD_ERROR).fix}",

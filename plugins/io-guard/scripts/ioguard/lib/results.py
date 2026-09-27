@@ -59,6 +59,28 @@ CODES: tuple[CodeSpec, ...] = (
     CodeSpec("FILE_LOCKED", Layer.LOCATION, Severity.WARNING,
              "Another process holds the file open, so the tool could not replace it.",
              "Close that program or wait for it, then call the same tool again, never a shell write.", "0.1"),
+    CodeSpec("ANCHOR_NOT_FOUND", Layer.STALE, Severity.WARNING,
+             "The Edit's old_string is not in the file, so the Edit was refused.",
+             "Call Edit again with old_string copied from the lines the message shows.", "0.1"),
+    CodeSpec("ANCHOR_AMBIGUOUS", Layer.STALE, Severity.WARNING,
+             "The Edit's old_string is in the file more than once, so the Edit was refused.",
+             "Call Edit again with a longer old_string that names one place, or with replace_all set.",
+             "0.1"),
+    CodeSpec("STALE_VIEW", Layer.STALE, Severity.WARNING,
+             "The file holds something other than what the call expected.",
+             "Read the file again, then change only what differs.", "0.1"),
+    CodeSpec("PATH_NOT_FOUND", Layer.READ, Severity.WARNING,
+             "The path does not exist.",
+             "Call the tool again with one of the paths the message names.", "0.1"),
+    CodeSpec("READ_TOO_LARGE", Layer.READ, Severity.WARNING,
+             "The file is larger than one Read returns.",
+             "Read it in the parts the message names, with offset and limit.", "0.1"),
+    CodeSpec("PATTERN_INVALID", Layer.READ, Severity.WARNING,
+             "ripgrep rejected the Grep pattern before it searched.",
+             "Call Grep again with the pattern the message gives.", "0.1"),
+    CodeSpec("SEARCH_TOO_BROAD", Layer.READ, Severity.WARNING,
+             "The search ran out of time before it finished.",
+             "Search a narrower folder, or add a glob or type filter.", "0.1"),
     CodeSpec("BODY_MOVED_TO_FILE", Layer.TRANSPORT, Severity.FIXED,
              "The command's body was written to a file, and the command reads that file.",
              "Nothing to do.", "0.1"),
@@ -178,9 +200,11 @@ def spec(code: Code) -> CodeSpec:
 
 
 def render(result: Result) -> str:
-    """CODE: what happened. What to do. The second sentence is the fix's text, or the code's general fix."""
+    """CODE: what happened. What to do. The second sentence is the fix's text, or the code's general fix. A
+    message that ends in quoted lines of a file puts the fix on a line of its own."""
     advice = result.fix.text if result.fix is not None else SPECS[result.code].fix
-    return f"{result.code.value}: {result.message} {advice}"
+    separator = "\n" if "\n" in result.message else " "
+    return f"{result.code.value}: {result.message}{separator}{advice}"
 
 
 def render_many(results: Sequence[Result]) -> str:

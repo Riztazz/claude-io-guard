@@ -2,7 +2,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|PowerShell|Edit|Write|Read",
+        "matcher": "Bash|PowerShell|Edit|Write|Read|Grep|Glob",
         "hooks": [
           {
             "type": "mcp_tool",
@@ -16,6 +16,7 @@
               "tool_name": "${tool_name}",
               "cwd": "${cwd}",
               "scratchpad_dir": "${scratchpad_dir}",
+              "transcript_path": "${transcript_path}",
               "permission_mode": "${permission_mode}",
               "agent_id": "${agent_id}",
               "tool_input": "${tool_input}"
@@ -26,7 +27,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Bash|PowerShell|Edit|Write|Read",
+        "matcher": "Bash|PowerShell|Edit|Write|Read|Grep|Glob",
         "hooks": [
           {
             "type": "mcp_tool",
@@ -40,6 +41,7 @@
               "tool_name": "${tool_name}",
               "cwd": "${cwd}",
               "scratchpad_dir": "${scratchpad_dir}",
+              "transcript_path": "${transcript_path}",
               "permission_mode": "${permission_mode}",
               "agent_id": "${agent_id}",
               "tool_input": "${tool_input}",
@@ -51,7 +53,7 @@
     ],
     "PostToolUseFailure": [
       {
-        "matcher": "Bash|PowerShell|Edit|Write|Read",
+        "matcher": "Bash|PowerShell|Edit|Write|Read|Grep|Glob",
         "hooks": [
           {
             "type": "mcp_tool",
@@ -65,6 +67,7 @@
               "tool_name": "${tool_name}",
               "cwd": "${cwd}",
               "scratchpad_dir": "${scratchpad_dir}",
+              "transcript_path": "${transcript_path}",
               "permission_mode": "${permission_mode}",
               "agent_id": "${agent_id}",
               "tool_input": "${tool_input}",

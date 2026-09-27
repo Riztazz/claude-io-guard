@@ -57,7 +57,7 @@ class Surface(Enum):
 
 
 SCALAR_FIELDS = ("hook_event_name", "session_id", "tool_use_id", "prompt_id", "tool_name", "cwd",
-                 "scratchpad_dir", "permission_mode", "agent_id", "error")
+                 "scratchpad_dir", "transcript_path", "permission_mode", "agent_id", "error")
 WHOLE_FIELDS = ("tool_input", "tool_response")
 
 
@@ -85,6 +85,7 @@ class Event:
     prompt_id: str | None
     cwd: Path
     scratchpad: Path | None
+    transcript: Path | None          # the session's transcript, which lib.transcript reads the end of
     permission_mode: PermissionMode
     agent_id: str | None
     surface: Surface
@@ -123,6 +124,7 @@ class Event:
             prompt_id=text(raw.get("prompt_id")),
             cwd=cwd,
             scratchpad=Path(raw["scratchpad_dir"]) if text(raw.get("scratchpad_dir")) else None,
+            transcript=Path(raw["transcript_path"]) if text(raw.get("transcript_path")) else None,
             permission_mode=member(PermissionMode, raw.get("permission_mode", "default"), "permission mode"),
             agent_id=text(raw.get("agent_id")),
             surface=surface,

@@ -24,6 +24,19 @@ def read_bytes(path: Path, limit: int | None = None) -> bytes:
         return source.read() if limit is None else source.read(limit)
 
 
+def read_tail(path: Path, limit: int) -> bytes:
+    """The file's last limit bytes, from the first line break in them when the file is longer, so every line
+    in the result is whole."""
+    with open(path, "rb") as source:
+        size = source.seek(0, os.SEEK_END)
+        source.seek(max(0, size - limit))
+        data = source.read()
+    if size <= limit:
+        return data
+    cut = data.find(b"\n")
+    return data[cut + 1:] if cut >= 0 else b""
+
+
 def write_atomic(path: Path, data: bytes, retries: int = 5) -> WriteReport:
     """Write data to path through a temporary file in the same folder and a rename.
 
