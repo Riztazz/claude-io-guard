@@ -6,6 +6,53 @@ returns a structured error for the rest. One codebase runs on Windows and macOS.
 **Status: in build.** The plugin installs, and its hooks answer every file and shell call, but no check runs yet.
 The build plan is in `.claude/tasks/`, and this page describes the plugin the plan builds.
 
+## Five fixes, by example
+
+**A long script on Windows.** The Bash tool cuts a command near 7.8 KB.
+
+```
+The call   Bash: python - <<'EOF'  ...9 KB of Python...  EOF
+Without    /usr/bin/bash: -c: line 1: unexpected EOF while looking for matching `''
+With       io-guard moved a 9.0 KB heredoc body to <scratchpad>/io-guard/body-3f9c2a7b1d4e8f60.py, and the
+           command reads it from there. The body arrives exactly as written, with no backslash halved.
+```
+
+**A Write over a Windows file.** The Write tool writes LF and drops a BOM.
+
+```
+The call   Write: settings.ini, a file with CRLF endings and a BOM
+Without    The file comes back LF with no BOM. git diff marks every line changed, and git warns
+           "LF will be replaced by CRLF".
+With       The content is rewritten to CRLF with the BOM before Write runs. git diff shows only the lines that
+           changed, and the model reads EOL_CONVERTED and BOM_RESTORED.
+```
+
+**An Edit that misses.** The text the model sends is not quite the text in the file.
+
+```
+The call   Edit: client.py, old_string "    retries = 3"
+Without    String to replace not found in file.
+With       ANCHOR_NOT_FOUND, with the closest match: line 48 holds "\tretries = 3", a tab where the call has
+           four spaces. The corrected Edit call comes with it.
+```
+
+**A write through the shell.** No check sees it, and rewind can't undo it.
+
+```
+The call   Bash: sed -i 's/timeout=30/timeout=60/' src/client.py
+Without    The file changes, and nothing records how.
+With       Refused. SHELL_WRITE: The command writes a file git tracks through the shell, around io-guard's
+           checks. Use the Edit tool to change the file, or the Write tool to replace it whole.
+```
+
+**A search that finds nothing.** grep exits with 1 when no line matches.
+
+```
+The call   Bash: grep -rn "legacy_api" src/
+Without    Exit code 1, and the model reports that the search failed.
+With       EXIT_BENIGN: exit code 1 from grep means no line matched. The search worked and found nothing.
+```
+
 <a href="https://riztazz.github.io/claude-io-guard/architecture.svg"><img src="docs/architecture.svg" alt="io-guard's architecture: Claude Code's tools on top, the plugin's io server, checks and lib in the middle, and the files on disk at the bottom, with four numbered flows" width="100%"></a>
 
 GitHub shows the drawing as a still image. **[Open the interactive drawing](https://riztazz.github.io/claude-io-guard/architecture.svg)**
