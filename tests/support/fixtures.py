@@ -3,8 +3,9 @@
     python -m tests.support.fixtures
 
 rewrites each generated fixture and the manifest. The hook events in tests/fixtures/events/ were recorded by
-task 03's probes and are hashed as they are. .gitattributes marks the folder -text, and test_meta compares
-every file against the manifest, so a fixture git converted fails the suite.
+task 03's probes, and the mcp_tool hook maps in tests/fixtures/fields/ by task 08's guard-fields probe. Both
+are scrubbed of local paths and ids, and hashed as they are. .gitattributes marks the folder -text, and
+test_meta compares every file against the manifest, so a fixture git converted fails the suite.
 """
 import hashlib
 from pathlib import Path

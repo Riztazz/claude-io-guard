@@ -1,6 +1,6 @@
 """hook.sh finds a Python that works, skips the Store stub, and warns once when none will do.
 
-hook.py answers every event with at most one JSON object and exits 0.
+hook.py answers every event with one JSON object and exits 0. test_hook_py covers what the answer holds.
 """
 import json
 import os
@@ -79,10 +79,10 @@ class HookShFindsAPython(LauncherTest):
     def test_a_working_python_runs_hook_py_and_records_the_event(self):
         self.env["CLAUDE_PLUGIN_OPTION_PYTHON"] = sys.executable
         done = self.run_hook_sh(events.session_start(self.temp), PYTHON_DIR)
-        self.assertEqual((done.returncode, done.stdout), (0, b""),
-                         "with a working Python set, session_start answers nothing and exits 0")
-        self.assertEqual([line["event"] for line in data_lines(self.data)], ["session_start"],
-                         "hook.py recorded the session_start event in the plugin data folder")
+        self.assertEqual((done.returncode, done.stdout), (0, b"{}"),
+                         "with a working Python set, session_start answers an empty object and exits 0")
+        self.assertEqual([line["event"] for line in data_lines(self.data)], ["SessionStart"],
+                         "the pipeline recorded the SessionStart event in the plugin data folder")
 
     def test_a_server_interpreter_that_does_not_start_python_warns_once(self):
         self.env["CLAUDE_PLUGIN_OPTION_PYTHON"] = "io-guard-no-such-python"
@@ -97,23 +97,24 @@ class HookPyAnswers(LauncherTest):
     def bash_event(self) -> bytes:
         return json.dumps(events.bash("echo hi", self.temp)).encode("ascii")
 
-    def test_a_tool_event_gets_no_answer_and_is_recorded(self):
+    def test_a_tool_event_gets_an_empty_answer_and_is_recorded(self):
         done = self.run_hook_py("pre_tool_use", self.bash_event())
-        self.assertEqual((done.returncode, done.stdout), (0, b""),
-                         "hook.py answers a tool event with nothing, so the call goes on")
+        self.assertEqual((done.returncode, done.stdout), (0, b"{}"),
+                         "with no check to say anything, hook.py answers {}, so the call goes on")
         self.assertEqual([(line["event"], line["tool"]) for line in data_lines(self.data)],
-                         [("pre_tool_use", "Bash")], "hook.py recorded the tool event with its tool")
+                         [("PreToolUse", "Bash")], "the pipeline recorded the tool event with its tool")
 
     def test_stdin_that_is_not_json_still_exits_zero(self):
         done = self.run_hook_py("pre_tool_use", b"{not json")
-        self.assertEqual((done.returncode, done.stdout), (0, b""),
-                         "hook.py survives a broken event and answers nothing")
+        self.assertEqual((done.returncode, done.stdout), (0, b"{}"),
+                         "hook.py survives a broken event and answers {}")
+        self.assertIn(b"GUARD_ERROR", done.stderr, "the crash before the answer is logged as GUARD_ERROR")
 
     def test_no_plugin_data_folder_records_nothing_and_exits_zero(self):
         del self.env["CLAUDE_PLUGIN_DATA"]
         done = self.run_hook_py("pre_tool_use", self.bash_event())
-        self.assertEqual((done.returncode, done.stdout), (0, b""),
-                         "without CLAUDE_PLUGIN_DATA hook.py records nothing and still exits 0")
+        self.assertEqual((done.returncode, done.stdout), (0, b"{}"),
+                         "without CLAUDE_PLUGIN_DATA hook.py keeps telemetry in memory and still answers")
 
 
 if __name__ == "__main__":

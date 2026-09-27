@@ -1,5 +1,5 @@
-"""The package keeps its layers: lib imports only the standard library and lib, and each policy package
-imports lib and never another policy package."""
+"""The package keeps its layers: lib imports only the standard library and lib, checks imports lib, and hooks,
+mcp and cli import lib and checks and never each other."""
 import ast
 import sys
 import unittest
@@ -8,8 +8,8 @@ from pathlib import Path
 from tests import PLUGIN_SCRIPTS
 
 PACKAGE = PLUGIN_SCRIPTS / "ioguard"
-POLICY = ("checks", "hooks", "mcp", "cli")
-BRIDGES = {("hooks", "bridge"), ("mcp", "tools_hook")}   # the two modules that call hooks.entry
+SURFACES = ("hooks", "mcp", "cli")                  # the ways in, which all run the checks
+BRIDGE = (("mcp", "tools_hook"), "ioguard.hooks.bridge")   # the one import between two surfaces
 
 
 def imports_of(path: Path) -> set[str]:
@@ -37,6 +37,12 @@ def standard(name: str) -> bool:
     return name.split(".")[0] in sys.stdlib_module_names
 
 
+def package_of(name: str) -> str | None:
+    """The ioguard subpackage an import names, such as checks for ioguard.checks.pipeline, or None."""
+    parts = name.split(".")
+    return parts[1] if len(parts) > 1 and parts[0] == "ioguard" else None
+
+
 class PackageLayers(unittest.TestCase):
     def test_lib_imports_only_the_standard_library_and_lib(self):
         for path in modules("lib"):
@@ -45,21 +51,28 @@ class PackageLayers(unittest.TestCase):
                     self.assertTrue(standard(name) or name == "ioguard" or name.startswith("ioguard.lib"),
                                     "a lib module imports only the standard library and other lib modules")
 
-    def test_a_policy_package_imports_lib_and_never_another_policy_package(self):
-        for subpackage in POLICY:
+    def test_checks_imports_lib_and_never_a_surface(self):
+        for path in modules("checks"):
+            for name in imports_of(path):
+                with self.subTest(module=path.name, imports=name):
+                    self.assertFalse(package_of(name) in SURFACES,
+                                     "checks runs the same under every surface, so it never imports one")
+
+    def test_a_surface_imports_lib_and_checks_and_never_another_surface(self):
+        for subpackage in SURFACES:
             for path in modules(subpackage):
                 for name in imports_of(path):
-                    parts = name.split(".")
-                    other = len(parts) > 1 and parts[0] == "ioguard" and parts[1] in POLICY \
-                        and parts[1] != subpackage
-                    allowed = (subpackage, path.stem) in BRIDGES and name == "ioguard.hooks.entry"
+                    other = package_of(name) in SURFACES and package_of(name) != subpackage
+                    allowed = ((subpackage, path.stem), name) == BRIDGE
                     with self.subTest(module=f"{subpackage}/{path.name}", imports=name):
                         self.assertFalse(other and not allowed,
-                                         "checks, hooks, mcp and cli import lib and never each other")
+                                         "hooks, mcp and cli import lib and checks and never each other")
 
     def test_the_scan_sees_the_packages_it_guards(self):
-        self.assertTrue(modules("lib") and modules("checks"),
+        self.assertTrue(modules("lib") and modules("checks") and modules("hooks"),
                         "the layer test reads real modules, so it cannot pass on an empty tree")
+        self.assertIn("ioguard.checks.pipeline", imports_of(PACKAGE / "hooks" / "entry.py"),
+                      "the surface scan sees hooks.entry run the pipeline")
         self.assertLessEqual({"ioguard.lib.config", "ioguard.lib.git"},
                              imports_of(PACKAGE / "lib" / "context.py"),
                              "the import scan finds the imports a module really has")

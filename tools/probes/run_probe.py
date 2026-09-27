@@ -16,9 +16,15 @@ that has a verdict. The launch probes, which time 100 hook calls each for docs/l
 assemble builds the plugin alone, wrapped in a local marketplace, for a probe a person runs by hand in the
 desktop app. IOPROBE_CLAUDE names the claude binary to run, for example the desktop app's bundled copy, and
 defaults to claude on PATH. context.md, "Hooks and MCP", records what each probe found.
+
+A live-* probe runs io-guard itself from plugins/io-guard instead of a one-off plugin, with its python option
+set through --settings and tests/support/inject on PYTHONPATH, so the test checks its guard field names run in
+the hook and the server as shipped. Its log is the session's io-guard telemetry. The guard-* probes point the
+one-off plugin's hooks at io-guard's own hooks.json maps, to record what they receive.
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -52,7 +58,12 @@ TEN_ECHOES = "Run these ten Bash commands one at a time, each in its own Bash to
 HUNDRED_ECHOES = "Run the Bash command echo n1, then echo n2, and so on up to echo n100: one hundred " \
                  "commands, one at a time, each in its own Bash tool call, never two in one message. Then " \
                  "reply DONE."
-HOOK_SH = (REPO / "plugins" / "io-guard" / "scripts" / "hook.sh").as_posix()
+GUARD = REPO / "plugins" / "io-guard"
+GUARD_DATA = Path.home() / ".claude" / "plugins" / "data" / "io-guard-inline"
+GUARD_INPUTS = {event: groups[0]["hooks"][0].get("input") for event, groups in
+                json.loads((GUARD / "hooks" / "hooks.json").read_bytes())["hooks"].items()}
+INJECT = REPO / "tests" / "support" / "inject"
+HOOK_SH = (GUARD / "scripts" / "hook.sh").as_posix()
 SED = "Read diff.txt. Then run this exact Bash command: sed -i 's/a/b/' diff.txt\nThen reply DONE."
 THREE_FEATURES = "Call these three tools from the io-probe server once each, in order: probe_elicit, " \
                  "probe_progress, probe_app. Then quote each result word for word."
@@ -74,8 +85,28 @@ SUBSTITUTION = "Do these in order, one tool call each. 1. Run the Bash command e
                "exactly these three lines: say \"hi\" | C:\\temp\\new | zazolc with Polish letters: " + \
                b"za\xc5\xbc\xc3\xb3\xc5\x82\xc4\x87".decode("utf-8") + \
                " (put each part on its own line, without the | marks). Then reply DONE."
+FIELDS = "Do these in order, one tool call each, and never retry a failed step. 1. Run the Bash command " \
+         "echo hi. 2. Read s.txt. 3. Edit s.txt to replace one with ONE. 4. Write w.txt with two lines: " \
+         "say \"hi\" and C:\\temp\\new. 5. Read missing.txt. 6. Run the Bash command: exit 3. " \
+         "Then reply DONE."
+LARGE = "Use the Write tool once to create big.txt. Its content is the line: The quick brown fox jumps " \
+        "over the lazy dog, line NNNN. for each NNNN from 0001 to 2600, each on its own line, 2600 lines " \
+        "in all. Write the whole file in that one Write call, and never shorten it. Then reply DONE."
+LIVE = "Do these in order, one tool call each, and never retry a failed step. 1. Run the Bash command " \
+       "echo hi. 2. Run the PowerShell command Write-Output hi. 3. Write w.txt with the line one. 4. Read " \
+       "w.txt. 5. Edit w.txt to replace one with ONE. 6. Read missing.txt. Then quote word for word every " \
+       "note or context that came with any tool result, and reply DONE."
+ANSWERS = "Do these in order, one tool call each, and never retry. 1. Run the Bash command: echo " \
+          "IOGUARD_ORIGINAL 2. Run the Bash command: echo IOGUARD_REFUSE 3. Read s.txt. Then quote word " \
+          "for word each command's output, every refusal, and every note or context that came with any " \
+          "tool result."
+REFUSE_MODE = "Run this exact Bash command: echo IOGUARD_ORIGINAL\nIf it is refused, do what the refusal " \
+              "says, once. Then quote word for word the refusal and the output."
 BASH_PRE = (("PreToolUse", "Bash", "exec"),)
 BASH_GATE = (("PreToolUse", "Bash", "mcp"),)
+FILE_AND_SHELL = ("Bash", "PowerShell", "Read", "Edit", "Write")
+EVERY_GUARD_EVENT = (("PreToolUse", "", "guard"), ("PostToolUse", "", "guard"),
+                     ("PostToolUseFailure", "", "guard"))
 
 
 @dataclass(frozen=True)
@@ -96,6 +127,7 @@ class Probe:
     max_turns: int = 8
     model: str = "haiku"
     extra_args: tuple = ()
+    guard: str | None = None     # run io-guard itself, with these test checks, instead of io-probe
 
 
 PROBES = {
@@ -180,10 +212,22 @@ PROBES = {
     "dead-for-good": Probe(18, "record", hooks=BASH_GATE, server=True, allowed=("Bash",),
                            extra={"die_after_gate": 1, "stay_dead": True}, check=("first.txt", "second.txt"),
                            prompt=TWO_RUNS),
+    "guard-fields": Probe(19, "record", hooks=EVERY_GUARD_EVENT, server=True, max_turns=12,
+                          allowed=("Bash", "Read", "Edit", "Write"), setup={"s.txt": b"one\n"},
+                          prompt=FIELDS),
+    "guard-large": Probe(20, "record", hooks=(("PreToolUse", "Write", "guard"),), server=True,
+                         allowed=("Write",), check=("big.txt",), prompt=LARGE,
+                         env={"CLAUDE_CODE_MAX_OUTPUT_TOKENS": "64000"}),
+    "live-empty": Probe(0, "", guard="", max_turns=12, allowed=FILE_AND_SHELL, check=("w.txt",), prompt=LIVE),
+    "live-broken": Probe(0, "", guard="broken,note", max_turns=12, allowed=FILE_AND_SHELL, check=("w.txt",),
+                         prompt=LIVE),
+    "live-answers": Probe(22, "", guard="refuse,rewrite,note", permission="bypassPermissions",
+                          setup={"s.txt": b"one\n"}, prompt=ANSWERS),
+    "live-refuse": Probe(0, "", guard="rewrite", permission="dontAsk", allowed=("Bash",), prompt=REFUSE_MODE),
 }
 
 
-def handler(form: str, timeout: int | None) -> dict:
+def handler(event: str, form: str, timeout: int | None) -> dict:
     match form:
         case "exec":
             entry = {"type": "command", "command": str(PYTHON),
@@ -193,6 +237,8 @@ def handler(form: str, timeout: int | None) -> dict:
             entry = {"type": "command", "command": f'"{PYTHON.as_posix()}" {script} shell'}
         case "mcp":
             entry = {"type": "mcp_tool", "server": SERVER, "tool": "hook_gate", "input": GATE_INPUT}
+        case "guard":
+            entry = {"type": "mcp_tool", "server": SERVER, "tool": "hook_gate", "input": GUARD_INPUTS[event]}
         case "hooksh":
             entry = {"type": "command", "command": f'sh "{HOOK_SH}" pre_tool_use'}
         case _:
@@ -205,7 +251,7 @@ def handler(form: str, timeout: int | None) -> dict:
 def hooks_config(probe: Probe) -> dict:
     events: dict = {}
     for event, matcher, form, *rest in probe.hooks:
-        group = {"hooks": [handler(form, rest[0] if rest else None)]}
+        group = {"hooks": [handler(event, form, rest[0] if rest else None)]}
         if matcher:
             group["matcher"] = matcher
         events.setdefault(event, []).append(group)
@@ -306,11 +352,36 @@ def summarise(stream: Path, log: Path, work: Path, probe: Probe) -> dict:
             "probe_log": lines, "files": files}
 
 
+def guarded(probe: Probe) -> tuple[dict, dict]:
+    """The settings and environment that run io-guard from this checkout with the probe's test checks: the
+    python option the server starts from, and tests/support/inject on PYTHONPATH."""
+    options = {"pluginConfigs": {"io-guard@inline": {"options": {"python": str(PYTHON)}}}}
+    env = {"PYTHONPATH": str(INJECT), "IOGUARD_TEST_CHECKS": probe.guard}
+    return {**(probe.settings or {}), **options}, env
+
+
+def copy_telemetry(lines: list[bytes], log: Path) -> None:
+    """io-guard's telemetry for the session the stream names, as the run's log."""
+    for line in lines:
+        message = json.loads(line) if line.startswith(b"{") else {}
+        if message.get("type") == "system" and message.get("subtype") == "init":
+            found = sorted(GUARD_DATA.glob(f"events/*/{message.get('session_id')}.jsonl"))
+            if found:
+                shutil.copyfile(found[-1], log)
+            return
+
+
 def run(name: str) -> Path:
     probe = PROBES[name]
     out = OUT / name / time.strftime("%Y%m%d-%H%M%S")
     plugin, work, log = out / "plugin", out / "work", out / "probe.jsonl"
-    assemble(name, probe, plugin, log)
+    settings, env = probe.settings, probe.env
+    if probe.guard is None:
+        assemble(name, probe, plugin, log)
+    else:
+        plugin = GUARD
+        settings, extra = guarded(probe)
+        env = {**env, **extra}
     prepare_work(probe, work)
     claude = os.environ.get("IOPROBE_CLAUDE", "claude")
     argv = [claude, "-p", probe.prompt, "--plugin-dir", str(plugin), "--output-format", "stream-json",
@@ -319,13 +390,13 @@ def run(name: str) -> Path:
             "--max-turns", str(probe.max_turns), *probe.extra_args]
     if probe.allowed:
         argv += ["--allowedTools", *probe.allowed]
-    if probe.settings is not None:
-        argv += ["--settings", json.dumps(probe.settings)]
+    if settings is not None:
+        argv += ["--settings", json.dumps(settings)]
     started = time.time()
     lines, arrivals = [], []
     with (out / "stderr.txt").open("wb") as stderr:
         session = subprocess.Popen(argv, cwd=work, stdout=subprocess.PIPE, stderr=stderr,
-                                   env={**os.environ, **probe.env})
+                                   env={**os.environ, **env})
         killer = threading.Timer(600, session.kill)
         killer.start()
         for line in session.stdout:
@@ -334,6 +405,8 @@ def run(name: str) -> Path:
         exit_code = session.wait()
         killer.cancel()
     (out / "stream.jsonl").write_bytes(b"".join(lines))
+    if probe.guard is not None:
+        copy_telemetry(lines, log)
     details = summarise(out / "stream.jsonl", log, work, probe)
     versions = [note["version"] for note in details["notes"] if isinstance(note, dict) and "version" in note]
     summary = {"probe": name, "item": probe.item, "claude": versions[0] if versions else None,
@@ -390,11 +463,43 @@ def debug_has(name: str, needle: str) -> bool:
     return needle in (folder / "debug.txt").read_bytes().decode("utf-8", "replace")
 
 
+def context_reached(name: str, needle: str) -> bool:
+    """A hook's additionalContext holding needle is in the session transcript, as the attachment the model
+    reads. The model's own summary of what it saw leaves lines out, so the verdicts read the transcript."""
+    folder, _ = latest(name)
+    project = Path.home() / ".claude" / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(folder / "work"))
+    for path in project.glob("*.jsonl"):
+        for line in path.read_bytes().splitlines():
+            attachment = json.loads(line).get("attachment") or {}
+            if attachment.get("type") == "hook_additional_context" and needle in json.dumps(attachment):
+                return True
+    return False
+
+
 def every_call_denied(summary: dict) -> bool:
     """Every probe tool the model called was denied for want of permission, and it called at least one."""
     called = {tool["name"] for tool in summary["tools"] if tool["name"].startswith(MCP)}
     denied = {denial.get("tool_name") for denial in summary["final"]["permission_denials"]}
     return bool(called) and called <= denied
+
+
+def large_arrived(summary: dict) -> bool:
+    """The Write's content reached the hook whole: as long as the file it wrote, and 125,000 bytes or more."""
+    written = summary["files"]["big.txt"]
+    for line in summary["probe_log"]:
+        tool_input = (line.get("gate_args") or {}).get("tool_input") or ""
+        content = json.loads(tool_input).get("content", "") if tool_input.startswith("{") else ""
+        if written is not None and len(content.encode("utf-8")) == len(written) >= 125_000:
+            return True
+    return False
+
+
+def guarded_every_call(summary: dict) -> bool:
+    """io-guard recorded a PreToolUse line for every guarded tool call, and a PostToolUseFailure line."""
+    runs = [line["event"] for line in summary["probe_log"] if line.get("check") is None]
+    called = sum(tool["name"] in FILE_AND_SHELL for tool in summary["tools"])
+    pre, failures = runs.count("PreToolUse"), runs.count("PostToolUseFailure")
+    return called > 0 and pre == called and failures > 0
 
 
 BOM_CRLF = b"\xef\xbb\xbfline one\r\nline two\r\n".decode("latin-1")
@@ -430,6 +535,15 @@ VERDICTS = {
                                    for line in s["probe_log"] if "received" in line) == 3,
     "dead-server": lambda s, n: s["files"]["second.txt"] is not None and logged(s, "die_after_gate reached"),
     "dead-for-good": lambda s, n: s["files"]["second.txt"] is not None and logged(s, "stays dead"),
+    "guard-fields": lambda s, n: logged(s, '"tool_response": "{') and logged(s, '"error": "Exit code 3'),
+    "guard-large": lambda s, n: large_arrived(s),
+    "live-empty": lambda s, n: guarded_every_call(s) and s["files"]["w.txt"] is not None,
+    "live-broken": lambda s, n: guarded_every_call(s) and s["files"]["w.txt"] is not None
+    and logged(s, '"code": "GUARD_ERROR"') and context_reached(n, "IOGUARD-TEST-NOTE PostToolUse"),
+    "live-answers": lambda s, n: "IOGUARD_REWRITTEN" in seen(s) and "IOGUARD_ALLOWED" in seen(s)
+    and context_reached(n, "IOGUARD-TEST-NOTE PreToolUse Read")
+    and context_reached(n, "IOGUARD-TEST-NOTE PostToolUse Read"),
+    "live-refuse": lambda s, n: "Run this command instead" in seen(s) and "IOGUARD_REWRITTEN" in seen(s),
 }
 
 

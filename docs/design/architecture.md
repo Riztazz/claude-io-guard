@@ -60,9 +60,9 @@ plugins/io-guard/
         command_results.py         EXIT_BENIGN, ERRORS_IN_OUTPUT, OUTPUT_SAVED, MOJIBAKE
         commit_policy.py           task 29
       hooks/
-        entry.py                   run_event(raw) -> answer dict
+        entry.py                   run_event: an event in, the answer dict out, never raising
         answer.py                  Outcome -> hook JSON, per event and rewrite mode
-        bridge.py                  hook.* tools: substituted fields -> Event -> run_event
+        bridge.py                  hook.* tools: substituted fields -> run_event -> the tool's text
       mcp/
         server.py                  stdio loop, threads, shutdown
         protocol.py                framing, _meta, eras, JSON-RPC errors
@@ -83,9 +83,9 @@ tests/                             mirrors ioguard, plus fixtures/, support/, mc
 tools/                             ioguard.py, corpus.py, replay.py, measure.py, report.py, probes/
 ```
 
-Three rules hold the layout together. `lib` imports only the standard library and other `lib` modules.
-`checks`, `hooks`, `mcp` and `cli` import `lib` and never each other, except that `hooks.bridge` and
-`mcp.tools_hook` call `hooks.entry`. `tools/` scripts import `ioguard.cli` and hold no logic.
+Four rules hold the layout together. `lib` imports only the standard library and other `lib` modules. `checks`
+imports `lib`. `hooks`, `mcp` and `cli` are the ways in, and each imports `lib` and `checks` and never another,
+except that `mcp.tools_hook` calls `hooks.bridge`. `tools/` scripts import `ioguard.cli` and hold no logic.
 
 ## 2. Define the core types
 
@@ -555,8 +555,9 @@ class Pipeline:
    telemetry, and the call proceeds with what was decided.
 7. **Fail open.** A check that raises is skipped, logged as `GUARD_ERROR` with the traceback in the debug log,
    and named once per session in a `user_message`. The run continues with the next check.
-8. **Merge.** The verdict is the maximum of the decisions. Context lines join in order. One
-   `output_replacement` at most, from the first check that offers one.
+8. **Merge.** The verdict is the maximum of the decisions. Context lines join in order: each decision's
+   results rendered, except a refusal's, which are its reason, then its context lines, then the pipeline's own
+   warnings. One `output_replacement` at most, from the first check that offers one.
 
 Idempotence is a tested property, not a convention. `pipeline.run` on the input of a previous `Outcome` must
 produce no rewrite and the same verdict. Every rewrite therefore recognises its own output: a moved body leaves
@@ -723,33 +724,49 @@ ends in `extra` appends.
 
 ### The command entry point
 
-`scripts/hook.py <event>` reads stdin as bytes, decodes UTF-8, builds `Event.from_hook_json`, calls
-`hooks.entry.run_event`, writes one ASCII JSON answer to stdout and exits 0. Nothing else reaches stdout. A
-crash before the answer is written prints `{}` and logs `GUARD_ERROR`.
+`scripts/hook.py <event>` reads stdin as bytes, decodes UTF-8, calls `hooks.entry.run_event`, writes one ASCII
+JSON answer to stdout and exits 0. Nothing else reaches stdout. A crash before the answer is written prints `{}`
+and logs `GUARD_ERROR` to stderr. The `ioguard` logger has a `NullHandler`, so a log record reaches only
+`debug.log`, and only when `telemetry.debug` is true.
 
 ```python
-def run_event(raw: Mapping[str, Any], surface: Surface, ctx: Optional[Context] = None) -> dict:
-    """Runs the pipeline for one hook event and returns the harness answer."""
+def run_event(raw: Mapping[str, Any], surface: Surface, ctx: Optional[Context] = None,
+              registry: Optional[Registry] = None) -> dict:
+    """Runs the pipeline for one hook event and returns the harness answer. It never raises."""
 ```
 
+`run_event` reads `raw` with `Event.from_fields` for `Surface.MCP_HOOK` and with `Event.from_hook_json` for the
+others. Without `ctx`, it takes the live context for the event's session and working directory from
+`hooks.entry.CONTEXTS`, which loads the config and the probe once per session and project and keeps one
+`SessionState` per session. The data folder is `IOGUARD_DATA` in the server and `CLAUDE_PLUGIN_DATA` in a
+command hook. Without `registry`, it runs `default_registry()`. An event it cannot read answers `{}`. A bug past
+the pipeline's own fail-open answers `{}`, logs `GUARD_ERROR`, and warns the session once. The config's one
+message, when a file was dropped, goes out with the session's first answer in that project.
+
 `hooks.answer` turns an `Outcome` into the event's JSON. For PreToolUse the verdict and the rewrite mode decide
-the shape.
+the shape, and a refusal outranks an ask, which outranks an allow.
 
 | Outcome | Answer |
 |---|---|
-| OBSERVE, no rewrite | `{}` or `additionalContext` only |
-| DENY | `permissionDecision: "deny"` with the rendered result as the reason |
-| rewrite, mode `ask` | `permissionDecision: "ask"`, `updatedInput`, the note in `permissionDecisionReason` |
-| rewrite, mode `allow` | `permissionDecision: "allow"`, `updatedInput`, the note in `additionalContext` |
-| rewrite, mode `refuse` | `permissionDecision: "deny"` with the rewritten input as the `fix` |
+| OBSERVE or ALLOW, no rewrite | `{}`, or `additionalContext` only. No `permissionDecision`, so no prompt is skipped |
+| DENY | `permissionDecision: "deny"`, the refusing check's results rendered first in the reason, then the lines of the checks before it |
+| ASK, no rewrite | `permissionDecision: "ask"` with the check's lines as the reason |
+| rewrite, mode `ask`, or any rewrite with an ASK | `permissionDecision: "ask"`, `updatedInput`, the notes in `permissionDecisionReason` |
+| rewrite, mode `allow` | `permissionDecision: "allow"`, `updatedInput`, the notes in `additionalContext` |
+| rewrite, mode `refuse` | `permissionDecision: "deny"`, the notes, then the command to run instead, or the changed fields as JSON |
 
-The mode comes from `transport.rewrite_mode[permission_mode]`. File-tool rewrites from `conform_write` and
-`conform_edit` always answer `allow`, because the harness auto-approves edits in the working directory in
-every mode that matters. PostToolUse answers carry `additionalContext`, `classifierContext` and
-`updatedToolOutput`. An `updatedToolOutput` has the tool's own output shape: for Bash, the `tool_response` object
-with `stdout` replaced. A plain string there fails the harness's schema check and changes nothing.
-PostToolUseFailure answers carry `additionalContext`. SessionStart answers carry `additionalContext` and write
-`CLAUDE_ENV_FILE`.
+A rewrite's note renders as `CODE: note`. The mode comes from `transport.rewrite_mode[permission_mode]`.
+File-tool rewrites from `conform_write` and `conform_edit` always answer `allow`, because the harness
+auto-approves edits in the working directory in every mode that matters. Task 17 checks that claim for an edit
+outside the working directory before it relies on it.
+
+PostToolUse answers carry `additionalContext`, `classifierContext` and `updatedToolOutput`. An
+`updatedToolOutput` has the tool's own output shape: for Bash, the `tool_response` object with `stdout`
+replaced. A plain string there fails the harness's schema check and changes nothing. PostToolUseFailure answers
+carry `additionalContext`. SessionStart answers carry `additionalContext` and write `CLAUDE_ENV_FILE`. The
+user's `systemMessage` is the outcome's `user_message` on every event. PreToolUse `additionalContext` reaches
+the model with and without a permission decision, as a `hook_additional_context` attachment in the transcript
+(`context.md`, "Hooks and MCP", row 22).
 
 ### The mcp_tool alternative
 
@@ -794,10 +811,16 @@ PostToolUse and PostToolUseFailure bind the same way to `hook.post_tool_use` and
 `hook.post_tool_use_failure`, with `"tool_response": "${tool_response}"` and `"error": "${error}"` added to the
 map.
 
-`hooks.bridge` receives the map, calls `Event.from_fields`, runs `run_event` with `Surface.MCP_HOOK` and returns
-the answer JSON as the tool's text content. The harness reads that text exactly as it reads command-hook stdout,
-and a `deny` in it blocks the call. The tool never sets `isError`, because an error result produces a hook notice
-on every call. A `GUARD_ERROR` answers `{}` and warns once through `user_message`.
+`hooks.bridge.call` receives the map, runs `run_event` with `Surface.MCP_HOOK`, which reads it through
+`Event.from_fields`, and returns the answer JSON as the tool's text content. The harness reads that text exactly
+as it reads command-hook stdout, and a `deny` in it blocks the call. The tool never sets `isError`, because an
+error result produces a hook notice on every call. A `GUARD_ERROR` answers `{}` and warns once through
+`user_message`. Until task 23, `scripts/server.py` is a legacy-era stub that serves the three hook tools
+through the bridge and nothing else.
+
+A session runs two processes: the command hook that SessionStart starts, and the server. Each keeps its own
+once-per-session keys, so a check that breaks on SessionStart and on tool events warns once in each. Task 23
+shares the keys through the plugin data folder.
 
 Task 03 checked this path live on Windows with Claude Code 2.1.283 (`context.md`, "Hooks and MCP"):
 
@@ -816,6 +839,8 @@ Task 03 checked this path live on Windows with Claude Code 2.1.283 (`context.md`
   the bridge.
 - **SessionStart cannot use it.** The docs say `mcp_tool` hooks are skipped at launch, before the servers
   connect, so SessionStart stays a command hook.
+- **The rest of the map substitutes the same way** (task 08). `${tool_response}` is the compact JSON text of the
+  tool's output object, `${error}` the failure's text, and a Write of 145,599 bytes arrived whole.
 
 The bridge pays off in three ways. No Python starts per call. The profile cache, the git status cache, the
 read set and the probe live in one process. Fail-open comes from the harness, which continues on a

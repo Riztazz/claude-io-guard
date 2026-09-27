@@ -3,8 +3,8 @@
 A Claude Code plugin that checks what an agent sends to the file and shell tools, fixes what it safely can, and
 returns a structured error for the rest. One codebase runs on Windows and macOS.
 
-**Status: in design.** The design is finished and the build plan is in `.claude/tasks/`, but no code ships yet. This
-page describes the plugin the plan builds.
+**Status: in build.** The plugin installs, and its hooks answer every file and shell call, but no check runs yet.
+The build plan is in `.claude/tasks/`, and this page describes the plugin the plan builds.
 
 <a href="https://riztazz.github.io/claude-io-guard/architecture.svg"><img src="docs/architecture.svg" alt="io-guard's architecture: Claude Code's tools on top, the plugin's io server, checks and lib in the middle, and the files on disk at the bottom, with four numbered flows" width="100%"></a>
 

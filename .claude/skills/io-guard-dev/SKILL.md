@@ -15,7 +15,7 @@ and `prose`.
 | Rule | Why | Section |
 |---|---|---|
 | **Shipped code is standard library Python 3.14** | Claude Code installs no Python packages for a plugin (D4, D15) | Python here |
-| **`lib` is mechanism. `checks`, `hooks`, `mcp` and `cli` are policy, and they import `lib`, never each other** | A test that has to build a `Context` to reach a `lib` function has found a leak | Layout |
+| **`lib` is mechanism. `checks` is policy on `lib`. `hooks`, `mcp` and `cli` are the ways in, on both, and never import each other** | A test that has to build a `Context` to reach a `lib` function has found a leak | Layout |
 | **A file is bytes, written only by `lib.bytesio.write_atomic`, and an io tool holds `lib.locks.file_lock` around it** | `open(path, "w")` truncates first (BYT-9), and two sessions' servers can edit one file (D13) | Python here |
 | **A hook's stdout is its protocol** | One stray print corrupts the answer | Python here |
 | **Every policy value is a config key with its default in code** | The lead: "configurable as everything else should be" (D16) | Layout |
@@ -29,8 +29,8 @@ and `prose`.
 
 1. **`lib` imports only the standard library and other `lib` modules.** It holds no config, no session and no
    decision.
-2. **`checks`, `hooks`, `mcp` and `cli` import `lib` and never each other.** The one exception: `hooks.bridge` and
-   `mcp.tools_hook` call `hooks.entry`.
+2. **`checks` imports `lib`. `hooks`, `mcp` and `cli` import `lib` and `checks`, and never each other.** The one
+   exception: `mcp.tools_hook` calls `hooks.bridge`. `tests/test_layout.py` enforces all of it.
 3. **`tools/` scripts import `ioguard.cli` and hold no logic.** A copy of the logic in a script tests a parallel
    implementation.
 
@@ -93,6 +93,12 @@ live checks.
   loaded yet.
 - **Record each confirmed harness fact** in `docs/live-checks.md` and `docs/compat.md` (task 04), and in
   `context.md`.
+- **Run io-guard live from this checkout with a `live-*` probe** in `tools/probes/run_probe.py`. It starts
+  `claude -p --plugin-dir plugins/io-guard` with the `python` option set, puts `tests/support/inject` on
+  `PYTHONPATH`, and names the test checks from `tests/support/injected.py` in `IOGUARD_TEST_CHECKS`. The plugin
+  runs as shipped, and the run keeps the session's telemetry. A new check adds its own `live-*` probe.
+- **A verdict reads the transcript, never the model's summary.** The model leaves lines out when it quotes. A
+  hook's context is a `hook_additional_context` attachment in `~/.claude/projects/<cwd>/<session>.jsonl`.
 
 ## Where to look
 

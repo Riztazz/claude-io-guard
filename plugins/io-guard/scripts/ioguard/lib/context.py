@@ -154,9 +154,9 @@ class LiveFs:
         raise NotImplementedError("Finding the process that holds a file arrives with lib.locks in task 19.")
 
 
-def load_probe(data_dir: Path, platform: Platform) -> Probe:
-    path = data_dir / "probe.json"
-    if not path.is_file():
+def load_probe(data_dir: Path | None, platform: Platform) -> Probe:
+    path = None if data_dir is None else data_dir / "probe.json"
+    if path is None or not path.is_file():
         return Probe.unprobed(platform)
     return Probe.from_json(json.loads(bytesio.read_bytes(path).decode("utf-8")))
 
@@ -174,12 +174,13 @@ class Context:
     config_report: LoadReport | None = None
 
     @classmethod
-    def live(cls, data_dir: Path, project: Path,
+    def live(cls, data_dir: Path | None, project: Path,
              check_keys: Mapping[str, Mapping[str, ConfigKey]] | None = None) -> "Context":
-        """The real ports, the config from its four layers, and the probe from the plugin data folder."""
+        """The real ports, the config from its four layers, and the probe from the plugin data folder. With
+        no data folder there is no user layer and no probe, and telemetry stays in memory."""
         platform = detect()
-        layers = (ConfigLayer(Scope.USER, data_dir / "config.json"),
-                  ConfigLayer(Scope.PROJECT, project / ".claude" / "io-guard.json"),
+        user = () if data_dir is None else (ConfigLayer(Scope.USER, data_dir / "config.json"),)
+        layers = (*user, ConfigLayer(Scope.PROJECT, project / ".claude" / "io-guard.json"),
                   ConfigLayer(Scope.PROJECT_LOCAL, project / ".claude" / "io-guard.local.json"))
         report = load(layers, check_keys or {})
         return cls(config=report.config, probe=load_probe(data_dir, platform), platform=platform, git=Git(),

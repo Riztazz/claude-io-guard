@@ -23,7 +23,9 @@ A `FAIL` means a row below changed. Update the row, what io-guard does without t
 ## The minimum version is 2.1.281
 
 io-guard needs Claude Code 2.1.281 or later. It's the oldest release every probe has passed on. On 2026-09-27
-the desktop app's bundled 2.1.281 passed all 28 verdicts, and so did the CLI at 2.1.283.
+the desktop app's bundled 2.1.281 passed all 28 verdicts, and so did the CLI at 2.1.283. Task 08 added six
+probes the same day. Five passed on both releases, and `guard-large`, which costs about 33,000 output tokens,
+ran on 2.1.283 only.
 
 The design review named 2.1.281 as the first release whose `mcp_tool` hooks wait for their server. Today's hooks
 reference names no version for that, so the floor rests on the probes instead. Older releases aren't tested.
@@ -41,6 +43,9 @@ reference names no version for that, so the floor rests on the probes instead. O
 | `updatedInput` with `ask` puts the new input in the permission prompt | 2.1.281 | `ask-prompt`, the desktop check | Refuse instead of asking |
 | A hook's `allow` skips the auto-mode classifier | 2.1.281 | `auto-control`, `auto-allow` | Nothing changes. `refuse` is already the auto-mode default (D12) |
 | PostToolUse `additionalContext` reaches the model | 2.1.281 | `read-context` | The file's profile only in `io.read` (task 16) |
+| PreToolUse `additionalContext` reaches the model, with or without a permission decision | 2.1.281 | `live-answers` | Say it after the call, in PostToolUse |
+| `${tool_response}` and `${error}` substitute into an `mcp_tool` hook's map as JSON text and plain text | 2.1.281 | `guard-fields` | PostToolUse checks see no output (tasks 18, 21, 22) |
+| A 145,599-byte Write arrives whole in `${tool_input}` | 2.1.283 | `guard-large` | A large Write goes unchecked |
 | PostToolUseFailure fires for a failed Read or Bash call, with `error` and `additionalContext` | 2.1.281 | `failures` | No diagnosis after the call (task 20) |
 | `bashEditDiff` in a Bash result, with `bashEditDiffEnabled: true` | 2.1.281 | `bash-diff-on`, `bash-diff-off` | git status and modification times only (task 21) |
 | `updatedToolOutput` in the tool's own output shape, and `classifierContext` | 2.1.281 | `updated-output` | `additionalContext` only (task 22) |

@@ -39,9 +39,12 @@ that cannot start leaves every hook failing open, and the model hears nothing (`
   result carries the message and the fix, and stays compact.
 - **The hook bridge tools:** `hook.pre_tool_use`, `hook.post_tool_use`, `hook.post_tool_use_failure` and
   `hook.ping`, registered last with the description "Called by Claude Code hooks. Not for the model." They call
-  `hooks.bridge` from task 08, and they never set `isError`. `hooks.json` binds the tool events to them as
-  `mcp_tool` hooks when task 03 item 12 confirmed the substitution, and uses task 06's command-hook fallback
-  otherwise.
+  `hooks.bridge.call` from task 08, and they never set `isError`. `hooks.json` already binds PreToolUse,
+  PostToolUse and PostToolUseFailure to the first three, and task 08's stub `server.py` serves them. The new
+  server keeps the stub's tool names and `bridge.DESCRIPTION`, and adds `hook.ping`.
+- **One set of once-per-session keys across processes.** The SessionStart command hook and the server each keep
+  their own `SessionState`, so task 08's `live-broken` run showed a broken check's warning twice. Keep the warned
+  keys in the plugin data folder, per session, so a warning goes out once whichever process gives it.
 - **The concurrency model:** a reader thread, a writer lock, four workers, a telemetry queue, a pump per background
   run and a watchdog. `paths.LockTable` serialises one file inside the process, and `lib.locks.file_lock` serialises
   it across two sessions' servers.

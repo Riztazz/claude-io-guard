@@ -6,10 +6,10 @@ plugin's marketplace: github.com/Riztazz/claude-io-guard.
 
 ## Layout
 
-The tasks build most of this. Today the marketplace, the plugin's manifest, hooks, launcher, stub server and
-stub skill, the `ioguard` package's runtime core (`lib/` and the pipeline in `checks/`, with no check yet),
-`tests/` with its fixtures and helpers, `tools/probes/`, `.github/workflows/ci.yml`, `.claude/`, `docs/`,
-`workbench/` and this file exist.
+The tasks build most of this. Today the marketplace, the plugin's manifest, hooks, launcher, stub skill, the
+`ioguard` package's runtime core (`lib/` and the pipeline in `checks/`, with no check yet), the hook entry point
+and bridge in `hooks/`, a stub server that serves only the hook tools, `tests/` with its fixtures and helpers,
+`tools/probes/`, `.github/workflows/ci.yml`, `.claude/`, `docs/`, `workbench/` and this file exist.
 
 ```
 .claude-plugin/marketplace.json   the catalog
@@ -71,6 +71,8 @@ Each line works once the task that builds it has landed.
   `http://127.0.0.1:8765/architecture.svg`
 - The harness facts, after a Claude Code update: `python tools/probes/run_probe.py run all`, then
   `python tools/probes/run_probe.py verdicts`. `IOPROBE_CLAUDE` points it at the desktop app's own `claude.exe`
+- io-guard live from this checkout, with no install: `python tools/probes/run_probe.py run live-empty`, or another
+  `live-*` probe, which adds test checks through `tests/support/inject`
 - The plugin in the desktop app, which is the lead's main surface: run
   `claude plugin marketplace add <path to this clone>`, then `claude plugin install io-guard@claude-io-guard`
 

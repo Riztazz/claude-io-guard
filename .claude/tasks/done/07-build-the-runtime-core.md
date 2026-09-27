@@ -3,7 +3,7 @@ title: "Build the runtime core: events, context, results, config, the registry a
 stage: A
 area: runtime
 created: 2026-09-27
-status: open
+status: done
 claimed-by: claude-opus-5-5, session 7eeb509f
 depends-on: [03, 05]
 findings: []
@@ -48,12 +48,7 @@ without a harness.
 - A config file with an unknown key is dropped whole, and the message names the file, the key and the nearest
   known key.
 
-## Blocked on
-
-**CI on the lead's next push.** Every Done-when line passes on Windows, below. The first line asks for CI on both
-platforms, and this commit has not been pushed yet.
-
-## What changed so far
+## What changed
 
 - **`plugins/io-guard/scripts/ioguard/`**, the package, with `PLUGIN_VERSION`, `CONFIG_SCHEMA`, `CHECK_API` and
   `TELEMETRY_SCHEMA` in `__init__.py`.
@@ -103,4 +98,12 @@ passing. The four Done-when cases pass as tests: the pipeline cases in `test_pip
 composition, `REWRITE_CONFLICT`, a refusal, both budget limits, the fixed point), `GUARD_ERROR` once per
 session with the run going on, the two meta scans, and the dropped config file in `test_config.py`.
 
-Not checked: CI on either platform (Blocked on).
+- **CI:** the lead pushed `9b7e20a`, and run 36318048280 passed on all four jobs, `windows-latest` and
+  `macos-latest` on Python 3.14 and `3.x`, in 37 s. Every step succeeded in every job, the test step included,
+  which fails when no test runs, and both `claude plugin validate` calls. Read from the GitHub API and the lead's
+  screenshot on 2026-09-27.
+
+Not checked:
+
+- **The test counts on the runners.** The step logs need a sign-in, so only the Windows count of 159 was read.
+- **A live session.** Nothing calls the pipeline yet. Task 08 puts `scripts/hook.py` on it, and checks it live.

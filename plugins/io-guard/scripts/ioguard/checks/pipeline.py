@@ -60,6 +60,13 @@ def order(checks: tuple[Check, ...]) -> tuple[Check, ...]:
     return tuple(placed)
 
 
+def lines_of(decision: Decision) -> tuple[str, ...]:
+    """A decision's lines for the model: its results rendered, then its context. A refusal's results render
+    as the refusal's reason instead."""
+    results = () if decision.verdict is Verdict.DENY else tuple(render(result) for result in decision.results)
+    return results + decision.context
+
+
 class Run:
     """One pipeline run over one event: the running input and everything decided so far."""
 
@@ -157,7 +164,7 @@ class Run:
             tool_input=self.tool_input,
             rewrites=tuple(self.applied),
             decisions=tuple(decisions),
-            context=tuple(line for decision in decisions for line in decision.context)
+            context=tuple(line for decision in decisions for line in lines_of(decision))
             + tuple(render(warning) for warning in self.warnings),
             user_message="\n".join(messages) or None,
             classifier_note="\n".join(notes) or None,

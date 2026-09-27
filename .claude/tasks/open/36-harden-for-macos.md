@@ -27,6 +27,8 @@ unit tests, not what the harness does on a Mac. The Mac also brings traps of its
   pages:
   - task 03: the Bash tool with a 9 KB command and `echo 'a\\b' | od -c`, and `bash --version` through the Bash tool
   - task 06: the server and `hook.sh` start
+  - task 08: `guard-fields`, `guard-large` and the four `live-*` probes, whose `python` option there is the Mac's
+    own interpreter
   - task 10: the probe at session start
   - tasks 11, 16, 17, 20 and 21: their live checks
   - task 19: the `lsof` holder lookup

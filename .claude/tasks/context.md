@@ -130,6 +130,18 @@ headless session per case (`docs/launcher.md`):
 | A server that never started: every hooked call gets its own notice | The same wrong setting | Each PreToolUse hook answered `MCP server 'plugin:io-guard:io' not connected`, non-blocking, and both tool calls ran |
 | Hook paths, 100 Bash calls each on the CLI 2.1.283 | `launch-mcp`, `launch-exec`, `launch-hooksh` | `mcp_tool` p50 1.2 ms, p95 1.6 ms. Exec form 53.4 and 58.0 ms. Through `hook.sh` 129.8 and 139.1 ms |
 
+The hook entry point, checked on 2026-09-27 during task 08 with Haiku 4.5, on the CLI 2.1.283 and again on the
+desktop's bundled 2.1.281, where every verdict passed too. Each run loads io-guard from this checkout with
+`--plugin-dir` and row 21's setting, and `tests/support/inject` on `PYTHONPATH` adds the test checks the run
+names (`tools/probes/run_probe.py`, the `live-*` probes):
+
+| Claim | Probe | Result |
+|---|---|---|
+| The empty pipeline answers every guarded call | `live-empty` | Bash, PowerShell, Write, Read, Edit and a Read of a missing file ran. 13 hook answers, all `success`. Telemetry: 1 SessionStart, 6 PreToolUse, 5 PostToolUse and 1 PostToolUseFailure line, surface `mcp_hook` for the tool events |
+| A broken check leaves the session working (D7) | `live-broken` | The same six calls ran, and `w.txt` ended as `ONE`. 13 `GUARD_ERROR` lines, and the other check's context reached the model on every event. The warning showed twice, once from the SessionStart command hook and once from the server, which are two processes |
+| Each answer shape works | `live-answers`, bypassPermissions | The rewrite answered `allow` with `updatedInput`, and Bash printed `IOGUARD_REWRITTEN`. The refusal's reason reached the model as `PreToolUse:Bash hook error: GUARD_ERROR: io-guard's test check refused this command. Run echo IOGUARD_ALLOWED instead.` |
+| Refuse mode gives the model the command to run | `live-refuse`, dontAsk | The deny carried `Run this command instead, exactly as written:` and the rewritten command. The model ran it next, once |
+
 ### Hooks and MCP
 
 Checked on 2026-09-27 with the probes in `tools/probes/`, task 03: `claude -p` 2.1.283 with Haiku 4.5 (Sonnet 5 for
@@ -171,6 +183,10 @@ denied, and the rerun denied all three. Ten calls each took:
 | 16 | Elicitation, progress, Apps and structured content | `mcp-features`, `features-modern`, the desktop | Legacy `elicitation/create`: `claude -p` answers `cancel`, and the desktop answers `decline` without showing a form. Modern: a server-sent `elicitation/create` is never answered, and the call hung past 570 s. `input_required` works: the client retries with `inputResponses` and `requestState`, and `-p` answers `cancel`. Progress notifications are accepted, and the desktop showed none. No client sent `resources/read`, so no App renders. When a result has `structuredContent`, the model sees that JSON instead of the text content |
 | 17 | MCP tools prompt in default mode | `mcp-prompts`, `mcp-permit` | All three prompted: no annotations, `readOnlyHint: true` and `destructiveHint: true`. The annotations change nothing |
 | 18 | A dead server | `dead-server`, `dead-for-good` | A server that exits restarts on the next hook call in about 50 ms. One that cannot start gives the non-blocking `MCP server "plugin:io-probe:probe" is not connected`, the call runs, and the model sees nothing |
+| 19 | `${tool_response}` and `${error}` substitute like `${tool_input}` | `guard-fields`, with io-guard's own `hooks.json` maps, task 08 | Yes. `${tool_response}` is the compact JSON text of the whole object, such as Bash's `{"stdout":"hi","stderr":"",...}`, and `${error}` the failure's text, such as `Exit code 3`. An empty `agent_id` arrives as an empty string. The maps are `tests/fixtures/fields/` |
+| 20 | A large `${tool_input}` arrives whole | `guard-large`, task 08 | Yes. A Write of 145,599 bytes and 2,599 lines reached the hook as 148,340 characters of JSON text, and its `content` matched the file on disk byte for byte. Haiku first stopped at "Claude's response exceeded the 32000 output token maximum", so the probe sets `CLAUDE_CODE_MAX_OUTPUT_TOKENS` to 64000 |
+| 21 | A `--plugin-dir` plugin's `userConfig` | task 08, by hand | The plugin is `<name>@inline`, and `--settings '{"pluginConfigs": {"io-guard@inline": {"options": {"python": "python"}}}}'` sets its option: the server connected. Without it, the default `python3` failed. Its data folder is `~/.claude/plugins/data/io-guard-inline` |
+| 22 | PreToolUse `additionalContext` reaches the model | `live-answers`, task 08 | Yes, alone and next to `permissionDecision: "allow"`, as a `hook_additional_context` attachment in the transcript, like PostToolUse's. The model quoted a line from one |
 
 ## Doc facts, checked on 2026-09-27
 
@@ -226,7 +242,8 @@ denied, and the rerun denied all three. Ten calls each took:
 - Whether the desktop prompts on an `io.*` call in manual mode. The CLI does (row 17). The desktop session that
   ran the probes was in auto mode.
 - Whether Cowork renders an MCP App.
-- How large a `${tool_input}` substitution can be. The largest probed was a three-line Write.
+- Where a `${tool_input}` substitution stops. 145,599 bytes arrive whole (Hooks and MCP, row 20), and nothing
+  larger was tried.
 
 ## Baseline
 

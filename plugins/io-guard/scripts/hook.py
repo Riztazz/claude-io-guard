@@ -1,18 +1,17 @@
 """io-guard's command-hook entry point: python hook.py <event>, with the hook event as JSON on stdin.
 
-It answers with at most one ASCII JSON object on stdout and exits 0. On session_start it checks that this
-Python and the interpreter the io server starts from are both 3.14 or later, and warns once when either is
-not. Every event writes one line to the session's file under ${CLAUDE_PLUGIN_DATA}/events/. Task 08 puts the
-check pipeline behind it.
+It writes one ASCII JSON answer to stdout, the check pipeline's through hooks.entry, and exits 0. On
+session_start it also checks that this Python and the interpreter the io server starts from are both 3.14 or
+later, and warns once when either is not. A crash before the answer answers {} and logs GUARD_ERROR to stderr.
 
-This file runs on older Pythons long enough to say that they are too old, so it avoids syntax newer than 3.8.
+This file runs on older Pythons long enough to say that they are too old, so it avoids syntax newer than 3.8,
+and it imports ioguard only on 3.14 or later.
 """
 import json
 import os
 import subprocess
 import sys
-import time
-from pathlib import Path
+import traceback
 
 MINIMUM = (3, 14)
 SERVER_DEFAULT = "python3"
@@ -46,37 +45,29 @@ def interpreter_warning():
     return None
 
 
-def record(event_name, event):
-    data = os.environ.get("CLAUDE_PLUGIN_DATA")
-    if not data:
-        return
-    now = time.gmtime()
-    session = str(event.get("session_id") or "unknown-session")
-    folder = Path(data) / "events" / time.strftime("%Y-%m", now)
-    folder.mkdir(parents=True, exist_ok=True)
-    line = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", now), "session": session, "event": event_name,
-            "tool": event.get("tool_name"), "surface": "command_hook", "noop": True}
-    with (folder / (session + ".jsonl")).open("ab") as out:
-        out.write((json.dumps(line) + "\n").encode("ascii"))
+def guard(raw):
+    """The pipeline's answer to the event."""
+    from ioguard.hooks.entry import run_event
+    from ioguard.lib.events import Surface
+    return run_event(json.loads(raw.decode("utf-8")), Surface.COMMAND_HOOK)
 
 
 def main():
     event_name = sys.argv[1] if len(sys.argv) > 1 else ""
     raw = sys.stdin.buffer.read()
-    try:
-        event = json.loads(raw.decode("utf-8")) if raw.strip() else {}
-    except ValueError:
-        event = {}
-    if not isinstance(event, dict):
-        event = {}
-    try:
-        record(event_name, event)
-    except OSError as error:
-        sys.stderr.write("io-guard could not record the " + event_name + " event: " + str(error) + "\n")
+    reply = {}
+    if sys.version_info[:2] >= MINIMUM:
+        try:
+            reply = guard(raw)
+        except Exception:
+            sys.stderr.write("GUARD_ERROR: io-guard's " + event_name + " hook failed, so it answered {} and "
+                             "let the session go on.\n" + traceback.format_exc())
+            reply = {}
     if event_name == "session_start":
         warning = interpreter_warning()
         if warning is not None:
-            answer({"systemMessage": warning})
+            reply["systemMessage"] = "\n".join(part for part in (warning, reply.get("systemMessage")) if part)
+    answer(reply)
     return 0
 
 

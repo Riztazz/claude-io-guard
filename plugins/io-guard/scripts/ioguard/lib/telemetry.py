@@ -2,10 +2,13 @@
 
 A line holds codes, timings and names, never file content: no old_string, no new_string, and at most 200
 characters of a command. The trace context joins the PreToolUse decision, an io tool call and the PostToolUse
-check of one tool use.
+check of one tool use. Tracebacks go to the debug log instead, ${CLAUDE_PLUGIN_DATA}/debug.log, and only when
+telemetry.debug is true.
 """
 import hashlib
 import json
+import logging
+import os
 import re
 import secrets
 from dataclasses import dataclass
@@ -107,3 +110,15 @@ class Telemetry:
 
     def flush(self) -> None:
         """Each record is written and closed at once, so nothing waits. The io server queues records."""
+
+
+def debug_log(path: Path) -> None:
+    """Send every ioguard log record to path as well, once per process however often it is called."""
+    logger = logging.getLogger("ioguard")
+    target = os.path.abspath(path)
+    if any(getattr(handler, "baseFilename", None) == target for handler in logger.handlers):
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handler = logging.FileHandler(target, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
+    logger.addHandler(handler)

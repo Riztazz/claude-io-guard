@@ -69,10 +69,26 @@ Confirmed with `tools/probes/run_probe.py`, whose `verdicts` command rechecks ev
 | 16. No surface probed shows an elicitation form or renders an MCP App. `input_required` resumes | `mcp-features`, `features-modern`, the lead in the Code tab | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | 17. MCP tools prompt in default mode, whatever their annotations | `mcp-prompts`, `mcp-permit` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | 18. A dead server restarts on the next hook call, and one that can't start fails open | `dead-server`, `dead-for-good` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+| 19. `${tool_response}` and `${error}` substitute like `${tool_input}` | `guard-fields` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+| 20. A Write of 145,599 bytes reaches an `mcp_tool` hook whole | `guard-large` | 2.1.283 | waits for the Mac | 2026-09-27 |
+| 21. A `--plugin-dir` plugin takes its `userConfig` from `--settings`, under `pluginConfigs["<name>@inline"]` | by hand, task 08 | 2.1.283 | waits for the Mac | 2026-09-27 |
+| 22. PreToolUse `additionalContext` reaches the model, with or without a permission decision | `live-answers` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+
+## io-guard itself
+
+Confirmed with the `live-*` probes, which run io-guard from this checkout with test checks added. The numbers
+match `.claude/tasks/context.md`, "The hook entry point".
+
+| Fact | Probe | Windows | macOS | Confirmed |
+|---|---|---|---|---|
+| With no check, the hooks answer every Bash, PowerShell, Write, Read and Edit call, and a failed Read | `live-empty` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+| A check that raises on every event leaves every call running, and the other checks still answer | `live-broken` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+| A rewrite in `allow` mode runs the new command, and a refusal's fix reaches the model | `live-answers` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+| A rewrite in `refuse` mode gives the model the command to run instead, and it runs it | `live-refuse` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 
 ## Not checked yet
 
 - What the desktop shows the user when the io server can't start.
 - Whether the desktop prompts for an MCP tool in manual mode. The CLI does.
 - Whether Cowork renders an MCP App or shows an elicitation form.
-- How large a `${tool_input}` substitution can get, and `${tool_response}`. Task 08 checks both.
+- Where a `${tool_input}` substitution stops. 145,599 bytes arrive whole, and nothing larger was tried.

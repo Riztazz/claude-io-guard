@@ -1,0 +1,13 @@
+{
+  "agent_id": "",
+  "cwd": "C:\\project",
+  "error": "Exit code 3",
+  "hook_event_name": "PostToolUseFailure",
+  "permission_mode": "default",
+  "prompt_id": "00000000-0000-4000-8000-000000000000",
+  "scratchpad_dir": "C:\\Users\\user\\AppData\\Local\\Temp\\claude\\C--project\\00000000-0000-4000-8000-000000000000\\scratchpad",
+  "session_id": "00000000-0000-4000-8000-000000000000",
+  "tool_input": "{\"command\":\"exit 3\",\"description\":\"Exit with status 3\"}",
+  "tool_name": "Bash",
+  "tool_use_id": "toolu_01PROBE"
+}

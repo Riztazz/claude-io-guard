@@ -25,6 +25,12 @@ to keep CRLF.
 These rewrites answer `allow` with `updatedInput` in every permission mode, because the harness auto-approves edits
 inside the working directory anyway (`docs/design/architecture.md`, section 6).
 
+**Check that claim live before relying on it.** An `allow` skips the prompt the user would have seen, so a
+conformed Write to a file outside the working directory, or in the default permission mode, must not become an
+edit nobody approved. Probe what the harness does with `updatedInput` and no `permissionDecision`. If that
+applies the input and keeps the harness's own prompt, `hooks.answer` answers that way for file tools instead.
+Task 08 raised this.
+
 **PreToolUse Write:**
 - **Existing file.** Convert `content` to the file's dominant line ending, restore its BOM, and keep its
   final-newline convention. Report `EOL_CONVERTED` and `BOM_RESTORED`.

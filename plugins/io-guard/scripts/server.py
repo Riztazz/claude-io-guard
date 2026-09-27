@@ -1,47 +1,26 @@
-"""io-guard's io server, as a stub that proves the launch: a stdio MCP server in the legacy era.
+"""io-guard's io server, as a stub in the legacy MCP era that serves the hook tools and nothing else.
 
-It serves one tool, hook.pre_tool_use, which the plugin's PreToolUse mcp_tool hook calls. Each call writes one
-line to the session's file under $IOGUARD_DATA/events/ and returns no decision, so the tool call goes on as if
-io-guard were absent. Task 23 replaces it with the dual-era server and the real hook bridge.
+The plugin's mcp_tool hooks call hook.pre_tool_use, hook.post_tool_use and hook.post_tool_use_failure. Each
+call runs the check pipeline through hooks.bridge, which records it in telemetry and returns the answer as the
+tool's text. A crash in a call answers with empty text, so the tool call goes on as if io-guard were absent.
+Task 23 replaces this stub with the dual-era server, its io tools and its threads.
 """
 import json
-import os
 import sys
-import time
-from pathlib import Path
+
+from ioguard.hooks import bridge
 
 SERVER_INFO = {"name": "io-guard", "version": "0"}
-HOOK_TOOL = {
-    "name": "hook.pre_tool_use",
-    "description": "Called by Claude Code hooks. Not for the model.",
-    "inputSchema": {"type": "object", "additionalProperties": True},
-}
-
-
-def record(arguments: dict) -> None:
-    data = os.environ.get("IOGUARD_DATA")
-    if not data:
-        return
-    now = time.gmtime()
-    session = str(arguments.get("session_id") or "unknown-session")
-    folder = Path(data) / "events" / time.strftime("%Y-%m", now)
-    folder.mkdir(parents=True, exist_ok=True)
-    line = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", now), "session": session,
-            "event": arguments.get("hook_event_name"), "tool": arguments.get("tool_name"),
-            "surface": "mcp_hook", "noop": True}
-    with (folder / f"{session}.jsonl").open("ab") as out:
-        out.write((json.dumps(line) + "\n").encode("ascii"))
+HOOK_TOOLS = [{"name": name, "description": bridge.DESCRIPTION,
+               "inputSchema": {"type": "object", "additionalProperties": True}} for name in bridge.TOOLS]
+NO_DECISION = {"content": [{"type": "text", "text": ""}]}
 
 
 def call_tool(params: dict) -> dict:
-    if params.get("name") != HOOK_TOOL["name"]:
+    if params.get("name") not in bridge.TOOLS:
         return {"content": [{"type": "text", "text": f"io-guard has no tool {params.get('name')}."}],
                 "isError": True}
-    try:
-        record(params.get("arguments") or {})
-    except OSError as error:
-        sys.stderr.write(f"io-guard could not record the hook call: {error}\n")
-    return {"content": [{"type": "text", "text": ""}]}
+    return bridge.call(params.get("arguments") or {})
 
 
 def handle(message: dict) -> dict | None:
@@ -51,7 +30,7 @@ def handle(message: dict) -> dict | None:
             return {"protocolVersion": params.get("protocolVersion"), "serverInfo": SERVER_INFO,
                     "capabilities": {"tools": {"listChanged": False}}}
         case "tools/list":
-            return {"tools": [HOOK_TOOL]}
+            return {"tools": HOOK_TOOLS}
         case "tools/call":
             return call_tool(params)
         case "ping":
@@ -64,8 +43,7 @@ def reply(message: dict) -> dict:
         result = handle(message)
     except Exception as error:
         sys.stderr.write(f"io-guard's server failed on {message.get('method')}: {error!r}\n")
-        no_decision = {"content": [{"type": "text", "text": ""}]}
-        result = no_decision if message.get("method") == "tools/call" else None
+        result = NO_DECISION if message.get("method") == "tools/call" else None
     if result is None:
         missing = {"code": -32601, "message": f"io-guard has no method {message.get('method')}."}
         return {"jsonrpc": "2.0", "id": message["id"], "error": missing}

@@ -1,0 +1,13 @@
+{
+  "agent_id": "",
+  "cwd": "C:\\project",
+  "hook_event_name": "PostToolUse",
+  "permission_mode": "default",
+  "prompt_id": "00000000-0000-4000-8000-000000000000",
+  "scratchpad_dir": "C:\\Users\\user\\AppData\\Local\\Temp\\claude\\C--project\\00000000-0000-4000-8000-000000000000\\scratchpad",
+  "session_id": "00000000-0000-4000-8000-000000000000",
+  "tool_input": "{\"file_path\":\"C:\\\\project\\\\w.txt\",\"content\":\"hi\\nC:\\\\temp\\\\new\\n\"}",
+  "tool_name": "Write",
+  "tool_response": "{\"type\":\"create\",\"filePath\":\"w.txt\",\"content\":\"hi\\nC:\\\\temp\\\\new\\n\",\"structuredPatch\":[],\"originalFile\":null,\"userModified\":false}",
+  "tool_use_id": "toolu_01PROBE"
+}
