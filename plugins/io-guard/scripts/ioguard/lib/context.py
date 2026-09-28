@@ -407,6 +407,10 @@ class Context:
             return self
         return replace(self, config=self.outside)
 
+    def project_name(self, cwd: Path) -> str | None:
+        """The project a telemetry line names: the root's folder name, else the working folder's."""
+        return (self.project or cwd).name or None
+
     @classmethod
     def fake(cls, files: Mapping[Path, bytes] | None = None, **overrides: Any) -> "Context":
         """In-memory ports for a test: a fake file system holding files, a fake git and a clock that only

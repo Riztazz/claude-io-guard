@@ -4,7 +4,7 @@ import json
 import shutil
 import tempfile
 import unittest
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from ioguard.lib.context import Context, LiveFs
@@ -150,6 +150,14 @@ class EachIoToolCallIsOneTelemetryLine(unittest.TestCase):
                           "SECRET" in json.dumps(line)),
                          (True, "4bf92f3577b34da6a3ce929d0e0e4736", False),
                          "the time it took, the caller's trace, and no text of the file or the call")
+
+    def test_a_call_from_a_subfolder_names_the_project_the_hooks_name(self):
+        (self.root / "sub").mkdir()
+        self.ctx = replace(self.ctx, project=self.root)
+        given = ToolCall(lambda: self.ctx, CancelToken(), self.root / "sub", None, session="s1")
+        registry().call("io.read", {"path": "../a.txt"}, given)
+        self.assertEqual(self.lines()[0]["project"], self.root.name,
+                         "the project root's name, as a hook line from the same folder has it")
 
     def test_a_refused_or_cancelled_call_records_its_code(self):
         self.run_call("io.edit", {"path": "a.txt", "edits": [{"old_string": "absent", "new_string": "x"}]})

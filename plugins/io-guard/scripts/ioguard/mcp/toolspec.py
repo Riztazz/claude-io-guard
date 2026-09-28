@@ -274,7 +274,7 @@ def recorded(spec: ToolSpec, given: Any, call: ToolCall, latency_ms: float, outp
         written = getattr(output, "written_bytes", None)
         ctx.telemetry.record(TelemetryEvent(
             ts=ctx.clock.now(), session=call.session, event="tools/call", surface=Surface.MCP_TOOL.value,
-            platform=ctx.platform.os, project=call.cwd.name or None, tool=spec.name,
+            platform=ctx.platform.os, project=ctx.project_name(call.cwd), tool=spec.name,
             code=None if result is None else result.code.value,
             severity=None if result is None else result.severity.value, latency_ms=round(latency_ms, 1),
             error=error, tool_use_id=call.tool_use_id, trace=trace_from(call.tool_use_id, call.traceparent),
