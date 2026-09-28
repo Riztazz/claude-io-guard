@@ -214,6 +214,9 @@ COMMIT_WITH_CO_AUTHOR = (GRANTED + "The co-author line is the test: the guard sh
                          "exactly this Bash command: git commit --allow-empty -m 'feat: two' -m "
                          "'Co-Authored-By: Helper <helper@example.com>' If it is refused, commit again as "
                          "the refusal says, then reply DONE.")
+INVISIBLE = ("Use the Write tool once to create strip.py with two lines. Line 1: import io. Line 2: raw = "
+             "raw.lstrip('X'), where X is the byte order mark character itself, U+FEFF, and not an escape "
+             "for it. Then quote word for word any note that came back with the Write, and reply DONE.")
 IO_FORMAT = "mcp__plugin_io-guard_io__io_format"
 FORMAT_STYLE = b"BasedOnStyle: LLVM\nLineEnding: LF\n"
 FORMAT_CPP = b"\xef\xbb\xbfint  kept=1;\r\nint main() {\r\n  return 0;\r\n}\r\n"
@@ -452,6 +455,8 @@ PROBES = {
     "live-skill": Probe(0, "", guard="", permission="dontAsk", allowed=(*FILE_AND_SHELL, "Skill"), prompt="",
                         turns=SKILL_TURNS, git=True, max_turns=24, setup={"notes.txt": b"one\n"}),
     "live-skill-doctor": Probe(0, "", guard="", prompt="/skill-doctor", max_turns=4),
+    "live-invisible": Probe(0, "", guard="", permission="acceptEdits", allowed=("Write",), prompt=INVISIBLE,
+                            check=("strip.py",)),
     "live-commit-asked": Probe(0, "record", guard="", server=True, permission="auto", model="sonnet",
                                extra_args=PERMIT, prompt=COMMIT_ASKED, git=True, setup={"notes.txt": b"one\n",
                                ".claude/settings.json": json.dumps(GIT_RULES).encode("ascii")}),
@@ -1014,6 +1019,16 @@ def commit_refused(summary: dict, name: str) -> bool:
             and "co-authored-by" not in landed[0].lower())
 
 
+def invisible_named(summary: dict, name: str) -> bool:
+    """The Write put an invisible character inside line 2 of strip.py, U+FEFF as asked or another one a model
+    picked instead, and the model read INVISIBLE_ADDED naming that character and line 2 (task 39)."""
+    written = (summary["files"]["strip.py"] or "").encode("latin-1").decode("utf-8", "replace")
+    line = written.split("\n")[1] if written.count("\n") >= 1 else ""
+    found = [f"U+{ord(char):04X}" for char in line
+             if ord(char) in (0xFEFF, 0xA0) or 0x2000 <= ord(char) <= 0x206F]
+    return bool(found) and context_reached(name, f"INVISIBLE_ADDED: This Write added [{found[0]}] on line 2")
+
+
 def results_shown(summary: dict, name: str) -> bool:
     """Both saved outputs came back as io-guard's view of them, and each shell.results line reached the
     model."""
@@ -1094,6 +1109,7 @@ VERDICTS = {
     "live-format": formatted_changed_lines,
     "live-skill": recovered_once,
     "live-commit-asked": commit_asked,
+    "live-invisible": invisible_named,
     "live-commit-policy": commit_refused,
     "live-skill-doctor": lambda s, n: "io-guard" in json.dumps(s["final"]),
     "command-output": lambda s, n: logged(s, '"error": "Exit code 1\\nIOPROBE_OUT\\nIOPROBE_ERR"')

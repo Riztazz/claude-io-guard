@@ -100,6 +100,16 @@ class EditTest(unittest.TestCase):
         return ctx.fs.files[CWD / "a.txt"], found
 
 
+class AnInvisibleCharacterIsNamed(EditTest):
+    def test_new_text_that_adds_one_says_so_in_the_result(self):
+        written, found = self.edited(b"x = 1\ny = 2\n", ("y = 2", "y = '" + chr(0xFEFF) + "'"))
+        landed = ("x = 1\ny = '" + chr(0xFEFF) + "'\n").encode()
+        self.assertEqual((written, len(found.invisible)), (landed, 1),
+                         "the text lands as asked, and the result names what the Read tool hides")
+        self.assertIn("INVISIBLE_ADDED: The new text added [U+FEFF] on line 2", found.render(),
+                      "Code.INVISIBLE_ADDED reaches the model in the result's text")
+
+
 class TheBaselineHelpersAreReproduced(EditTest):
     def test_a_batch_lands_as_the_baseline_edit_helper_left_it(self):
         pairs = [("one\n", "zero\none\n"), ("two", "TWO\ntwo and a half")]

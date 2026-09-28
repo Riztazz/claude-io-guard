@@ -150,6 +150,10 @@ CODES: tuple[CodeSpec, ...] = (
     CodeSpec("INDENT_MISMATCH", Layer.BYTES, Severity.FIXED,
              "The new text's indent differs from the lines around it, tabs against spaces.",
              "Indent the new text as the lines around it are.", "0.1"),
+    CodeSpec("INVISIBLE_ADDED", Layer.BYTES, Severity.WARNING,
+             "The write added a character the Read tool shows as nothing, such as U+FEFF or a zero-width "
+             "space.", "If the file should hold an escape rather than the character, write the escape again "
+             "with its backslash doubled in the tool call.", "0.1"),
     CodeSpec("FORMAT_FAILED", Layer.BYTES, Severity.REFUSED,
              "The format command could not start, failed, or gave no text back, so io.format wrote nothing.",
              "Fix what the message names, such as a line of the project's formatter config, then call "

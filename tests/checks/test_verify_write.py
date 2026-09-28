@@ -91,6 +91,7 @@ FAULTS = {
     "U+FFFD": (lambda data: inserted(data, chr(0xFFFD).encode("utf-8")), Code.ENCODING_INVALID),
     "not UTF-8": (lambda data: inserted(data, b"\xe9"), Code.ENCODING_INVALID),
     "non-ASCII": (lambda data: inserted(data, ARROW), Code.NON_ASCII_ADDED),
+    "zero-width space": (lambda data: inserted(data, chr(0x200B).encode("utf-8")), Code.INVISIBLE_ADDED),
     "emptied": (lambda data: b"", Code.SIZE_COLLAPSED),
 }
 
@@ -115,6 +116,30 @@ class EveryByteFaultIsReported(unittest.TestCase):
                 outcome, _ = call("Edit", {"old_string": old, "new_string": old + "!"}, before,
                                   honest_edit(before, old, old + "!"), name=name, ascii_only=[".txt", ".cpp"])
                 self.assertEqual(codes(outcome), [], "an Edit that changed only what it asked for is quiet")
+
+    def test_an_invisible_character_in_a_string_is_named_with_its_line(self):
+        content = "import io\nraw = raw.lstrip('" + chr(0xFEFF) + "')\n"
+        outcome, _ = call("Write", {"content": content}, None, content.encode("utf-8"), name="fix.py")
+        found = [result for result in results(outcome) if result.code is Code.INVISIBLE_ADDED]
+        self.assertEqual(len(found), 1, "task 39: the U+FEFF a JSON escape became is reported")
+        self.assertIn("[U+FEFF] on line 2", found[0].message, "with the character and its line")
+        self.assertIn("backslash doubled", found[0].fix.text, "and the way to write the escape instead")
+
+    def test_an_allowed_character_and_a_files_own_bom_pass(self):
+        spaced = "price: 5" + chr(0xA0) + "EUR\n"
+        allowed, _ = call("Write", {"content": spaced}, None, spaced.encode("utf-8"), name="a.txt")
+        self.assertIn(Code.INVISIBLE_ADDED, codes(allowed), "a no-break space is reported by default")
+        config_allowed = Config(MappingProxyType({**config(False).values, "invisible_allowed": ["U+00A0"]}))
+        ctx = Context.fake(config=config_allowed, platform=WINDOWS)
+        given = {"file_path": str(CWD / "a.txt"), "content": spaced}
+        pre = events.pre_tool_use("Write", given, CWD)
+        Pipeline(REGISTRY).run(Event.from_hook_json(pre, Surface.MCP_HOOK, WINDOWS), ctx)
+        ctx.fs.files[CWD / "a.txt"] = spaced.encode("utf-8")
+        post = Pipeline(REGISTRY).run(Event.from_hook_json(events.post_tool_use("Write", given, {}, CWD),
+                                                           Surface.MCP_HOOK, WINDOWS), ctx)
+        self.assertNotIn(Code.INVISIBLE_ADDED, codes(post), "invisible_allowed lets U+00A0 through")
+        bom, _ = call("Edit", {"old_string": "a", "new_string": "b"}, BOM + b"a\n", BOM + b"b\n")
+        self.assertNotIn(Code.INVISIBLE_ADDED, codes(bom), "the BOM a file already had is not new text")
 
     def test_a_line_changed_outside_the_edit_is_named(self):
         before = b"one\ntwo\nthree\n"

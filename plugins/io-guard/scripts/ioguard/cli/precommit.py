@@ -3,9 +3,10 @@
 A commit carries the bytes git stores, so the check compares HEAD's blob with the staged one, never the
 working tree. It reports what the staged change did to a file that no commit should carry unnoticed (GIT-9):
 a changed ending style or BOM, bytes that stop being UTF-8 or gain U+FFFD, new control bytes, non-ASCII in a
-file the project keeps ASCII, and a new indent style. A file new to the commit is checked for its odd bytes
-only, and a binary file is skipped. verify.write's ascii_only comes from the project's io-guard.json, and
-from the user's config.json when IOGUARD_DATA names the plugin data folder.
+file the project keeps ASCII, a new character the Read tool shows as nothing, and a new indent style. A file
+new to the commit is checked for its odd bytes only, and a binary file is skipped. verify.write's ascii_only
+and invisible_allowed come from the project's io-guard.json, and from the user's config.json when
+IOGUARD_DATA names the plugin data folder.
 """
 from collections.abc import Mapping
 from pathlib import Path
@@ -22,8 +23,10 @@ from ioguard.lib.results import Result
 WHAT = "The staged change"
 
 
-def staged_results(root: Path, git: GitPort, ascii_only: list[str], platform: Platform) -> tuple[Result, ...]:
-    """What each staged text file's change did to its bytes, as warnings."""
+def staged_results(root: Path, git: GitPort, ascii_only: list[str], platform: Platform,
+                   allowed: frozenset[str] = frozenset()) -> tuple[Result, ...]:
+    """What each staged text file's change did to its bytes, as warnings. allowed names the invisible
+    characters a change may add."""
     kept = {extension.lower() for extension in ascii_only}
     found: list[Result] = []
     for name in git.staged(root):
@@ -34,7 +37,7 @@ def staged_results(root: Path, git: GitPort, ascii_only: list[str], platform: Pl
         path = root / name
         written = Written(path, WHAT, None if before is None else profile(before),
                           None if before is None else text_of(before), after, None,
-                          path.suffix.lower() in kept)
+                          path.suffix.lower() in kept, allowed)
         found.extend(compare(written, "git", platform.os, collapse_percent=0))
     return tuple(found)
 
@@ -56,7 +59,7 @@ def run(cwd: Path, env: Mapping[str, str]) -> tuple[int, str]:
             return 1, "io-guard's pre-commit check runs inside a git repository."
         ctx = Context.live(plugin_data(env), root, default_registry().keys())
         results = staged_results(root, ctx.git, ctx.config.check_options("verify.write")["ascii_only"],
-                                 ctx.platform)
+                                 ctx.platform, frozenset(ctx.config.get("invisible_allowed")))
     except GitError as error:
         return 1, f"io-guard's pre-commit check could not read the staged files: {error}"
     notice = ctx.config_report.user_message if ctx.config_report else None

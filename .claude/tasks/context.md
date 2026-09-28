@@ -189,6 +189,13 @@ the commit in their throwaway repository. Over the corpus, 339 recorded commands
 lead's policy, `Co-Authored-By` and `Generated with` forbidden and ASCII only, would refuse 74: all for a
 `Co-Authored-By` line, 73 of them in calls that ran, and none for any other reason.
 
+Task 39 counted the invisible characters recorded Edit and Write calls added: 4 of 23,717 calls, all of which
+ran. Three put a literal U+FEFF inside a Python string where the escape was meant, in OrbitalDrift scripts
+such as `raw.lstrip('<U+FEFF>')`, and one put a literal U+00A0 in a map of typographic characters. None added
+a private-use glyph. `live-invisible` passed on both releases: Haiku was asked for a U+FEFF inside a Python
+string, wrote it on 2.1.283 and a U+200B instead on 2.1.281, and each time the model read `INVISIBLE_ADDED`
+naming the character it wrote and line 2.
+
 Rules through a junction, checked on 2026-09-27 with Claude Code 2.1.281 and 2.1.283:
 
 - **Claude Code loads a rule, or an `@` import, only when its real path is inside the project.** A junction's real
@@ -420,7 +427,7 @@ MCP", row 28). PTH-3 went with the write-roots rule the lead dropped (D27).
 | ANC-2 | Anchor matches more than once | data | all | 20, 24 |
 | ANC-3 | A batch stops half applied | data | all | 24 |
 | ANC-4 | Trailing whitespace is cut from new_string | data | all | - |
-| ANC-5 | Private-use glyphs are invisible | data | all | 15, 16 |
+| ANC-5 | Private-use glyphs are invisible | data | all | 15, 16, 39 |
 | STL-1 | File changed between read and write | time | all | 20, 21 |
 | STL-2 | Edit or Write before Read | noise | all | 20 |
 | STL-3 | Someone else edits the same tree | data | all | 10, 19 |
@@ -437,7 +444,7 @@ MCP", row 28). PTH-3 went with the write-roots rule the lead dropped (D27).
 | BYT-10 | Rebuilt versions must keep the index bytes | data | all | 32 |
 | BYT-11 | Indent style does not match the file | noise | all | 17, 18 |
 | BYT-12 | Whole-file rewriters change more than asked | noise | all | 26 |
-| BYT-13 | Non-ASCII slips into ASCII-only files | noise | all | 18 |
+| BYT-13 | Non-ASCII slips into ASCII-only files | noise | all | 18, 39 |
 | SHW-1 | Files changed by shell instead of the edit tool | data | all | 12 |
 | SHW-2 | The Bash tool halves backslashes, even in a quoted heredoc | data | win | 11, 13 |
 | SHW-3 | A regex loses a backslash and silently matches nothing | data | win | 11, 13 |

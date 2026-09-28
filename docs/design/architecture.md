@@ -51,7 +51,7 @@ plugins/io-guard/
         telemetry.py               Telemetry, TraceContext
         platform.py                Platform, detect
         probing.py                 tool_version, find, claude_version, console_encoding, case_insensitive
-        text.py                    visible, snippet, head
+        text.py                    visible, snippet, head, invisible_added
         transcript.py              refusals: the calls Claude Code refused before any hook, from the transcript
         output.py                  exit_code, saved_path, error_lines, mojibake, excerpt: what a shell result says
         heartbeat.py               Heartbeat, parse, skipped_since: the io server's beat, and Claude Code's skip
@@ -427,6 +427,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Transport | `RULE_DENIED`, `RULE_ASKED`, from `run.rules` and `io.run` itself | 25, in `CODES` |
 | Transport | `COMMIT_POLICY`, a git commit whose message holds what `commit_policy` forbids | 29, in `CODES` |
 | Bytes | `FORMAT_FAILED`, when `io.format`'s command cannot start, fails or prints nothing | 26, in `CODES` |
+| Bytes | `INVISIBLE_ADDED`, a warning when a write adds a character the Read tool shows as nothing | 39, in `CODES` |
 
 ### Decision and Rewrite
 
@@ -842,6 +843,9 @@ def detect() -> Platform
 def visible(text: str) -> str                 # [TAB], [CR], [BOM], [SP] at a line's end, [U+E0A0]
 def snippet(text: str, first: int, last: int, around: int = 2) -> str   # numbered as the Read tool does
 def head(text: str, limit: int) -> str        # cut, with the count of what was cut
+def invisible_added(before: str, after: str, allowed: frozenset[str] = frozenset()) -> tuple[tuple[int, str], ...]
+                                              # task 39: each new Cf, no-break, separator or private-use
+                                              # character, as U+XXXX, at its first line
 
 # transcript.py, task 20
 def refusals(tail: bytes) -> tuple[Refusal, ...]   # the refused calls after the last call that ran
@@ -927,7 +931,8 @@ Task 24 added `io.edit.max_bytes` of 16 MB and `io.edit.wait_ms` of 5,000, which
 `io.read_log.max_lines` of 500 and `noise_patterns`. Task 26 added `format`, the command `io.format` runs per
 extension, clang-format for C and C++ by default, and `io.format.timeout_s` of 30. Task 29 added
 `commit_policy.forbid`, empty and the user's alone, and `commit_policy.ascii_only`, false, which a project file
-may only turn on. A key marked `project_regex`, `noise_patterns` and `checks.shell.results.error_patterns`,
+may only turn on. Task 39 added `invisible_allowed`, the characters, as `U+00A0`, a write may add without an
+`INVISIBLE_ADDED` warning. A key marked `project_regex`, `noise_patterns` and `checks.shell.results.error_patterns`,
 holds regexes io-guard runs on every line of output, and Python's `re` has no timeout. So a project file's
 pattern that does not compile, is over 200 characters, or repeats a group that repeats inside, such as
 `(a+)+`, drops the file (`lib.patterns`). The user's own `config.json` may still set one.

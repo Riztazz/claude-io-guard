@@ -92,6 +92,7 @@ A refused call did not run. A warning, or a note that io-guard fixed something, 
 | `HANDLE_EXPIRED` | The handle names work io-guard no longer holds, because it ended over an hour ago or the server restarted. | Start the work again with the tool that made the handle. |
 | `INDENT_MISMATCH` | The new text's indent differs from the lines around it, tabs against spaces. | Indent the new text as the lines around it are. |
 | `INLINE_SCRIPT_INVALID` | The Python program in this command does not compile. | Fix the line the message names, then run the command again. |
+| `INVISIBLE_ADDED` | The write added a character the Read tool shows as nothing, such as U+FEFF or a zero-width space. | If the file should hold an escape rather than the character, write the escape again with its backslash doubled in the tool call. |
 | `LINKED_PATH` | The path runs through a junction or symbolic link into another repository. | Change the file in the repository that owns it, unless the task is about that repository. |
 | `MOJIBAKE` | The output holds text that went through the wrong code page. | Copy none of that text into a file, and run the command again with UTF-8 input and output. |
 | `MSYS_PATH` | Git Bash would turn an argument that starts with a slash into a path under its install folder, so io-guard kept it as written. | Nothing to do. |

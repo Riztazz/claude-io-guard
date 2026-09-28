@@ -133,6 +133,8 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
                         "lines, per file extension, and per project root for one project only. It reads the "
                         "text on stdin and writes the formatted text on stdout.", project_may_set=False,
                         shape=commands.format_problem),
+    "invisible_allowed": ConfigKey(list, [], "Characters, as U+00A0, a write may add without a warning, "
+                                   "though the Read tool shows them as nothing."),
     "commit_policy.forbid": ConfigKey(list, [], "Texts no git commit message may hold, matched without case, "
                                       "such as Co-Authored-By. A commit whose message holds one is refused.",
                                       project_may_set=False),

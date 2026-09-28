@@ -5,7 +5,8 @@ conform.edit. PostToolUse reads the file again and compares. A BOM the write dro
 style it changed, are data that conform did not keep, such as a Write with conform.write off, and are put
 back while repair is on. The harness records a file as its own write left it, so every repair tells the
 agent to read the file before the next Edit. The rest is reported and left as it is: bytes that stop being
-UTF-8 or gain U+FFFD, new control bytes, non-ASCII in a file the project keeps ASCII, a new indent style, a
+UTF-8 or gain U+FFFD, new control bytes, non-ASCII in a file the project keeps ASCII, a new character the
+Read tool shows as nothing, such as the U+FEFF a JSON escape in the call turns into, a new indent style, a
 file far smaller than the call should have left, and lines outside the edit that differ from what the call
 asked for. The pre-commit script runs the same comparison on the staged diff. A file the agent has read keeps
 its new profile in the session, so shell.touched blames a later shell command only for what that command did.
@@ -22,7 +23,8 @@ from ioguard.lib.drift import (CONTROL, NON_ASCII, REPLACEMENT, Edited, changed_
                                lines_holding, restored, text_of, would_collapse)
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.profile import Bom, IndentKind, Profile, profile
-from ioguard.lib.results import Code, Fix, Layer, Result, Severity
+from ioguard.lib.results import Code, Fix, Layer, Result, Severity, spec
+from ioguard.lib.text import invisible_added
 
 SNAPSHOT_BYTES = 2 * 1024 * 1024
 MAX_BYTES = 16 * 1024 * 1024
@@ -40,6 +42,7 @@ class Written:
     after: bytes
     expected: Edited | None          # the whole text the call asked for, when it is known
     ascii_only: bool
+    allowed: frozenset[str] | None = None   # invisible characters, as U+XXXX, that pass; None checks none
 
 
 def listed(numbers: tuple[int, ...]) -> str:
@@ -95,6 +98,13 @@ def compare(written: Written, tool: str, platform: str, collapse_percent: int) -
         where = located(NON_ASCII)
         add(Code.NON_ASCII_ADDED, f"{what} added {found.non_ascii:,} non-ASCII characters to {name}, on "
                                   f"{listed(where)}.", count=found.non_ascii, lines=list(where))
+    if written.allowed is not None and (before is None or written.before_text is not None):
+        added = invisible_added(written.before_text or "", text, written.allowed)
+        if added:
+            named = ", ".join(f"[{char}] on line {line:,}" for line, char in added[:SHOWN])
+            add(Code.INVISIBLE_ADDED, f"{what} added {named} to {name}, which the Read tool shows as "
+                                      f"nothing.", characters=[char for _, char in added],
+                fix=Fix(tool, {}, spec(Code.INVISIBLE_ADDED).fix))
     kind, now = IndentKind.NONE if before is None else before.indent.kind, after.indent.kind
     if kind in (IndentKind.TABS, IndentKind.SPACES) and now not in (kind, IndentKind.NONE):
         add(Code.INDENT_MISMATCH, f"{what} left {name} indented with {now.value}, where it used {kind.value} "
@@ -134,6 +144,7 @@ class VerifyWrite(Check):
         },
         codes=frozenset({Code.EOL_CONVERTED, Code.BOM_RESTORED, Code.EOL_MISMATCH, Code.BOM_CHANGED,
                          Code.ENCODING_INVALID, Code.CONTROL_BYTES_ADDED, Code.NON_ASCII_ADDED,
+                         Code.INVISIBLE_ADDED,
                          Code.INDENT_MISMATCH, Code.SIZE_COLLAPSED, Code.UNINTENDED_CHANGE}),
         description="Compares each written file with the file before the write, and puts back a lost BOM "
                     "or line endings.")
@@ -163,7 +174,8 @@ class VerifyWrite(Check):
         kept = {extension.lower() for extension in self.options["ascii_only"]}
         written = Written(snapshot.path, f"This {event.tool_name}", before,
                           None if snapshot.data is None else text_of(snapshot.data), data,
-                          self.expected(snapshot, event), snapshot.path.suffix.lower() in kept)
+                          self.expected(snapshot, event), snapshot.path.suffix.lower() in kept,
+                          frozenset(ctx.config.get("invisible_allowed")))
         found = (() if repaired is None else (repaired[0],)) + \
             compare(written, event.tool_name, ctx.platform.os, self.options["collapse_percent"])
         if not found:

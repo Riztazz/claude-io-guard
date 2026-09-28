@@ -227,7 +227,10 @@ timeout. `io.run.handle_ttl_s` is how long a background run's handle lasts after
 **After each write:** io-guard compares the file with the file before the call. A BOM or line endings the
 write lost go back on, and the model is told to read the file again. Turn that off with
 `checks.verify.write.repair`. To have non-ASCII flagged in some files, list their extensions in
-`checks.verify.write.ascii_only`, such as `[".py", ".md"]`. It's empty by default.
+`checks.verify.write.ascii_only`, such as `[".py", ".md"]`. It's empty by default. In every file, a write that
+adds a character the Read tool shows as nothing, such as a U+FEFF where its escape was meant, a
+zero-width space or a no-break space, gets a warning naming it and its line. List the ones a project uses on
+purpose in `invisible_allowed`, such as `["U+00A0"]`.
 
 **Trees a report leaves out:** after a shell command, io-guard names the files it changed. To leave out a tree
 whose changes are noise, such as generated assets, list its glob in `skip_trees`, such as `["Content/**"]`. A
