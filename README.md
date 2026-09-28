@@ -192,7 +192,10 @@ Until 1.0, installs follow the latest commit. From 1.0 on, releases are tagged.
 Every setting has a default, and every default is a setting. Your settings live in `config.json` in io-guard's
 folder, and a project can add `.claude/io-guard.json`. A project file can only make io-guard stricter: it can't
 approve commands or make io-guard run a program. It holds for the whole project, from any subfolder a session
-works in, and for the project's files only: a file outside it gets your settings alone.
+works in, and for the project's files only: a file outside it gets your settings alone. A project's list for
+`checks.verify.write.ascii_only` or `checks.win.paths.prefixes`, where a longer list is stricter, adds to
+yours and can't drop anything from it. Its list for any other key replaces yours, and each key's description
+says which. `ascii_only` takes whole file names, such as `LICENSE` or `.gitignore`, beside extensions.
 
 io-guard's folder is `~/.claude/io-guard`, or `io-guard` inside `CLAUDE_CONFIG_DIR` when you've moved `~/.claude`,
 or wherever `IOGUARD_HOME` points. It holds your `config.json`, the file locks that keep two sessions from

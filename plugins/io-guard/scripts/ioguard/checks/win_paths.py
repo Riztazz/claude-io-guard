@@ -53,11 +53,14 @@ class WinPaths(Check):
         after=frozenset({"shell.lint"}),
         config={
             "posix_roots": ConfigKey(list, POSIX_ROOTS, "First path segments Git Bash may turn into Windows "
-                                     "paths, beside a drive letter, such as tmp in /tmp/x."),
+                                     "paths, beside a drive letter, such as tmp in /tmp/x. A project's list "
+                                     "replaces it."),
             "msys_programs": ConfigKey(list, MSYS_PROGRAMS, "Programs Git Bash runs without converting "
-                                       "their arguments, whose slash arguments io-guard leaves alone."),
+                                       "their arguments, whose slash arguments io-guard leaves alone. A "
+                                       "project's list replaces it."),
             "prefixes": ConfigKey(list, [], "Argument prefixes Git Bash must always pass as written, beside "
-                                  "the ones io-guard finds."),
+                                  "the ones io-guard finds. A project's list adds to the user's.",
+                                  project_joins=True),
         },
         codes=frozenset({Code.MSYS_PATH, Code.RESERVED_NAME}),
         description="Keeps Git Bash from turning slash arguments into paths, and a redirect to nul into a "

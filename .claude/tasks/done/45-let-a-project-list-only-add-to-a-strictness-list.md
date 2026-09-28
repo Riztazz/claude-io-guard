@@ -3,7 +3,8 @@ title: Let a project's list only add to a list that makes io-guard stricter
 stage: I
 area: config
 created: 2026-09-28
-status: open
+status: done
+claimed-by: Pala Elektroniczna, session 7eeb509f
 depends-on: [18, 29]
 findings: []
 platforms: [windows, macos]
@@ -42,3 +43,34 @@ while asking how CLICKER could keep `.py` and `.md` ASCII.
 ## Done when
 
 - A project cannot drop an extension from the user's `ascii_only`, and each list key states which way it merges.
+
+## What changed
+
+- `lib/config.py`: `ConfigKey.project_joins`, and `joined`. In a project layer, a list for a key so marked is
+  added after the list below it, with no entry dropped and none repeated. The user's own layer still replaces.
+- The keys, decided one by one:
+  - adds, since a longer list is stricter: `checks.verify.write.ascii_only`, `checks.win.paths.prefixes`
+  - replaces, since a longer list is looser and the README grants a project these: `noise_patterns`,
+    `skip_trees`, `invisible_allowed`
+  - replaces, since they describe the project's tools: `build_commands`, `readers`, `builds`, `runs`,
+    `code_pages`, `posix_roots`, `msys_programs`. `posix_roots` is kept here, as a list of what Git Bash does,
+    though a longer one catches more.
+  - `commit_policy.forbid` stays a key a project may not set.
+  Each list key's text ends by saying which, and `test_every_list_key_says_how_a_project_list_merges` holds it.
+- `checks/verify_write.py`: `ascii_kept(path, names)`, true for a listed extension or a listed whole file name,
+  without regard to case. `cli/precommit.py` uses it too, where it had its own copy of the extension test.
+- `.claude/io-guard.json`: this repository's `ascii_only` adds `pyrun`, `LICENSE`, `.gitignore`,
+  `.gitattributes` and `.editorconfig`.
+- Tests: `tests/lib/test_config.py` (3: adds, shrinks and repeats against the user's list, the user may still
+  shorten it, every list key says its merge) and `tests/checks/test_verify_write.py` (1, whole names).
+- `tools/probes/run_probe.py`: `live-ascii-joined`.
+- Docs: `README.md` (Configure it), `docs/design/architecture.md` (the config layers), `docs/live-checks.md`,
+  `docs/compat.md`.
+
+Evidence:
+
+- `python tests/run_all.py` ran 853 tests, all passing, up from 849. The join test fails under the old merge,
+  where a project's `[]` replaced the user's list.
+- `live-ascii-joined` passed on 2.1.281 and 2.1.283: with the user's `ascii_only` of `.py` and the project's of
+  `[]`, a Write of a non-ASCII `.py` got `NON_ASCII_ADDED`.
+- Checked on Windows on 2026-09-28.

@@ -249,6 +249,10 @@ COMMIT_ASKED = (GRANTED + "Do these in order, one Bash call each. 1. Run: git co
 COMMIT_POLICY = {"commit_policy": {"forbid": ["Co-Authored-By"]}}
 VERIFY_PY = {"verify": {".py": ["python", "-m", "py_compile", "{file}"]}}
 ASCII_PY = json.dumps({"checks": {"verify.write": {"ascii_only": [".py"]}}}).encode("ascii")
+ASCII_USER = {"checks": {"verify.write": {"ascii_only": [".py"]}}}
+ASCII_DROPPED = json.dumps({"checks": {"verify.write": {"ascii_only": []}}}).encode("ascii")
+NON_ASCII_WRITE = ("Use the Write tool once to create x.py with exactly this one line: name = \"caf"
+                   + chr(0xE9) + "\" Then reply DONE.")
 SUBFOLDER_WRITE = ("Do these in order, one tool call each, and never retry. 1. Run the Bash command: cd sub "
                    "2. Use the Write tool to create x.py in the sub folder with exactly this one line: "
                    "name = \"caf" + chr(0xE9) + "\" Then reply DONE.")
@@ -533,6 +537,9 @@ PROBES = {
     "live-commit-policy": Probe(0, "", guard="", permission="dontAsk", allowed=("Bash",), git=True,
                                 prompt=COMMIT_WITH_CO_AUTHOR, user_config=COMMIT_POLICY,
                                 setup={"notes.txt": b"one\n"}),
+    "live-ascii-joined": Probe(0, "", guard="", permission="acceptEdits", allowed=("Write",), max_turns=4,
+                               prompt=NON_ASCII_WRITE, user_config=ASCII_USER,
+                               setup={".claude/io-guard.json": ASCII_DROPPED}),
     "live-subfolder-config": Probe(0, "", guard="", permission="acceptEdits", allowed=("Bash", "Write"),
                                    git=True, prompt=SUBFOLDER_WRITE, max_turns=6,
                                    setup={".claude/io-guard.json": ASCII_PY, "sub/keep.txt": b"k\n"}),
@@ -1238,6 +1245,7 @@ VERDICTS = {
         "EOL_MISMATCH: This command changed conv.txt from CRLF to LF line endings.")),
     "live-results": results_shown,
     "live-pipe-once": piped_twice_warned_once,
+    "live-ascii-joined": lambda s, n: context_reached(n, "NON_ASCII_ADDED: This Write added 1 non-ASCII"),
     "live-subfolder-config": lambda s, n: context_reached(n, "NON_ASCII_ADDED: This Write added 1 non-ASCII"),
     "live-verify-output": lambda s, n: context_reached(n, "VERIFY_OUTPUT: io-guard ran python -m py_compile"),
     "live-read-width": lambda s, n: context_reached(n, "io-guard: LF, UTF-8, 4 spaces, 7 lines"),

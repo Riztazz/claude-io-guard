@@ -4,8 +4,9 @@ Every policy value is a key with its default in code (D16). A later layer overri
 key. Dictionaries merge, lists replace, and a list key that ends in "extra" appends. A project file restricts
 and never widens: it cannot set a key marked project_may_set=False, set a value in project_forbids, raise a
 number marked project_narrows above the layers below it, or set a regex in a key marked project_regex that
-lib.patterns finds could stall. A file with any error is dropped whole, and the guard runs on the layers that
-loaded.
+lib.patterns finds could stall. Its list for a key marked project_joins, where a longer list is stricter, adds
+to the list below and never drops an entry of it. A file with any error is dropped whole, and the guard runs
+on the layers that loaded.
 """
 import difflib
 import json
@@ -42,6 +43,7 @@ class ConfigKey:
     project_narrows: bool = False    # a project file may lower this number and never raise it
     shape: Callable[[Any], str | None] | None = None   # what is wrong inside a list or dict value, or None
     project_regex: bool = False      # its strings are regexes, which a project file sets only if bounded
+    project_joins: bool = False      # a longer list is stricter, so a project's list adds to the one below
 
 
 @dataclass(frozen=True)
@@ -124,12 +126,13 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
     "io.snapshot.max_bytes": ConfigKey(int, 512 * 1024 * 1024, "The most bytes one io.snapshot keeps, "
                                        "counting every file.", project_narrows=True),
     "noise_patterns": ConfigKey(list, [], "Regular expressions for log lines io.read_log leaves out, such as "
-                                "^LogTemp: Display:. A line counts when one matches anywhere in it.",
+                                "^LogTemp: Display:. A line counts when one matches anywhere in it. A "
+                                "project's list replaces it.",
                                 shape=patterns.list_problem, project_regex=True),
     "telemetry.retention_days": ConfigKey(int, 90, "Days a telemetry file is kept."),
     "telemetry.debug": ConfigKey(bool, False, "Write tracebacks to the debug log."),
     "skip_trees": ConfigKey(list, [], "Globs, from the repository root, such as Content/**, whose changes a "
-                            "shell command's report leaves out."),
+                            "shell command's report leaves out. A project's list replaces it."),
     "verify": ConfigKey(dict, {}, "The command io-guard runs on a file after each Edit or Write, per file "
                         "extension, and per project root for one project only.", project_may_set=False,
                         shape=commands.verify_problem),
@@ -138,7 +141,8 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
                         "text on stdin and writes the formatted text on stdout.", project_may_set=False,
                         shape=commands.format_problem),
     "invisible_allowed": ConfigKey(list, [], "Characters, as U+00A0, a write may add without a warning, "
-                                   "though the Read tool shows them as nothing."),
+                                   "though the Read tool shows them as nothing. A project's list replaces "
+                                   "it."),
     "commit_policy.forbid": ConfigKey(list, [], "Texts no git commit message may hold, matched without case, "
                                       "such as Co-Authored-By. A commit whose message holds one is refused.",
                                       project_may_set=False),
@@ -243,6 +247,11 @@ def merge(base: Mapping[str, Any], over: Mapping[str, Any]) -> dict[str, Any]:
     return merged
 
 
+def joined(below: list, added: list) -> list:
+    """below with each entry of added it lacks appended after it, in added's order."""
+    return [*below, *(entry for entry in added if entry not in below)]
+
+
 def read_file(path: Path) -> tuple[Any, ConfigError | None]:
     try:
         text = bytesio.read_bytes(path).decode("utf-8")
@@ -272,6 +281,10 @@ def load(layers: Sequence[ConfigLayer], check_keys: Mapping[str, Mapping[str, Co
         if any(not error.warning for error in found):
             dropped.append(layer.path)
             continue
-        values = merge(values, {key: value for key, value in flatten(raw, keys).items() if key in keys})
+        flat = {key: value for key, value in flatten(raw, keys).items() if key in keys}
+        if layer.scope.project:
+            flat = {key: joined(values[key], value) if keys[key].project_joins else value
+                    for key, value in flat.items()}
+        values = merge(values, flat)
         loaded.append(layer.path)
     return LoadReport(Config(MappingProxyType(values)), tuple(errors), tuple(loaded), tuple(dropped))

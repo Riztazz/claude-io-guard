@@ -8,7 +8,8 @@
     },
     "verify.write": {
       "ascii_only": [".py", ".md", ".json", ".jsonl", ".yml", ".yaml", ".svg", ".html", ".cmd", ".sh", ".txt",
-                     ".toml", ".cfg", ".ini", ".js", ".css"]
+                     ".toml", ".cfg", ".ini", ".js", ".css", "pyrun", "LICENSE", ".gitignore", ".gitattributes",
+                     ".editorconfig"]
     }
   }
 }

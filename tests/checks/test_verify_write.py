@@ -6,7 +6,7 @@ from types import MappingProxyType
 
 from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import default_registry
-from ioguard.checks.verify_write import REREAD, listed
+from ioguard.checks.verify_write import REREAD, ascii_kept, listed
 from ioguard.lib.config import Config, defaults
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Verdict
@@ -294,6 +294,15 @@ class ClaudeCodesMemoryFrontmatterIsExpected(unittest.TestCase):
     def test_the_same_change_outside_the_memory_folder_is_named(self):
         outcome, _ = call("Write", {"content": ASKED}, None, KEPT.encode("ascii"), name="notes.md")
         self.assertEqual(codes(outcome), [Code.UNINTENDED_CHANGE], "a project's own markdown is not a note")
+
+
+class AsciiOnlyNamesExtensionsAndWholeNames(unittest.TestCase):
+    def test_a_file_is_kept_ascii_by_its_extension_or_its_whole_name(self):
+        listed_names = [".py", "LICENSE", ".gitignore", "pyrun"]
+        found = [ascii_kept(Path(name), listed_names)
+                 for name in ("a.PY", "LICENSE", "sub/.gitignore", "scripts/pyrun", "notes.md", "pyrun.cmd")]
+        self.assertEqual(found, [True, True, True, True, False, False],
+                         "a file with no extension is named whole, and case does not matter")
 
 
 class MessagesListLines(unittest.TestCase):

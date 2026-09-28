@@ -48,6 +48,13 @@ class Written:
     rewritten: int = 0               # lines at the top Claude Code rewrites after the write, never unasked
 
 
+def ascii_kept(path: Path, listed_names: list[str]) -> bool:
+    """Whether ascii_only names the file, by its extension or by its whole name, without regard to case. A
+    file with no extension, such as LICENSE or .gitignore, is named by its whole name."""
+    kept = {name.lower() for name in listed_names}
+    return path.suffix.lower() in kept or path.name.lower() in kept
+
+
 def listed(numbers: tuple[int, ...]) -> str:
     """Line numbers for a message: "line 4", "lines 4 and 9", "lines 1, 2, 3, 4, 5 and 7 more"."""
     shown = [f"{number:,}" for number in numbers[:SHOWN]]
@@ -137,8 +144,9 @@ class VerifyWrite(Check):
         config={
             "repair": ConfigKey(bool, True, "Put back a BOM a write dropped and the line endings it "
                                 "changed."),
-            "ascii_only": ConfigKey(list, [], "File extensions, such as .py, where a write that adds "
-                                    "non-ASCII characters gets a warning."),
+            "ascii_only": ConfigKey(list, [], "File extensions, such as .py, or whole file names, such as "
+                                    "LICENSE, where a write that adds non-ASCII characters gets a warning. A "
+                                    "project's list adds to the user's.", project_joins=True),
             "collapse_percent": ConfigKey(int, 50, "A file left with less than this percent of the bytes the "
                                           "call should have left gets a warning."),
             "snapshot_bytes": ConfigKey(int, SNAPSHOT_BYTES, "The largest file, in bytes, whose text is kept "
@@ -174,11 +182,11 @@ class VerifyWrite(Check):
         with ctx.session.lock:
             if snapshot.path in ctx.session.read_profiles:
                 ctx.session.read_profiles[snapshot.path] = profile(data)
-        kept = {extension.lower() for extension in self.options["ascii_only"]}
         rewritten = frontmatter_end(text_of(data)) if memory_file(snapshot.path, ctx.env) else 0
+        kept = ascii_kept(snapshot.path, self.options["ascii_only"])
         written = Written(snapshot.path, f"This {event.tool_name}", before,
                           None if snapshot.data is None else text_of(snapshot.data), data,
-                          self.expected(snapshot, event), snapshot.path.suffix.lower() in kept,
+                          self.expected(snapshot, event), kept,
                           frozenset(ctx.config.get("invisible_allowed")), rewritten)
         found = (() if repaired is None else (repaired[0],)) + \
             compare(written, event.tool_name, ctx.platform.os, self.options["collapse_percent"])

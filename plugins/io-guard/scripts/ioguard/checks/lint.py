@@ -219,7 +219,8 @@ class Lint(Check):
         writes=frozenset({"command"}), after=frozenset({"transport.body"}),
         config={"build_commands": ConfigKey(list, BUILD_COMMANDS,
                                             "Commands whose exit code a pipe into a filter hides, each as "
-                                            "its first words, such as make or npm test.")},
+                                            "its first words, such as make or npm test. A project's list "
+                                            "replaces it.")},
         codes=frozenset({Code.BACKTICK_IN_DOUBLE_QUOTES, Code.TRAILING_BACKSLASH_QUOTE,
                          Code.DIALECT_MISMATCH, Code.POWERSHELL_TRAP, Code.PIPE_HIDES_EXIT,
                          Code.INLINE_SCRIPT_INVALID, Code.NOT_PORTABLE}),

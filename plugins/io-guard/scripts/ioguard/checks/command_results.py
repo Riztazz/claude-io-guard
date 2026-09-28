@@ -296,11 +296,14 @@ def options() -> dict[str, ConfigKey]:
                                   "that give an answer rather than a failure, and what each means.",
                                   shape=exits_problem),
         "readers": ConfigKey(list, READERS, "Commands whose output quotes a file or a log, such as grep or "
-                             "tail, each as its first words. Error lines in their output count for nothing."),
+                             "tail, each as its first words. Error lines in their output count for nothing. "
+                             "A project's list replaces it."),
         "builds": ConfigKey(list, BUILDS, "Commands that build a program, each as its first words. One that "
-                            "prints compiler or build errors marks the session's build as failed."),
+                            "prints compiler or build errors marks the session's build as failed. A "
+                            "project's list replaces it."),
         "runs": ConfigKey(list, RUNS, "Commands that run what a build made without building it, each as its "
-                          "first words. One after a failed build gets a STALE_BINARY warning."),
+                          "first words. One after a failed build gets a STALE_BINARY warning. A project's "
+                          "list replaces it."),
         "short_lines": ConfigKey(int, 50, "Lines of output a command may print before its error lines are "
                                  "counted and quoted."),
         "head_lines": ConfigKey(int, 20, "Lines from the start of a saved output shown in its place."),
@@ -309,7 +312,7 @@ def options() -> dict[str, ConfigKey]:
         "line_chars": ConfigKey(int, 300, "Characters of each quoted line."),
         "max_bytes": ConfigKey(int, 16 * 1024 * 1024, "The largest saved output io-guard reads, in bytes."),
         "code_pages": ConfigKey(list, ["cp1252", "cp1250"], "Code pages whose view of UTF-8 counts as "
-                                "mojibake."),
+                                "mojibake. A project's list replaces it."),
         "learn_from_bytes": ConfigKey(int, 5000, "Bytes a well-formed Bash command must pass before an "
                                       "unexpected EOF lowers the session's transport budget."),
     }

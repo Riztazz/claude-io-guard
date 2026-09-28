@@ -952,6 +952,11 @@ of the two project files, else the nearest that holds `.git`, else `cwd` itself.
 session and project root, and telemetry names the project by the root. A call on a file outside the root runs
 with `Context.for_file`, whose config holds the defaults and the user layer alone (task 57).
 
+A list replaces the list below it, except in a project layer for a key marked `project_joins`, where a longer
+list is stricter: there the project's entries are added after the list below, and nothing is dropped. The keys
+marked are `checks.verify.write.ascii_only` and `checks.win.paths.prefixes`, and every list key's text says
+which way it merges, which a test holds (task 45).
+
 **Every policy value is a key here, with its default in code (D16).** A number that decides behaviour and has no
 key is a defect. The values above are the defaults the lead set on 2026-09-27. A key enters `lib.config` with
 the code that reads it, because a key nothing reads is a validation error in waiting. Task 07 defined

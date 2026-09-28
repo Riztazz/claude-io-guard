@@ -5,10 +5,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from ioguard.checks.registry import default_registry
 from ioguard.lib import config
 from ioguard.lib.config import ConfigKey, ConfigLayer, Scope
 
 AUTO_ALLOW = {"transport": {"rewrite_mode": {"auto": "allow"}}}
+REAL_KEYS = default_registry().keys()
 CHECK_KEYS = {"demo.check": {"limit": ConfigKey(int, 5, "A demo limit."),
                              "roots_extra": ConfigKey(list, [], "Extra roots.", project_may_set=False)}}
 
@@ -114,6 +116,37 @@ class ProjectsNeverWiden(ConfigFiles):
         broken = self.load(self.layer(Scope.USER, "b.json", {"verify": {".py": "python {file}"}}))
         self.assertEqual((loaded.config.get("verify"), broken.errors[0].key), (good, "verify"),
                          "the user's command loads, and a command that is not a list drops the file")
+
+    def lists(self, ascii_only: list, prefixes: list, builds: list) -> dict:
+        return {"checks": {"verify.write": {"ascii_only": ascii_only}, "win.paths": {"prefixes": prefixes},
+                           "shell.lint": {"build_commands": builds}}}
+
+    def test_a_projects_list_adds_to_a_stricter_list_and_replaces_the_others(self):
+        user = self.layer(Scope.USER, "u.json", self.lists([".py", ".md"], ["--a="], ["make"]))
+        cases = {"adds": ([".txt"], [".py", ".md", ".txt"]), "shrinks": ([], [".py", ".md"]),
+                 "repeats": ([".md"], [".py", ".md"])}
+        for name, (project, expected) in cases.items():
+            with self.subTest(name):
+                given = self.layer(Scope.PROJECT, "p.json", self.lists(project, ["--b="], ["ninja"]))
+                values = config.load((user, given), REAL_KEYS).config.values
+                found = [values[f"checks.{key}"] for key in ("verify.write.ascii_only", "win.paths.prefixes",
+                                                            "shell.lint.build_commands")]
+                self.assertEqual(found, [expected, ["--a=", "--b="], ["ninja"]],
+                                 "a project can add to a stricter list, never drop from it, and replaces a "
+                                 "list of its own tools")
+
+    def test_the_user_may_still_shorten_a_stricter_list(self):
+        user = self.layer(Scope.USER, "u.json", {"checks": {"verify.write": {"ascii_only": []}}})
+        found = config.load((user,), REAL_KEYS).config.get("checks.verify.write.ascii_only")
+        self.assertEqual(found, [], "the user's list is the user's")
+
+    def test_every_list_key_says_how_a_project_list_merges(self):
+        def says(key: ConfigKey) -> bool:
+            return f"A project's list {'adds' if key.project_joins else 'replaces'}" in key.doc
+
+        silent = [name for name, key in config.all_keys(REAL_KEYS).items()
+                  if key.type is list and key.project_may_set and not says(key)]
+        self.assertEqual(silent, [], "each list key's text names the merge its flag gives")
 
     def test_a_project_may_lower_the_transport_budget(self):
         report = self.load(self.layer(Scope.PROJECT, "p.json", {"transport": {"budget_bytes": 4000}}))

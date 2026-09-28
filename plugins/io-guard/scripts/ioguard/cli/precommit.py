@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from ioguard.checks.registry import default_registry
-from ioguard.checks.verify_write import Written, compare
+from ioguard.checks.verify_write import Written, ascii_kept, compare
 from ioguard.lib.context import Context, GitPort, home_folder
 from ioguard.lib.drift import text_of
 from ioguard.lib.git import Git, GitError
@@ -27,7 +27,6 @@ def staged_results(root: Path, git: GitPort, ascii_only: list[str], platform: Pl
                    allowed: frozenset[str] = frozenset()) -> tuple[Result, ...]:
     """What each staged text file's change did to its bytes, as warnings. allowed names the invisible
     characters a change may add."""
-    kept = {extension.lower() for extension in ascii_only}
     found: list[Result] = []
     for name in git.staged(root):
         after = git.blob(root, f":{name}")
@@ -37,7 +36,7 @@ def staged_results(root: Path, git: GitPort, ascii_only: list[str], platform: Pl
         path = root / name
         written = Written(path, WHAT, None if before is None else profile(before),
                           None if before is None else text_of(before), after, None,
-                          path.suffix.lower() in kept, allowed)
+                          ascii_kept(path, ascii_only), allowed)
         found.extend(compare(written, "git", platform.os, collapse_percent=0))
     return tuple(found)
 
