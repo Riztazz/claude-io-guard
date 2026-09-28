@@ -79,8 +79,8 @@ class SnapshotGit:
     def ls_files(self, root: Path) -> tuple[Path, ...]:
         return ()
 
-    def changed_ranges(self, path: Path) -> tuple:
-        return ()
+    def changed_ranges(self, path: Path) -> None:
+        return None
 
     def attributes(self, path: Path) -> dict:
         return {}

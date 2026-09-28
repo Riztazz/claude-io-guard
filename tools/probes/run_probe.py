@@ -200,6 +200,16 @@ RUN_DENIED = (f"Do these in order. 1. {LOAD_RUN} 2. Call {IO_RUN} with argv [\"g
               "\"main\"]. Then quote its result word for word and reply DONE.")
 RUN_ASKED = (f"Do these in order. 1. {LOAD_RUN} 2. Call {IO_RUN} with argv [\"git\", \"fetch\", "
              "\"--dry-run\"]. Then quote its result, or any refusal, word for word and reply DONE.")
+IO_FORMAT = "mcp__plugin_io-guard_io__io_format"
+FORMAT_STYLE = b"BasedOnStyle: LLVM\nLineEnding: LF\n"
+FORMAT_CPP = b"\xef\xbb\xbfint  kept=1;\r\nint main() {\r\n  return 0;\r\n}\r\n"
+FORMATTED_CPP = (b"\xef\xbb\xbfint  kept=1;\r\nint main() {\r\n  int y = 2;\r\n  if (y) {\r\n    y++;\r\n"
+                 b"  }\r\n  return 0;\r\n}\r\n").decode("latin-1")
+FORMAT_STEPS = (f"Do these in order, one tool call each. 1. Load {IO_EDIT} and {IO_FORMAT} with the "
+                f"ToolSearch tool, with the query select:{IO_EDIT},{IO_FORMAT} 2. Call {IO_EDIT} with path "
+                "a.cpp and one edit, whose old_string is exactly: return 0; and whose new_string is exactly: "
+                f"int  y=2;if(y){{y++;}} return 0; 3. Call {IO_FORMAT} with paths [\"a.cpp\"]. Then quote "
+                "its result word for word and reply DONE.")
 COUNTERS = b"\xef\xbb\xbfA=0\r\nB=0\r\nC=0\r\n"
 COUNTED = b"\xef\xbb\xbfA=10\r\nB=10\r\nC=10\r\n".decode("latin-1")
 SERVER_DIES = ("Run this exact Bash command: echo IOGUARD_DIE\nThen reply DONE.",
@@ -411,6 +421,9 @@ PROBES = {
     "live-run-asked": Probe(0, "record", guard="", server=True, extra_args=PERMIT,
                             allowed=("ToolSearch", IO_RUN, IO_STATUS), prompt=RUN_ASKED,
                             setup={".claude/settings.json": json.dumps(RUN_RULES).encode("ascii")}),
+    "live-format": Probe(0, "", guard="", allowed=("ToolSearch", IO_EDIT, IO_FORMAT), prompt=FORMAT_STEPS,
+                         git=True, check=("a.cpp",),
+                         setup={".clang-format": FORMAT_STYLE, "a.cpp": FORMAT_CPP}),
 }
 
 
@@ -870,6 +883,14 @@ def run_asked(summary: dict, name: str) -> bool:
     return prompted and asked
 
 
+def formatted_changed_lines(summary: dict, name: str) -> bool:
+    """io.format formatted the edited line, left the committed line 1 as badly formatted as it was, and kept
+    the BOM and every CRLF although the style names LF. Its own result names the lines it changed, so the
+    formatting is io.format's and not the model's own new_string."""
+    changed = [each["lines"] for value in structured(summary) for each in value.get("files", ())]
+    return summary["files"]["a.cpp"] == FORMATTED_CPP and any(changed)
+
+
 def results_shown(summary: dict, name: str) -> bool:
     """Both saved outputs came back as io-guard's view of them, and each shell.results line reached the
     model."""
@@ -947,6 +968,7 @@ VERDICTS = {
     "live-run-background": ran_in_background,
     "live-run-denied": lambda s, n: "RULE_DENIED: io.run would run git push origin main" in seen(s),
     "live-run-asked": run_asked,
+    "live-format": formatted_changed_lines,
     "command-output": lambda s, n: logged(s, '"error": "Exit code 1\\nIOPROBE_OUT\\nIOPROBE_ERR"')
     and sum("IOPROBE-SUMMARY" in str(result["content"]) and "persisted-output" not in str(result["content"])
             for result in s["results"]) == 3,

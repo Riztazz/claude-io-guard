@@ -44,6 +44,27 @@ class LiveGitAnswers(unittest.TestCase):
             self.assertEqual(sorted(path.name for path in git.ls_files(root)), ["a.txt", "b.txt"],
                              "ls_files lists the tracked files")
 
+    def test_changed_lines_count_from_the_last_commit(self):
+        with TemporaryProject({"a.txt": b"one\ntwo\nthree\n", ".gitattributes": b"a.txt -diff\n"},
+                              git=True) as root:
+            git = Git()
+            (root / "a.txt").write_bytes(b"ONE\ntwo\nthree\n")
+            git.run(root, "add", "a.txt")
+            (root / "a.txt").write_bytes(b"ONE\ntwo\nTHREE\nfour\n")
+            (root / "new.txt").write_bytes(b"new\n")
+            self.assertEqual((git.changed_ranges(root / "a.txt"), git.changed_ranges(root / "new.txt")),
+                             ((LineRange(1, 1), LineRange(3, 2)), None),
+                             "staged and unstaged changes both count, a file marked -diff still reads as "
+                             "text, and an untracked file has no commit to compare with")
+
+    def test_a_repository_with_no_commit_has_nothing_to_compare_with(self):
+        with TemporaryProject({"a.txt": b"one\n"}) as root:
+            git = Git()
+            git.run(root, "init", "-q")
+            git.run(root, "add", "a.txt")
+            self.assertIsNone(git.changed_ranges(root / "a.txt"), "a staged file with no HEAD compares with "
+                                                                    "nothing")
+
     def test_staged_paths_and_their_stored_bytes(self):
         with TemporaryProject({"a.txt": b"one\r\n", "sub/b.txt": b"b\n"}, git=True) as root:
             git = Git()

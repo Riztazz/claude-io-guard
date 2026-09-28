@@ -32,13 +32,15 @@ class RunResult:
 
 
 def run(argv: Sequence[str], cwd: Path, env: Mapping[str, str] | None = None,
-        timeout_s: float = 10.0) -> RunResult:
-    """Run argv in cwd and wait. A timeout, or a program that cannot start, is a result, not a raise."""
+        timeout_s: float = 10.0, stdin: bytes = b"") -> RunResult:
+    """Run argv in cwd with stdin as its input, and wait. A timeout, or a program that cannot start, is a
+    result, not a raise. The program never reads the caller's own stdin, which in the io server is the
+    client's messages."""
     started = time.monotonic()
     command = tuple(argv)
     try:
         done = subprocess.run(command, cwd=cwd, env=None if env is None else dict(env), capture_output=True,
-                              timeout=timeout_s, check=False)
+                              input=stdin, timeout=timeout_s, check=False)
     except subprocess.TimeoutExpired as expired:
         return RunResult(command, None, expired.stdout or b"", expired.stderr or b"", True,
                          time.monotonic() - started)

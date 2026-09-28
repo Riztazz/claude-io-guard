@@ -24,6 +24,14 @@ class ProgramsRun(unittest.TestCase):
         result = proc.run([sys.executable, "-c", "import sys; sys.stdout.write(sys.argv[1])", tricky], HERE)
         self.assertEqual(result.stdout.decode("utf-8"), tricky, "no shell re-reads an argument")
 
+    def test_stdin_carries_the_given_bytes_and_nothing_of_the_callers(self):
+        echo = [sys.executable, "-c", "import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())"]
+        given = proc.run(echo, HERE, stdin=b"a\r\nb\n")
+        empty = proc.run(echo, HERE, timeout_s=5)
+        self.assertEqual((given.stdout, empty.stdout, empty.timed_out), (b"a\r\nb\n", b"", False),
+                         "a program reads the bytes it is given, and without any it reads an ended stdin, "
+                         "never the io server's messages")
+
     def test_a_timeout_is_a_result(self):
         result = proc.run([sys.executable, "-c", "import time; time.sleep(5)"], HERE, timeout_s=0.3)
         self.assertEqual((result.timed_out, result.exit_code), (True, None), "a timeout ends the wait")

@@ -157,6 +157,16 @@ byte, and Python printed both backslashes of each pair, where the Bash tool halv
 A background run of 15 minutes answered `running` through `io.status` while it ran, and after a 16-minute
 pause `ended` with exit code 0 at 900 s, in sessions of 979 and 986 s.
 
+Task 26 checked clang-format 19.1.1 (WinLibs, on `PATH`) on stdin with `--assume-filename`. A `.clang-format`
+naming `LineEnding: LF` turned a CRLF line outside `--lines` into LF too, which is BYT-3. With no `.clang-format`
+above the file, clang-format applies LLVM style unless `--fallback-style=none` is given. A `--lines` range past
+the file's end is no error, and a `.clang-format` with an unknown key exits 1 with the key named on stderr.
+Over 12 CLICKER C++ files, 8 CRLF and 4 LF, each copied into a throwaway repository with CLICKER's
+`.clang-format` and given one new badly formatted line and one line with doubled spaces, `io.format` wrote the
+same bytes as `fmt_hunks.py --apply` in all 12, with both pointed at the same clang-format. `live-format`
+passed on both releases: an `io.edit` then `io.format` on a BOM and CRLF file under `LineEnding: LF` left the
+committed line as it was and every line CRLF.
+
 Rules through a junction, checked on 2026-09-27 with Claude Code 2.1.281 and 2.1.283:
 
 - **Claude Code loads a rule, or an `@` import, only when its real path is inside the project.** A junction's real

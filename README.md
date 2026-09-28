@@ -3,8 +3,8 @@
 A Claude Code plugin that checks what an agent sends to the file and shell tools, fixes what it safely can, and
 returns a structured error for the rest. One codebase runs on Windows and macOS.
 
-**Status: in build.** The plugin installs, its io server runs the hooks and every io tool but `io.format`, and
-its hooks answer every file and shell call. Eighteen checks run so far: the session probe, where a write lands,
+**Status: in build.** The plugin installs, its io server runs the hooks and every io tool, and its hooks answer
+every file and shell call. Eighteen checks run so far: the session probe, where a write lands,
 what holds a locked file, the Bash body move, the shell-write refusal, the quoting and dialect lint, the Git Bash
 path fix, the endings and BOM fix for Write, the indent fix for Edit, the check of each written file against the
 file before it, your own verify command after a write, the files a shell command changed, the profile line after
@@ -112,8 +112,7 @@ tests.
 
 ### The io tools
 
-A few jobs have no safe built-in tool, so the io server adds them. All but `io.format` work today, and it
-arrives with the task that builds it:
+A few jobs have no safe built-in tool, so the io server adds them:
 
 | Tool | Job |
 |---|---|
@@ -124,11 +123,16 @@ arrives with the task that builds it:
 | `io.run` | Run a program from an argument list, or a script body byte for byte, with no shell in between, under your Bash and PowerShell rules |
 | `io.status` | Whether a background `io.run` still runs, from the process itself, and how it ended |
 | `io.read_log` | The whole lines a log gained since the last read, less your noise patterns |
-| `io.format` | Run the formatter over changed lines only |
+| `io.format` | Run your formatter, clang-format by default, over the lines changed since the last commit and no others |
 
 The three that change a file write it once, only when every place they name matched once, and a failed one
 writes nothing and names the lines it nearly matched. Two subagents editing one file take turns. After one of
 them changes a file, the built-in Edit tool needs a fresh Read of it, and every result says so.
+
+`io.format` hands the formatter only the lines `git diff` says changed, or the whole file when git has no
+commit of it, or the lines the call names. The file keeps its line endings and BOM whatever the formatter's
+config says, and a change the formatter makes away from those lines, such as a `// namespace` closer at the
+end of the file, stays out. When the formatter fails on one file, no file is written.
 
 `io.run` meets your deny and ask rules for Bash and PowerShell, from every settings file Claude Code reads. A
 deny rule refuses the run, and an ask rule brings up Claude Code's own permission prompt. A background run's
@@ -242,6 +246,25 @@ to the model. Name them by extension in your own `config.json`, and add a projec
 
 `{file}` becomes the file's path, and the command runs with no shell, stopped after 10 seconds. A project's
 `.claude/io-guard.json` can't name one, because a repository you clone must not make io-guard run its programs.
+
+**Your formatter:** `io.format` runs clang-format for C and C++ files by default, found on your `PATH`, with the
+project's `.clang-format` and no style at all where the project has none. To use another clang-format, or to
+format another language, name the command by extension in your own `config.json`, the same way as a verify
+command. The command reads the file on stdin and prints the formatted text, and the argument that holds
+`{first}` and `{last}` repeats once for each range of lines:
+
+```json
+{
+  "format": {
+    ".cpp": ["C:/Program Files/LLVM/bin/clang-format.exe", "--style=file", "--fallback-style=none",
+             "--assume-filename={file}", "--lines={first}:{last}"],
+    ".py": ["black", "-q", "--line-ranges={first}-{last}", "-"]
+  }
+}
+```
+
+Your entry for an extension replaces the default one. `io.format.timeout_s`, 30 by default, is how long the
+formatter may take on one file.
 
 **The pre-commit hook**, optional: it checks each staged file against its last commit, and stops a commit that
 changes a file's line endings, BOM or indent, or adds control bytes, U+FFFD, or non-ASCII where

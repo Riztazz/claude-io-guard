@@ -6,30 +6,21 @@ matches once, a splice between two markers, and a dated entry appended to a log.
 the way the Edit tool does, with every line ending read as LF, and changes the file's own text through
 lib.edits: untouched lines keep their endings, new lines take the file's ending, new text takes the indent of
 the lines around it, and the file keeps its BOM and encoding. Nothing is written unless every place matched
-(ANC-3), and the write is one atomic replace (BYT-9). A thread lock per file and lib.locks.file_lock hold the
-file from the read to the replace, so two subagents, or two sessions' servers, that change one file take
-turns (D13). A failed anchor gets task 20's diagnosis, and expect_hash refuses a change to a file that changed
-since the agent read its hash. Claude Code does not see an io tool's write as its own, so every result says
-to Read the file before the next built-in Edit.
+(ANC-3), and mcp.in_place holds the file from the read to its one write. A failed anchor gets task 20's
+diagnosis, and expect_hash refuses a change to a file that changed since the agent read its hash.
 """
 import dataclasses
-import hashlib
-import tempfile
-from collections.abc import Iterator
-from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
 from ioguard.checks.diagnose import Diagnosis, Failed, Wording
-from ioguard.lib import anchors, edits, editorconfig, locks, paths
+from ioguard.lib import anchors, edits, editorconfig, paths
 from ioguard.lib.context import Context
-from ioguard.lib.profile import BOM_CHAR, Bom, Profile, profile
 from ioguard.lib.results import Code, Fix, Result, Severity, callable_name
+from ioguard.mcp.in_place import NOTE, Loaded, Place, encoded, held, load, places_shown, write
 from ioguard.mcp.toolspec import ToolCall, ToolFailure, ToolSpec, doc
 
-NOTE = "The built-in Edit tool needs a fresh Read of this file before its next use."
-LOCKS = paths.LockTable()
-HASH_DOC = ("Optional. A sha256 of the file from io.read, which refuses the call if any byte of the file "
+HASH_DOC =("Optional. A sha256 of the file from io.read, which refuses the call if any byte of the file "
             "changed since. Leave it out when only the text the call names matters.")
 
 
@@ -72,17 +63,6 @@ class AppendInput:
 
 
 @dataclass(frozen=True)
-class Place:
-    first_line: int
-    last_line: int
-
-    def shown(self) -> str:
-        if self.first_line == self.last_line:
-            return f"{self.first_line:,}"
-        return f"{self.first_line:,}-{self.last_line:,}"
-
-
-@dataclass(frozen=True)
 class ChangeOutput:
     path: str = doc("The file, as a path with forward slashes.")
     profile: str = doc("The file's endings, BOM, encoding, indent and lines after the change.")
@@ -93,135 +73,18 @@ class ChangeOutput:
     note: str = doc("What the built-in Edit tool needs before its next use of this file.")
 
     def render(self) -> str:
-        where = ", ".join(place.shown() for place in self.lines)
-        single = len(self.lines) == 1 and self.lines[0].first_line == self.lines[0].last_line
-        head = "already as asked, so nothing was written"
-        if self.changed:
-            head = f"{'line' if single else 'lines'} {where} changed"
+        head = (f"{places_shown(self.lines)} changed" if self.changed
+                else "already as asked, so nothing was written")
         return "\n".join([f"{self.path}: {head}. {self.profile}, sha256 {self.sha256}.", *self.indented,
                           self.note])
-
-
-@dataclass(frozen=True)
-class Loaded:
-    """A file's text as its bytes hold it, without its BOM, and what writing it back needs."""
-    path: Path
-    data: bytes
-    found: Profile
-    text: str
-
-    def encoded(self, text: str) -> bytes:
-        """text in the file's encoding, with the file's BOM. UnicodeEncodeError for a character the file's
-        code page does not hold."""
-        return ((BOM_CHAR if self.found.bom is not Bom.NONE else "") + text).encode(self.found.codec)
-
-
-def refused(code: Code, message: str, tool: str, path: Path, ctx: Context, fix: Fix | None = None,
-            **evidence) -> ToolFailure:
-    return ToolFailure(Result.of(code, message, tool, ctx.platform.os, severity=Severity.REFUSED, file=path,
-                                 fix=fix, evidence=evidence))
-
-
-@contextmanager
-def held(path: Path, ctx: Context, tool: str) -> Iterator[None]:
-    """path held against the process's other threads, then against every other io-guard process, for the
-    with block. A holder that keeps it past io.edit.wait_ms refuses the call."""
-    wait_s = ctx.config.get("io.edit.wait_ms") / 1000
-    busy = refused(Code.FILE_LOCKED, f"Another io-guard call held {path.name} for {wait_s:g} seconds, so "
-                   f"{tool} wrote nothing.", tool, path, ctx,
-                   Fix(callable_name(tool), {}, f"Call {callable_name(tool)} again once that call is done."))
-    lock = LOCKS.lock(path)
-    if not lock.acquire(timeout=wait_s):
-        raise busy
-    try:
-        with ExitStack() as stack:
-            try:
-                stack.enter_context(locks.file_lock(path, lock_folder(ctx), wait_s))
-            except TimeoutError:
-                raise busy from None
-            yield
-    finally:
-        lock.release()
-
-
-def lock_folder(ctx: Context) -> Path:
-    """The plugin data folder, or without one a folder in the system's temporary folder, which every
-    io-guard process without a data folder shares."""
-    return ctx.data_dir or Path(tempfile.gettempdir()) / "io-guard"
-
-
-def load(path: Path, ctx: Context, tool: str, expect_hash: str) -> Loaded:
-    """The file's bytes and text, or the refusal that names why the tool cannot change it."""
-    name = path.name
-    found = ctx.fs.stat(path)
-    if found is None:
-        glob = Fix("Glob", {"pattern": f"**/{name}"},
-                   f"Glob for **/{name} to find where it is, or create it with Write.")
-        raise refused(Code.PATH_NOT_FOUND, f"{path.as_posix()} does not exist, so {tool} wrote nothing.",
-                      tool, path, ctx, glob)
-    limit = ctx.config.get("io.edit.max_bytes")
-    if found.size > limit:
-        raise refused(Code.READ_TOO_LARGE, f"{name} holds {found.size:,} bytes, more than {tool} changes, "
-                      f"{limit:,}.", tool, path, ctx, Fix("Edit", {"file_path": str(path)},
-                                                          "Change it with the Edit tool."))
-    if found.readonly:
-        raise refused(Code.READ_ONLY, f"{name} is read-only, so {tool} wrote nothing.", tool, path, ctx)
-    see = Fix(callable_name("io.read"), {"path": str(path)},
-              f"Call {callable_name('io.read')} to see its bytes.")
-    try:
-        data = ctx.fs.read_bytes(path)
-    except OSError as error:
-        raise refused(Code.PATH_NOT_FOUND, f"{name} cannot be read as a file: {error.strerror or error}.",
-                      tool, path, ctx, see) from None
-    actual = hashlib.sha256(data).hexdigest()
-    if expect_hash and expect_hash.strip().lower() != actual:
-        read = callable_name("io.read")
-        raise refused(Code.STALE_VIEW, f"{name} changed since the read that gave expect_hash, so {tool} "
-                      f"wrote nothing.", tool, path, ctx,
-                      Fix(read, {"path": str(path)}, f"Call {read} for its lines and sha256, then call "
-                                                      f"{callable_name(tool)} again with that expect_hash."),
-                      expected=expect_hash, actual=actual)
-    found_profile = profile(data)
-    if found_profile.binary:
-        text_only = Fix(callable_name(tool), {},
-                        "Call it on a text file. A binary file changes through the program that makes it.")
-        raise refused(Code.ENCODING_INVALID, f"{name} holds NUL bytes, so {tool} reads it as binary and "
-                      f"wrote nothing.", tool, path, ctx, text_only)
-    try:
-        text = data.decode(found_profile.codec)
-        whole = text.encode(found_profile.codec) == data
-    except UnicodeError:
-        whole = False
-    if not whole:
-        raise refused(Code.ENCODING_INVALID, f"{name} does not read back as the same bytes in "
-                      f"{found_profile.codec}, so {tool} wrote nothing.", tool, path, ctx, see)
-    return Loaded(path, data, found_profile, text.removeprefix(BOM_CHAR))
 
 
 def written(loaded: Loaded, text: str, places: list[Place], indented: list[str], ctx: Context,
             tool: str) -> ChangeOutput:
     """The new text written over the file when it changed anything, and the result that says so."""
-    path = loaded.path
-    try:
-        data = loaded.encoded(text)
-    except UnicodeEncodeError as error:
-        character = error.object[error.start]
-        raise refused(Code.ENCODING_INVALID, f"{path.name} is {loaded.found.codec}, which cannot hold "
-                      f"U+{ord(character):04X} from the new text, so {tool} wrote nothing.", tool, path, ctx,
-                      Fix(callable_name(tool), {}, f"Use only characters {loaded.found.codec} holds, such "
-                                                   f"as ASCII, in the new text.")) from None
-    if data != loaded.data:
-        try:
-            ctx.fs.write_atomic(path, data)
-        except PermissionError:
-            try:
-                holding = ", ".join(f"{each.name} (process {each.pid})" for each in ctx.fs.holders(path))
-            except OSError:
-                holding = ""
-            raise refused(Code.FILE_LOCKED, f"{holding or 'Another program'} holds {path.name} open, so "
-                          f"{tool} could not replace it and wrote nothing.", tool, path, ctx) from None
-    return ChangeOutput(path.as_posix(), profile(data).line(), data != loaded.data, places,
-                        hashlib.sha256(data).hexdigest(), indented, NOTE)
+    done = write(loaded, encoded(loaded, text, ctx, tool), ctx, tool)
+    return ChangeOutput(loaded.path.as_posix(), done.profile_line(), done.changed, places, done.sha256,
+                        indented, NOTE)
 
 
 def indent_notes(indented: tuple[tuple[int, str], ...], what: str) -> list[str]:

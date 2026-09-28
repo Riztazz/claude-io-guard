@@ -115,8 +115,8 @@ class FakeGit:
     def ls_files(self, root: Path) -> tuple[Path, ...]:
         return tuple(sorted(self.tracked))
 
-    def changed_ranges(self, path: Path) -> tuple[LineRange, ...]:
-        return self.ranges.get(path, ())
+    def changed_ranges(self, path: Path) -> tuple[LineRange, ...] | None:
+        return self.ranges.get(path, ()) if path in self.tracked else None
 
     def attributes(self, path: Path) -> Mapping[str, str]:
         return self.attrs.get(path, {})

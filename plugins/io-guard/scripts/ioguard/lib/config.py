@@ -17,7 +17,7 @@ from types import MappingProxyType
 from typing import Any
 
 from ioguard import CONFIG_SCHEMA
-from ioguard.lib import bytesio, patterns, verify
+from ioguard.lib import bytesio, commands, patterns
 
 
 class Scope(IntEnum):
@@ -128,7 +128,13 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
                             "shell command's report leaves out."),
     "verify": ConfigKey(dict, {}, "The command io-guard runs on a file after each Edit or Write, per file "
                         "extension, and per project root for one project only.", project_may_set=False,
-                        shape=verify.shape_problem),
+                        shape=commands.verify_problem),
+    "format": ConfigKey(dict, commands.FORMAT_DEFAULT, "The command io.format runs over a file's changed "
+                        "lines, per file extension, and per project root for one project only. It reads the "
+                        "text on stdin and writes the formatted text on stdout.", project_may_set=False,
+                        shape=commands.format_problem),
+    "io.format.timeout_s": ConfigKey(int, 30, "Seconds a format command may take on one file, after which "
+                                     "io-guard stops it and io.format writes nothing."),
     **{f"transport.rewrite_mode.{mode}": ConfigKey(
         str, default, f"What happens to a rewritten command in the {mode} permission mode.",
         choices=REWRITE_MODES, project_forbids=("allow",)) for mode, default in REWRITE_DEFAULTS.items()},

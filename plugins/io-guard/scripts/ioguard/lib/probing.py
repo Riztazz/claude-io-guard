@@ -50,6 +50,14 @@ def find(name: str, env: Mapping[str, str], skip: Sequence[str] = ()) -> str | N
     return None
 
 
+def program(name: str, env: Mapping[str, str]) -> str:
+    """name as found on the environment's PATH, with its extension on Windows, or name as given when it is a
+    path already or PATH does not hold it."""
+    if Path(name).name != name:
+        return name
+    return find(name, env) or name
+
+
 def claude_version(env: Mapping[str, str]) -> str | None:
     """The Claude Code version from the environment it gives its children, or None when it names none."""
     agent = AGENT.search(env.get("AI_AGENT", ""))

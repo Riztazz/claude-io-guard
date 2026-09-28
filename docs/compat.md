@@ -29,8 +29,8 @@ ran on 2.1.283 only. Task 17 added `write-quiet`, `edit-trailing` and `live-conf
 `live-verify` and `live-verify-direct`, task 19 `live-read-only` and `live-locked`, task 20 `edit-refusals`,
 `other-refusals` and `live-diagnose`, task 21 `live-touched`, task 22 `command-output` and
 `live-results`, task 23 `live-server`, `live-server-modern` and `live-server-down`, task 24
-`live-edit-parallel`, and task 25 `live-run-body`, `live-run-background`, `live-run-denied` and
-`live-run-asked`, all of which passed on both.
+`live-edit-parallel`, task 25 `live-run-body`, `live-run-background`, `live-run-denied` and
+`live-run-asked`, and task 26 `live-format`, all of which passed on both.
 
 The design review named 2.1.281 as the first release whose `mcp_tool` hooks wait for their server. Today's hooks
 reference names no version for that, so the floor rests on the probes instead. Older releases aren't tested.

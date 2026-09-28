@@ -17,8 +17,9 @@ from ioguard.lib.context import Context, LiveFs
 from ioguard.lib.fakes import FakeFs
 from ioguard.lib.platform import Platform, detect
 from ioguard.lib.results import Code, Severity, callable_name
+from ioguard.mcp.in_place import NOTE
 from ioguard.mcp.progress import CancelToken
-from ioguard.mcp.tools_edit import NOTE, AppendInput, EditInput, EditPair, SpliceInput, append, edit, splice
+from ioguard.mcp.tools_edit import AppendInput, EditInput, EditPair, SpliceInput, append, edit, splice
 from ioguard.mcp.toolspec import ToolCall, ToolFailure
 from tests import PLUGIN_SCRIPTS
 from tests.support.fixtures import FIXTURES_DIR

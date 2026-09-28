@@ -4,9 +4,11 @@ The Edit tool reads every line ending as LF, so a place is found and counted in 
 change then lands in the text as the file holds it: every character outside the change keeps its ending,
 whatever mix of endings the file has, each line break in the new text takes the one ending the caller names,
 and new text indented with tabs beside lines indented with spaces, or the other way round, takes their style.
-Appended lines go after the last one, and a long line wraps with its continuation under its first word.
+Appended lines go after the last one, and a long line wraps with its continuation under its first word. A
+formatter's output for the text lands the same way: only the lines it changed take the new ending.
 """
 import bisect
+import difflib
 import re
 import textwrap
 from collections.abc import Sequence
@@ -45,6 +47,13 @@ class Applied:
     text: str
     lines: tuple[tuple[int, int], ...]       # each change's first and last line in text, counted from 1
     indented: tuple[tuple[int, str], ...]    # each change, from 0, whose new text took the indent around it
+
+
+@dataclass(frozen=True)
+class Carried:
+    text: str
+    lines: tuple[tuple[int, int], ...]       # each run of lines the other text changed, in text, from 1
+    left: tuple[tuple[int, int], ...]        # each run it changed away from the lines asked, kept as it was
 
 
 def replaced(text: str, start: int, end: int, new: str, eol: Eol) -> str:
@@ -101,6 +110,52 @@ def appended(text: str, addition: str, eol: Eol) -> str:
     if text and not text.endswith(("\n", "\r")):
         return text + ending + added
     return text + added + ending
+
+
+def lines_of(text: str) -> list[tuple[str, str]]:
+    """Each line of text and the ending after it: CRLF, LF, or none for a last line without one. A lone CR
+    stays inside its line, as git counts lines."""
+    parts = text.split("\n")
+    lines = [(part[:-1], "\r\n") if part.endswith("\r") else (part, "\n") for part in parts[:-1]]
+    return lines + [(parts[-1], "")] if parts[-1] else lines
+
+
+def carried(text: str, other: str, eol: Eol, within: Sequence[tuple[int, int]] | None = None) -> Carried:
+    """other, such as a formatter's output for text, in text's own endings. A line other kept as it was keeps
+    its ending from text, and a line other changed or added takes eol. With within, the first and last lines
+    of text a caller asked about, a run of changed lines that touches none of them stays as text has it. A
+    run that only removes lines is placed at the line above them."""
+    before, after = lines_of(text), lines_of(other)
+    ending = convert_eol("\n", eol)
+    matcher = difflib.SequenceMatcher(None, [line for line, _ in before], [line for line, _ in after],
+                                      autojunk=False)
+    out: list[str] = []
+    runs: list[tuple[int, int]] = []
+    left: list[tuple[int, int]] = []
+    for tag, first, last, start, end in matcher.get_opcodes():
+        if tag == "equal":
+            out += [line + kept for line, kept in before[first:last]]
+            continue
+        at = len(out) + 1
+        if within is not None and not touches(within, first, last):
+            out += [line + kept for line, kept in before[first:last]]
+            left.append(span(at, len(out)))
+            continue
+        out += [line + (ending if given else "") for line, given in after[start:end]]
+        runs.append(span(at, len(out)))
+    return Carried("".join(out), tuple(runs), tuple(left))
+
+
+def touches(within: Sequence[tuple[int, int]], first: int, last: int) -> bool:
+    """Whether lines first + 1 to last, or the gap after line first when the run holds no line, meet one of
+    the ranges in within."""
+    low, high = (first, first + 1) if last == first else (first + 1, last)
+    return any(start <= high and end >= low for start, end in within)
+
+
+def span(at: int, stop: int) -> tuple[int, int]:
+    """Lines at to stop, or the line above at when the run left no line there."""
+    return (at, stop) if stop >= at else (max(at - 1, 1), max(at - 1, 1))
 
 
 def wrapped(text: str, column: int) -> str:

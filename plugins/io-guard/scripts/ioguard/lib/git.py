@@ -71,6 +71,12 @@ def parse_attributes(raw: bytes) -> dict[str, str]:
     return {fields[at + 1]: fields[at + 2] for at in range(0, len(fields) - 2, 3)}
 
 
+def reason(result: proc.RunResult) -> str:
+    """Why a git call failed, in git's words where it gave any."""
+    return result.start_error or ("timed out" if result.timed_out else
+                                  result.stderr.decode("utf-8", "replace").strip())
+
+
 class Git:
     """The GitPort io-guard uses in a live session."""
 
@@ -83,9 +89,7 @@ class Git:
     def checked(self, cwd: Path, *args: str) -> bytes:
         result = self.run(cwd, *args)
         if not result.ok:
-            reason = result.start_error or ("timed out" if result.timed_out else
-                                            result.stderr.decode("utf-8", "replace").strip())
-            raise GitError(f"git {' '.join(args)} in {cwd} failed: {reason}")
+            raise GitError(f"git {' '.join(args)} in {cwd} failed: {reason(result)}")
         return result.stdout
 
     @staticmethod
@@ -99,13 +103,12 @@ class Git:
             return Path(result.stdout.decode("utf-8").strip())
         if b"not a git repository" in result.stderr:
             return None
-        raise GitError(f"git rev-parse in {path} failed: "
-                       f"{result.start_error or result.stderr.decode('utf-8', 'replace').strip()}")
+        raise GitError(f"git rev-parse in {path} failed: {reason(result)}")
 
     def is_tracked(self, path: Path) -> bool:
         result = self.run(path.parent, "ls-files", "--error-unmatch", "--", path.name)
-        if result.start_error or result.timed_out:
-            raise GitError(f"git ls-files for {path} failed: {result.start_error or 'timed out'}")
+        if result.exit_code is None:
+            raise GitError(f"git ls-files for {path} failed: {reason(result)}")
         return result.ok
 
     def status(self, root: Path) -> GitStatus:
@@ -115,9 +118,19 @@ class Git:
         names = self.checked(root, "ls-files", "-z").decode("utf-8").split("\0")
         return tuple(root / name for name in names if name)
 
-    def changed_ranges(self, path: Path) -> tuple[LineRange, ...]:
-        raw = self.checked(path.parent, "diff", "-U0", "--no-color", "--no-ext-diff", "--", path.name)
-        return parse_ranges(raw)
+    def changed_ranges(self, path: Path) -> tuple[LineRange, ...] | None:
+        """The lines of path that differ from its last commit, staged or not, read as text whatever its
+        attributes say. None when git holds no commit of it: an untracked file, a file outside every
+        repository, or a repository with no commit yet."""
+        if not self.is_tracked(path):
+            return None
+        result = self.run(path.parent, "diff", "-U0", "--no-color", "--no-ext-diff", "--no-textconv",
+                          "--text", "HEAD", "--", path.name)
+        if result.ok:
+            return parse_ranges(result.stdout)
+        if result.exit_code is not None and not self.run(path.parent, "rev-parse", "--verify", "HEAD").ok:
+            return None
+        raise GitError(f"git diff HEAD for {path} failed: {reason(result)}")
 
     def attributes(self, path: Path) -> Mapping[str, str]:
         return parse_attributes(self.checked(path.parent, "check-attr", "-a", "-z", "--", path.name))
@@ -131,6 +144,6 @@ class Git:
         """The bytes git stores for spec, such as HEAD:src/a.py, or :src/a.py for the staged file. None when
         git holds nothing there, such as a file new to this commit."""
         result = self.run(root, "cat-file", "blob", spec)
-        if result.start_error or result.timed_out:
-            raise GitError(f"git cat-file blob {spec} failed: {result.start_error or 'timed out'}")
+        if result.exit_code is None:
+            raise GitError(f"git cat-file blob {spec} failed: {reason(result)}")
         return result.stdout if result.ok else None

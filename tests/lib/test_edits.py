@@ -70,5 +70,49 @@ class AnAppendEndsTheFileAsItEnded(unittest.TestCase):
                                  "a list marker's text hangs under itself, and a long word stays whole")
 
 
+class AFormattersOutputKeepsTheFilesEndings(unittest.TestCase):
+    def test_only_the_lines_the_formatter_changed_take_the_new_ending(self):
+        text = "int  a=1;\r\nvoid f(){y();}\r\nint  b=2;\n"
+        formatted = "int  a=1;\nvoid f() {\n  y();\n}\nint  b=2;\n"
+        carried = edits.carried(text, formatted, Eol.CRLF)
+        self.assertEqual((carried.text, carried.lines),
+                         ("int  a=1;\r\nvoid f() {\r\n  y();\r\n}\r\nint  b=2;\n", ((2, 4),)),
+                         "BYT-3: a formatter that writes LF leaves a CRLF file CRLF, and the LF line it did "
+                         "not touch keeps its LF")
+
+    def test_a_last_line_keeps_or_gains_its_break_as_the_formatter_left_it(self):
+        for text, formatted, expected in (("a\r\nb", "a\nb", "a\r\nb"), ("a\r\nb  ;", "a\nb;", "a\r\nb;"),
+                                          ("a\r\nb  ;", "a\nb;\n", "a\r\nb;\r\n")):
+            with self.subTest(text=text, formatted=formatted):
+                self.assertEqual(edits.carried(text, formatted, Eol.CRLF).text, expected,
+                                 "an untouched last line keeps its missing break, and a changed one ends as "
+                                 "the formatter ended it")
+
+    def test_removed_lines_are_placed_at_the_line_above(self):
+        carried = edits.carried("a\n\n\n\nb\n", "a\n\nb\n", Eol.LF)
+        self.assertEqual((carried.text, carried.lines), ("a\n\nb\n", ((2, 2),)),
+                         "two blank lines removed after line 2 are reported at line 2")
+
+    def test_a_change_away_from_the_lines_asked_stays_as_it_was(self):
+        text = "namespace n {\nint  a;\nint  b;\n\nint  c;\n}\n"
+        formatted = "namespace n {\nint a;\nint b;\n\nint c;\n} // namespace n\n"
+        carried = edits.carried(text, formatted, Eol.LF, within=[(2, 2)])
+        self.assertEqual((carried.text, carried.lines, carried.left),
+                         ("namespace n {\nint a;\nint b;\n\nint  c;\n}\n", ((2, 3),), ((5, 6),)),
+                         "BYT-12: a run that meets line 2 lands whole, and the far run, a namespace closer "
+                         "included, stays as the file had it")
+
+    def test_an_insertion_meets_the_lines_on_either_side_of_it(self):
+        for within, landed in (([(1, 1)], True), ([(2, 2)], True), ([(3, 3)], False)):
+            with self.subTest(within=within):
+                carried = edits.carried("a\nb\nc\n", "a\nNEW\nb\nc\n", Eol.LF, within=within)
+                self.assertEqual(carried.text == "a\nNEW\nb\nc\n", landed,
+                                 "a line added between lines 1 and 2 meets a range on either of them")
+
+    def test_a_formatter_that_writes_crlf_is_read_line_for_line(self):
+        self.assertEqual(edits.carried("x=1\ny\n", "x = 1\r\ny\r\n", Eol.LF).text, "x = 1\ny\n",
+                         "a CRLF from the formatter is a line break, and the file's LF wins")
+
+
 if __name__ == "__main__":
     unittest.main()

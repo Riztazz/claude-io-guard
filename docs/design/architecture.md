@@ -28,11 +28,11 @@ plugins/io-guard/
         profile.py                 Profile, profile, target_profile, convert_eol, with_bom, with_final_newline
         editorconfig.py            parse, matches, properties: the .editorconfig properties for one file
         drift.py                   drift, edited, changed_lines, restored: what a write changed in a file's bytes
-        verify.py                  shape_problem, command_for: the user's verify commands per extension
+        commands.py                command_for, filled: the user's verify and format commands per extension
         anchors.py                 find, blind, closest, unique_anchor, edit_view: where an old_string is, or
                                    nearly is
-        edits.py                   replaced, change, apply, appended, wrapped: changes placed as the Edit tool
-                                   reads a file, and made in the file's own text
+        edits.py                   replaced, change, apply, appended, wrapped, carried: changes placed as the
+                                   Edit tool reads a file, and made in the file's own text
         indent.py                  style, reindented, around, fitted: new text in the indent of the lines where
                                    it lands
         shell.py                   scan, commands, budget_length, moved, pipelines, exit_candidates, the hazards
@@ -93,6 +93,7 @@ plugins/io-guard/
         handles.py                 Handle, HandleStore, HandleExpired, STORE
         elicit.py                  Elicitor, LegacyElicitor, ModernElicitor, when a client shows a form
         progress.py                CancelToken, ProgressReporter
+        in_place.py                held, load, write: a file an io tool changes, held, loaded and written once
         tools_read.py              io.read
         tools_edit.py              io.edit, io.splice, io.append
         tools_run.py               io.run, io.status, io.read_log
@@ -208,7 +209,8 @@ class GitPort(Protocol):
     def is_tracked(self, path: Path) -> bool: ...
     def status(self, root: Path) -> GitStatus: ...
     def ls_files(self, root: Path) -> tuple[Path, ...]: ...
-    def changed_ranges(self, path: Path) -> tuple[LineRange, ...]: ...
+    def changed_ranges(self, path: Path) -> Optional[tuple[LineRange, ...]]: ...   # since HEAD, task 26.
+                                                                   # None when git has no commit of the file
     def attributes(self, path: Path) -> Mapping[str, str]: ...
     def staged(self, root: Path) -> tuple[str, ...]: ...           # added, changed or renamed, from root
     def blob(self, root: Path, spec: str) -> Optional[bytes]: ...  # "HEAD:a.py", or ":a.py" for the staged one
@@ -417,6 +419,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Internal | `SERVER_DOWN`, `CANCELLED` | 23, in `CODES` |
 | Internal | `HANDLE_EXPIRED`, with the first tool that makes a handle | 25, in `CODES` |
 | Transport | `RULE_DENIED`, `RULE_ASKED`, from `run.rules` and `io.run` itself | 25, in `CODES` |
+| Bytes | `FORMAT_FAILED`, when `io.format`'s command cannot start, fails or prints nothing | 26, in `CODES` |
 
 ### Decision and Rewrite
 
@@ -682,9 +685,12 @@ def lines_holding(text: str, pattern: Pattern, among: Optional[tuple[int, ...]] 
 def would_collapse(expected: int, actual: int, percent: int) -> bool
 def restored(data: bytes, eol: Optional[Eol], bom: Bom) -> Optional[bytes]   # None when data is not UTF-8
 
-# verify.py, task 18
-def shape_problem(value: Mapping[str, Any]) -> Optional[str]            # ConfigKey.shape of the verify key
+# commands.py, task 18 as verify.py, and task 26
+def verify_problem(value: Mapping[str, Any]) -> Optional[str]           # ConfigKey.shape of the verify key
+def format_problem(value: Mapping[str, Any]) -> Optional[str]           # and of the format key
 def command_for(value: Mapping[str, Any], path: Path, platform: Platform) -> Optional[tuple[str, ...]]
+def filled(command: Sequence[str], path: Path, ranges: Sequence[tuple[int, int]] = ()) -> tuple[str, ...]
+                                                            # {file}, and the {first}:{last} argument per range
 
 # profile.py
 def profile(data: bytes) -> Profile
@@ -715,6 +721,10 @@ def apply(text: str, changes: Sequence[Change], eol: Eol, width: Optional[int]) 
                                                             # in order, each old found once, or none made
 def appended(text: str, addition: str, eol: Eol) -> str     # a last line with no break keeps having none
 def wrapped(text: str, column: int) -> str                  # a list item hangs under its first word
+def lines_of(text: str) -> list[tuple[str, str]]            # task 26: each line and its CRLF, LF or no ending
+def carried(text: str, other: str, eol: Eol, within: Optional[Sequence[tuple[int, int]]] = None) -> Carried
+                                                            # task 26: other in text's endings, changes that
+                                                            # meet no line of within left as text had them
 
 # indent.py, task 24, moved from conform_edit
 def style(text: str) -> str                                 # tabs, spaces, mixed or none
@@ -778,7 +788,8 @@ def file_lock(path: Path, data_dir: Path, wait_s: float = 5.0) -> ContextManager
 
 # proc.py
 def run(argv: Sequence[str], cwd: Path, env: Optional[Mapping[str, str]] = None,
-        timeout_s: float = 10.0) -> RunResult                # a timeout or a missing program is a result
+        timeout_s: float = 10.0, stdin: bytes = b"") -> RunResult   # a timeout or a missing program is a
+                                                            # result, and stdin is never the caller's own
 def background(argv: Sequence[str], cwd: Path, env: Mapping[str, str], log: Path) -> Pump
                                                             # task 25: stdout and stderr in one log
 class Pump: exit_code, wait(timeout_s), when_done(callback), seconds(), stop()   # stop ends the whole tree
@@ -906,11 +917,12 @@ task 21 `skip_trees`, empty by default, and `checks.shell.touched.listed`. Task 
 `io.read.max_bytes` of 16 MB and `io.read.max_chars` of 60,000, and `checks.server.heartbeat.stale_s` of 30.
 Task 24 added `io.edit.max_bytes` of 16 MB and `io.edit.wait_ms` of 5,000, which `io.edit`, `io.splice` and
 `io.append` share. Task 25 added `io.run.timeout_s` of 120, `io.run.handle_ttl_s` of 3,600,
-`io.read_log.max_lines` of 500 and `noise_patterns`. A key marked `project_regex`, `noise_patterns` and
-`checks.shell.results.error_patterns`, holds regexes io-guard runs on every line of output, and Python's `re`
-has no timeout. So a project file's pattern that does not compile, is over 200 characters, or repeats a group
-that repeats inside, such as `(a+)+`, drops the file (`lib.patterns`). The user's own `config.json` may still
-set one.
+`io.read_log.max_lines` of 500 and `noise_patterns`. Task 26 added `format`, the command `io.format` runs per
+extension, clang-format for C and C++ by default, and `io.format.timeout_s` of 30. A key marked
+`project_regex`, `noise_patterns` and `checks.shell.results.error_patterns`, holds regexes io-guard runs on
+every line of output, and Python's `re` has no timeout. So a project file's pattern that does not compile, is
+over 200 characters, or repeats a group that repeats inside, such as `(a+)+`, drops the file (`lib.patterns`).
+The user's own `config.json` may still set one.
 Each other key arrives with its check. A key marked `project_narrows`, such as
 the budget, takes a lower number from a project file and refuses a higher one. A key with a `shape`, such as
 `verify`, has its inner values checked too, and a wrong one drops the file like any other error.
@@ -922,12 +934,13 @@ classifier sees it. `/plugin configure io-guard` cannot set nested keys, so the 
 `io.config`, or uses the dashboard page, and the README shows each.
 
 A project file restricts and never widens. It disables a check, adds `skip_trees` and `noise_patterns`, and
-narrows `budget_bytes`. It cannot set `verify` commands, set `rewrite_mode` to `allow`, or turn telemetry
+narrows `budget_bytes`. It cannot set `verify` or `format` commands, set `rewrite_mode` to `allow`, or turn telemetry
 off. `ConfigKey.project_may_set` marks each check key. The scope rule exists because a cloned repository must
-not be able to approve commands or make io-guard run a program (D24). A `verify` command is a program io-guard
-starts, so only the user's own `config.json` names one. The key maps an extension to a command, such as
-`".py": ["python", "-m", "py_compile", "{file}"]`, and an absolute project root to its own map of extensions,
-which wins for that project's files (task 18).
+not be able to approve commands or make io-guard run a program (D24). A `verify` or `format` command is a
+program io-guard starts, so only the user's own `config.json` names one. Each key maps an extension to a
+command, such as `".py": ["python", "-m", "py_compile", "{file}"]`, and an absolute project root to its own map
+of extensions, which wins for that project's files (task 18). A format command's argument that holds `{first}`
+and `{last}` repeats once per line range (task 26).
 
 Loading happens once per process and fails loudly. `validate` reports an unknown key with the file, the key
 and the nearest known key, a type mismatch with the expected type, and a scope violation with the layer that
@@ -1272,7 +1285,38 @@ with that edit corrected, and it never offers `replace_all`, which the io tools 
 "The built-in Edit tool needs a fresh Read of this file before its next use", because Claude Code tracks its
 own tools' reads and writes only. `io.read` returns the `sha256` that `expect_hash` compares, which a caller
 passes only when the rest of the file must be as it read it: in `live-edit-parallel` models passed each
-result's hash on unasked, and the other subagents' writes refused them.
+result's hash on unasked, and the other subagents' writes refused them. Steps 1, 2 and 4 live in
+`mcp/in_place.py`, which `io.format` shares.
+
+### Format the changed lines
+
+`mcp/tools_format.py` holds `io.format` (task 26).
+
+```python
+io.format(paths, lines = [])
+-> FormatOutput(files: [FormattedFile(path, formatter, asked, reason, changed, lines, left, profile, sha256)],
+                note)
+```
+
+1. **Hold every file.** Each path is held as the edit tools hold one, in the order of `paths.resolved`, so two
+   calls that name the same files never wait on each other in a circle.
+2. **Pick the lines.** `lines`, which goes with one path only, names them. Otherwise `GitPort.changed_ranges`
+   gives the lines `git diff -U0 HEAD` reports, staged or not, and a file git has no commit of counts whole. A
+   file with no changed line, or no format command for its extension, is left as it is, and its result says
+   why.
+3. **Format in memory.** The command from the `format` key runs with no shell in the file's folder, the file's
+   text on stdin with every CRLF read as LF, and one `--lines`-style argument per range. A command that cannot
+   start, exits nonzero, runs past `io.format.timeout_s`, or prints nothing for a file that holds text is
+   `FORMAT_FAILED`, with the formatter's own message, and no file is written.
+4. **Land it in the file's bytes.** `lib.edits.carried` matches the output to the file line by line. A line the
+   formatter left keeps its own ending, a changed line takes `Profile.new_eol`, and the file keeps its BOM and
+   encoding, whatever `LineEnding` the formatter's config names (BYT-3). A run of changes that meets none of the
+   asked lines stays as the file had it, and the result names it in `left` (BYT-12).
+5. **Write each file once**, only when a byte changed, after every file has been formatted.
+
+Over 12 C++ files copied from one of the lead's projects, 8 CRLF and 4 LF, each given one new badly formatted
+line and one line with doubled spaces, `io.format` wrote the same bytes as the script agents there ran 128
+times to format changed hunks, with the same clang-format (`context.md`, task 26).
 
 ### Handles
 
@@ -1363,10 +1407,11 @@ before `record` returns, so a crash loses none. `sys.stdout` points at stderr in
 print cannot corrupt an answer.
 
 Locks are few and named. `paths.LockTable.lock(path)` is one `threading.Lock` per resolved path, which
-`io.edit`, `io.splice` and `io.append` hold from the read to the write, so two subagents editing one file take
-turns. Three subagents' 30 interleaved `io.edit` calls on one file all landed in `live-edit-parallel` (task
-24). `SessionState` fields are guarded by one `RLock`. Caches carry a TTL: git status 2 seconds, a file profile until
-its mtime and size change, the probe for the session.
+`io.edit`, `io.splice`, `io.append` and `io.format` hold from the read to the write, so two subagents editing
+one file take turns. `io.format` takes several in the order of their resolved paths. Three subagents' 30
+interleaved `io.edit` calls on one file all landed in `live-edit-parallel` (task 24). `SessionState` fields
+are guarded by one `RLock`. Caches carry a TTL: git status 2 seconds, a file profile until its mtime and size
+change, the probe for the session.
 
 Across processes, three rules keep two servers from corrupting each other's work.
 

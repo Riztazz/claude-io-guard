@@ -1,28 +1,18 @@
 """Run the user's verify command on a file after each Edit or Write, and hand its output to the agent.
 
 The command comes from the verify key in the user's own config.json, per file extension and per project
-root (lib.verify). A project file cannot name one (D24). It runs from an argument list with no shell, in the
+root (lib.commands). A project file cannot name one (D24). It runs from an argument list with no shell, in the
 session's folder, under a timeout, after verify.write has put back anything the write lost. A command that
 passes and prints nothing adds nothing. Otherwise its exit code and the head of its output reach the agent,
 and so does a timeout or a program that cannot start.
 """
-from collections.abc import Mapping
-from pathlib import Path
-
 from ioguard.checks.base import Check, CheckMeta, Cost
-from ioguard.lib import probing, proc, text, verify
+from ioguard.lib import commands, probing, proc, text
 from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.results import Layer, Severity
-
-
-def program(name: str, env: Mapping[str, str]) -> str:
-    """name as found on PATH, with its extension on Windows, or name as given when it is a path already."""
-    if Path(name).name != name:
-        return name
-    return probing.find(name, env) or name
 
 
 class VerifyCommand(Check):
@@ -42,10 +32,11 @@ class VerifyCommand(Check):
     def run(self, event: Event, ctx: Context) -> Decision:
         if event.file_path is None:
             return Decision.observe(self.meta.id)
-        command = verify.command_for(ctx.config.get("verify"), event.file_path, ctx.platform)
-        if command is None:
+        named = commands.command_for(ctx.config.get("verify"), event.file_path, ctx.platform)
+        if named is None:
             return Decision.observe(self.meta.id)
-        argv = (program(command[0], ctx.env), *command[1:])
+        command = commands.filled(named, event.file_path)
+        argv = (probing.program(command[0], ctx.env), *command[1:])
         timeout_ms = self.options["timeout_ms"]
         done = proc.run(argv, event.cwd, ctx.env, timeout_ms / 1000)
         shown = " ".join(command)

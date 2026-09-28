@@ -126,6 +126,7 @@ match `.claude/tasks/context.md`, "The hook entry point".
 | A 21 KB Python body with 500 pairs of backslashes reaches its file through `io.run` byte for byte, and Python prints both backslashes of each pair | `live-run-body` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | A 15-minute background `io.run` reports `running` through `io.status` while it runs, and `ended` with exit code 0 after it | `live-run-background` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | With `Bash(git push *)` denied, `io.run` of `git push origin main` is refused with `RULE_DENIED`. With `Bash(git fetch *)` in the ask rules, the permission prompt receives the `io.run` call, and the approved run goes through | `live-run-denied`, `live-run-asked` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
+| After an `io.edit` adds a badly formatted line to a committed BOM and CRLF `.cpp`, `io.format` runs clang-format from `PATH` over that line only: it becomes five formatted lines, the badly formatted committed line stays, and every line keeps CRLF although the `.clang-format` names `LineEnding: LF` | `live-format` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | A saved Bash or PowerShell output comes back as its first and last 20 lines with the file's path, and the model reads no file. grep's exit code 1 that stopped an `&&` chain is labelled as its answer, and a traceback behind `\| tail` is named with tail's exit code | `live-results` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 
 ## Not checked yet

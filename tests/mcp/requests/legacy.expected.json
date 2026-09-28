@@ -2,7 +2,7 @@
   "0": {"result.protocolVersion": "2025-11-25", "result.serverInfo.name": "io-guard",
         "result.capabilities.tools.listChanged": false, "!result.resultType": null},
   "1": {"result.tools.*.name": ["io.read", "io.edit", "io.splice", "io.append", "io.run", "io.status",
-                                "io.read_log", "hook.pre_tool_use", "hook.post_tool_use",
+                                "io.read_log", "io.format", "hook.pre_tool_use", "hook.post_tool_use",
                                 "hook.post_tool_use_failure", "hook.ping"],
         "result.tools.0.annotations.readOnlyHint": true, "result.tools.0.outputSchema.additionalProperties": true,
         "result.tools.0.inputSchema.required": ["path"], "!result.ttlMs": null},
