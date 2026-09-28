@@ -29,6 +29,10 @@ loaded. The telemetry names each of those events after the subfolder, as project
   `.claude/io-guard.local.json`, else the repository root git names, else `cwd`. Decide between that and
   `CLAUDE_PROJECT_DIR` when the MCP server has it, and record which one in `context.md`.
 - The Context, the config message and the telemetry's `project` all use that root.
+- A project's layers govern the project's own files. On 2026-09-28 an Edit of Claude Code's own
+  `~/.claude/projects/<project>/memory/MEMORY.md` from this repository's session got `NON_ASCII_ADDED`, from
+  this repository's `ascii_only`, for the em dash that file's own format uses. A file outside the project root
+  takes the user's layer alone.
 - Tests: a session in a subfolder of a project gets the project's layers, and one outside any project gets none.
 
 ## Where

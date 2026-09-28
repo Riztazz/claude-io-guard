@@ -89,7 +89,7 @@ class OnlyTheChangedLinesAreFormatted(FormatTest):
 
     def test_the_lines_a_call_names_are_formatted_instead(self):
         with TemporaryProject({"a.cpp": b"a\nb\nc\n"}, git=True) as root:
-            self.call(root, FormatInput(["a.cpp"], [Place(3, 9)]), self.context())
+            self.call(root, FormatInput(["a.cpp"], {"a.cpp": [Place(3, 9)]}), self.context())
             self.assertEqual((root / "a.cpp").read_bytes(), b"a\nb\nC\n",
                              "lines names the range, cut at the file's last line")
 
@@ -136,13 +136,33 @@ class AFailureWritesNothing(FormatTest):
                                  "a formatter that cannot run, or writes over the file instead of printing, "
                                  "never empties it")
 
-    def test_lines_with_more_than_one_path_are_refused(self):
+    def test_lines_for_a_file_paths_does_not_name_or_running_backwards_are_refused(self):
         with TemporaryProject({"a.cpp": b"a\n"}) as root:
-            for given in (FormatInput(["a.cpp", "a.cpp"], [Place(1, 1)]), FormatInput([]),
-                          FormatInput(["a.cpp"], [Place(3, 2)])):
+            for given in (FormatInput(["a.cpp"], {"b.cpp": [Place(1, 1)]}), FormatInput([]),
+                          FormatInput(["a.cpp"], {"a.cpp": [Place(3, 2)]})):
                 with self.subTest(given=given):
-                    with self.assertRaises(InvalidArguments, msg="lines names the lines of one file"):
+                    with self.assertRaises(InvalidArguments, msg="lines are keyed by a path from paths"):
                         self.call(root, given, self.context())
+
+
+class ADryRunShowsWhatWouldChange(FormatTest):
+    def test_a_dry_run_returns_the_diff_and_writes_nothing(self):
+        with TemporaryProject({"a.cpp": CPP}, git=True) as root:
+            changed = CPP.replace(b"int b;", b"int bb;")
+            (root / "a.cpp").write_bytes(changed)
+            output = self.call(root, FormatInput(["a.cpp"], dry_run=True), self.context())
+            found = output.files[0]
+            self.assertEqual(((root / "a.cpp").read_bytes(), found.changed, output.written_bytes()),
+                             (changed, True, 0), "the file keeps its bytes, and the result says it would")
+            self.assertIn("-int bb;\n+INT BB;", found.diff, "the diff shows the line as it is and would be")
+            self.assertIn("would change line 2", output.render(), "the words say nothing was written")
+
+    def test_each_file_takes_its_own_lines_in_one_call(self):
+        with TemporaryProject({"a.cpp": b"a\nb\n", "b.cpp": b"c\nd\n"}, git=True) as root:
+            lines = {"a.cpp": [Place(1, 1)], str(root / "b.cpp"): [Place(2, 2)]}
+            self.call(root, FormatInput(["a.cpp", "b.cpp"], lines), self.context())
+            self.assertEqual(((root / "a.cpp").read_bytes(), (root / "b.cpp").read_bytes()),
+                             (b"A\nb\n", b"c\nD\n"), "lines keyed by either spelling of a path narrow it")
 
 
 @unittest.skipUnless(shutil.which("clang-format"), "clang-format is not on PATH")

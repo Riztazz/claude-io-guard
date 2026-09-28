@@ -1362,15 +1362,16 @@ result's hash on unasked, and the other subagents' writes refused them. Steps 1,
 `mcp/tools_format.py` holds `io.format` (task 26).
 
 ```python
-io.format(paths, lines = [])
+io.format(paths, lines = {path: [Place]}, dry_run = false)
 -> FormatOutput(files: [FormattedFile(path, formatter, asked, reason, changed, lines, left, profile, sha256,
-                                      bytes)],
-                note)
+                                      bytes, diff)],
+                note, dry_run)
 ```
 
 1. **Hold every file.** Each path is held as the edit tools hold one, in the order of `paths.resolved`, so two
    calls that name the same files never wait on each other in a circle.
-2. **Pick the lines.** `lines`, which goes with one path only, names them. Otherwise `GitPort.changed_ranges`
+2. **Pick the lines.** `lines` names them per file, keyed by a path as `paths` gives it, and a key `paths`
+   does not name is `InvalidArguments`. Otherwise `GitPort.changed_ranges`
    gives the lines `git diff -U0 HEAD` reports, staged or not, and a file git has no commit of counts whole. A
    file with no changed line, or no format command for its extension, is left as it is, and its result says
    why.
@@ -1382,7 +1383,9 @@ io.format(paths, lines = [])
    formatter left keeps its own ending, a changed line takes `Profile.new_eol`, and the file keeps its BOM and
    encoding, whatever `LineEnding` the formatter's config names (BYT-3). A run of changes that meets none of the
    asked lines stays as the file had it, and the result names it in `left` (BYT-12).
-5. **Write each file once**, only when a byte changed, after every file has been formatted.
+5. **Write each file once**, only when a byte changed, after every file has been formatted. With `dry_run`,
+   nothing is written, and each file's result carries `diff`, a unified diff of its text now against its text
+   formatted, with one line of context and cut at 20,000 characters (task 52).
 
 Over 12 C++ files copied from one of the lead's projects, 8 CRLF and 4 LF, each given one new badly formatted
 line and one line with doubled spaces, `io.format` wrote the same bytes as the script agents there ran 128

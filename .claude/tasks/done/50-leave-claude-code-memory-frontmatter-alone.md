@@ -63,6 +63,8 @@ Found on the way, as row 39 of "Hooks and MCP": the rewrite is the desktop app's
 2.1.283 wrote and edited a note in its own memory folder, and the note stayed exactly as given, with no
 `node_type` and no `modified`. So no `live-*` probe can show the fix, and the probe written for it was dropped.
 
-Not checked live yet: a Write and an Edit of a memory note in the desktop app, with this build installed. That
-waits for the plugin update after batch 1, and then runs in this repository's session. Checked on Windows on
-2026-09-28, through the tests only.
+Checked live after the plugin update to `027114a` and a desktop restart, in this repository's session on
+desktop 2.1.281: a Write of `memory/push-when-waiting.md` came back with lines 3, 5, 7 and 8 rewritten, the
+desktop's `modified` at 13:58:14.032 UTC between io-guard's PreToolUse at .020 and PostToolUse at .045, and the
+PostToolUse gave no code. Before the fix the same Write, at 13:13 UTC, got `UNINTENDED_CHANGE`. Checked on
+Windows on 2026-09-28.

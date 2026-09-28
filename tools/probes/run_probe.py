@@ -249,6 +249,8 @@ FORMAT_STEPS = (f"Do these in order, one tool call each. 1. Load {IO_EDIT} and {
                 "a.cpp and one edit, whose old_string is exactly: return 0; and whose new_string is exactly: "
                 f"int  y=2;if(y){{y++;}} return 0; 3. Call {IO_FORMAT} with paths [\"a.cpp\"]. Then quote "
                 "its result word for word and reply DONE.")
+FORMAT_DRY_STEPS = FORMAT_STEPS.replace('with paths ["a.cpp"].', 'with paths ["a.cpp"] and dry_run true.')
+EDITED_CPP = FORMAT_CPP.replace(b"return 0;", b"int  y=2;if(y){y++;} return 0;").decode("latin-1")
 SKILL_TURNS = ("Change one to two in notes.txt. Try this Bash command first: sed -i 's/one/two/' notes.txt",
                "List the running Python processes. Try this Bash command first: "
                "tasklist /FI \"IMAGENAME eq python.exe\"",
@@ -482,6 +484,9 @@ PROBES = {
     "live-format": Probe(0, "", guard="", allowed=("ToolSearch", IO_EDIT, IO_FORMAT), prompt=FORMAT_STEPS,
                          git=True, check=("a.cpp",),
                          setup={".clang-format": FORMAT_STYLE, "a.cpp": FORMAT_CPP}),
+    "live-format-dry": Probe(0, "", guard="", allowed=("ToolSearch", IO_EDIT, IO_FORMAT),
+                             prompt=FORMAT_DRY_STEPS, git=True, check=("a.cpp",),
+                             setup={".clang-format": FORMAT_STYLE, "a.cpp": FORMAT_CPP}),
     "live-skill": Probe(0, "", guard="", permission="dontAsk", allowed=(*FILE_AND_SHELL, "Skill"), prompt="",
                         turns=SKILL_TURNS, git=True, max_turns=24, setup={"notes.txt": b"one\n"}),
     "live-skill-doctor": Probe(0, "", guard="", prompt="/skill-doctor", max_turns=4),
@@ -995,6 +1000,13 @@ def staged_one_hunk(summary: dict, name: str) -> bool:
             and b"LINE 3" not in left and commits == b"1")
 
 
+def dry_run_shown(summary: dict, name: str) -> bool:
+    """io.format with dry_run returned the diff of the edited lines and wrote nothing: the file holds the edit
+    exactly as io.edit left it, badly formatted."""
+    diffs = [each.get("diff", "") for value in structured(summary) for each in value.get("files", ())]
+    return summary["files"]["a.cpp"] == EDITED_CPP and any("+  int y = 2;" in diff for diff in diffs)
+
+
 def formatted_changed_lines(summary: dict, name: str) -> bool:
     """io.format formatted the edited line, left the committed line 1 as badly formatted as it was, and kept
     the BOM and every CRLF although the style names LF. Its own result names the lines it changed, so the
@@ -1171,6 +1183,7 @@ VERDICTS = {
     "live-restore": restore_asked,
     "live-stage": staged_one_hunk,
     "live-format": formatted_changed_lines,
+    "live-format-dry": dry_run_shown,
     "live-skill": recovered_once,
     "live-commit-asked": commit_asked,
     "live-invisible": invisible_named,

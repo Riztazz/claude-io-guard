@@ -138,7 +138,9 @@ them changes a file, the built-in Edit tool needs a fresh Read of it, and every 
 `io.format` hands the formatter only the lines `git diff` says changed, or the whole file when git has no
 commit of it, or the lines the call names. The file keeps its line endings and BOM whatever the formatter's
 config says, and a change the formatter makes away from those lines, such as a `// namespace` closer at the
-end of the file, stays out. When the formatter fails on one file, no file is written.
+end of the file, stays out. When the formatter fails on one file, no file is written. With `dry_run` set, it
+writes nothing and returns each file's diff, so you see what the formatter would change first, and `lines`
+takes each file's own lines in one call.
 
 `io.run` meets your deny and ask rules for Bash and PowerShell, from every settings file Claude Code reads. A
 deny rule refuses the run, and an ask rule brings up Claude Code's own permission prompt. A background run's

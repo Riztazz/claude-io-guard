@@ -121,6 +121,8 @@ def type_schema(hint: Any, loose: bool) -> dict:
         return {"type": "string"}
     if origin in (list, tuple, Sequence) and args:
         return {"type": "array", "items": type_schema(args[0], loose)}
+    if origin in (dict, Mapping) and len(args) == 2:
+        return {"type": "object", "additionalProperties": type_schema(args[1], loose)}
     if hint in (dict, Mapping) or origin in (dict, Mapping):
         return {"type": "object"}
     if dataclasses.is_dataclass(hint):
