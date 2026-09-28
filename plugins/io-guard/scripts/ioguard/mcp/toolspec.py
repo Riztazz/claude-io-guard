@@ -51,14 +51,15 @@ class InvalidArguments(ValueError):
 class ToolCall:
     """What a handler receives beside its input: the session's context, built on first use, the call's
     cancel token and progress reporter, the project folder, and the folder a result too long for one answer
-    goes into. The session id and the request's traceparent go into the call's telemetry line."""
+    goes into. The session id, the request's traceparent and the tool use id Claude Code names go into the
+    call's telemetry line, so it shares a trace with the hooks of the same tool use."""
 
     def __init__(self, contexts: Callable[[], Context], cancel: CancelToken, cwd: Path,
                  spill: Path | None, progress: ProgressReporter | None = None, session: str = "io-server",
-                 traceparent: str | None = None) -> None:
+                 traceparent: str | None = None, tool_use_id: str | None = None) -> None:
         self.contexts, self.cancel, self.cwd, self.spill = contexts, cancel, cwd, spill
         self.progress = progress or ProgressReporter()
-        self.session, self.traceparent = session, traceparent
+        self.session, self.traceparent, self.tool_use_id = session, traceparent, tool_use_id
         self.built: Context | None = None
 
     @property
@@ -274,7 +275,7 @@ def recorded(spec: ToolSpec, given: Any, call: ToolCall, latency_ms: float, outp
             platform=ctx.platform.os, project=call.cwd.name or None, tool=spec.name,
             code=None if result is None else result.code.value,
             severity=None if result is None else result.severity.value, latency_ms=round(latency_ms, 1),
-            error=error, trace=trace_from(None, call.traceparent),
+            error=error, tool_use_id=call.tool_use_id, trace=trace_from(call.tool_use_id, call.traceparent),
             file_ext=Path(named).suffix or None if isinstance(named, str) and named else None,
             bytes=written() if written else None))
     except Exception:

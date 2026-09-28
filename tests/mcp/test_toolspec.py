@@ -10,8 +10,9 @@ from pathlib import Path
 from ioguard.lib.context import Context, LiveFs
 from ioguard.lib.platform import detect
 from ioguard.lib.results import Code
-from ioguard.lib.telemetry import Telemetry
+from ioguard.lib.telemetry import Telemetry, trace_from
 from ioguard.mcp.progress import CancelToken
+from ioguard.mcp.protocol import Protocol
 from ioguard.mcp.server import registry
 from ioguard.mcp.toolspec import NO_DECISION, InvalidArguments, ToolCall, ToolRegistry, ToolSpec, doc, schema
 
@@ -158,6 +159,16 @@ class EachIoToolCallIsOneTelemetryLine(unittest.TestCase):
         self.assertEqual([(line["tool"], line["code"], line["severity"]) for line in self.lines()],
                          [("io.edit", "ANCHOR_NOT_FOUND", "refused"), ("io.read", "CANCELLED", "warning")],
                          "the code the model saw is the code the line holds")
+
+    def test_the_tool_use_id_claude_code_names_joins_the_line_to_its_hooks_trace(self):
+        protocol = Protocol(registry(), {"name": "io-guard"},
+                            lambda cancel: ToolCall(lambda: self.ctx, cancel, self.root, None, session="s1"))
+        meta = {"claudecode/toolUseId": "toolu_01", "progressToken": 1}
+        protocol.call({"name": "io.read", "arguments": {"path": "a.txt"}, "_meta": meta}, CancelToken(), None)
+        line = self.lines()[0]
+        self.assertEqual((line["tool_use_id"], line["trace"]["trace_id"]),
+                         ("toolu_01", trace_from("toolu_01", None).trace_id),
+                         "row 38: the id the hooks see, and the trace a hook event derives from it")
 
     def test_a_hook_tool_records_nothing_here(self):
         self.run_call("hook.ping", {})

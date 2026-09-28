@@ -25,6 +25,7 @@ SUPPORTED = (MODERN_VERSION, LEGACY_VERSIONS[0])
 VERSION_KEY = "io.modelcontextprotocol/protocolVersion"
 CAPABILITIES_KEY = "io.modelcontextprotocol/clientCapabilities"
 SERVER_KEY = "io.modelcontextprotocol/serverInfo"
+TOOL_USE_KEY = "claudecode/toolUseId"     # the tool use id Claude Code's hooks see for the same call
 CAPABILITIES = {"tools": {"listChanged": False}}
 TTL_MS = 300_000
 PARSE_ERROR = -32700
@@ -145,8 +146,9 @@ class Protocol:
         token = meta.get("progressToken") if isinstance(meta, Mapping) else None
         call = self.calls(cancel)
         call.progress = ProgressReporter(notify, token)
-        traceparent = meta.get("traceparent") if isinstance(meta, Mapping) else None
-        call.traceparent = traceparent if isinstance(traceparent, str) else None
+        given = meta if isinstance(meta, Mapping) else {}
+        call.traceparent = given.get("traceparent") if isinstance(given.get("traceparent"), str) else None
+        call.tool_use_id = given.get(TOOL_USE_KEY) if isinstance(given.get(TOOL_USE_KEY), str) else None
         try:
             return self.tools.call(name, arguments, call)
         except InvalidArguments as failure:

@@ -1201,6 +1201,7 @@ class ToolCall:                                           # the context, built o
     spill: Optional[Path]                                 # the folder a long result is saved in
     session: str                                          # CLAUDE_CODE_SESSION_ID, for telemetry, task 38
     traceparent: Optional[str]                            # from the request's _meta, task 38
+    tool_use_id: Optional[str]                            # _meta claudecode/toolUseId, context.md row 38
 
 class ToolRegistry:
     def register(self, spec: ToolSpec) -> None: ...
@@ -1480,7 +1481,9 @@ traceback, and the traceback itself goes to `debug.log` only when `telemetry.deb
 `ToolRegistry.call` writes one line per io tool call (task 38): `surface` `mcp_tool`, `event` `tools/call`,
 `tool` the io tool's name, `code` and `severity` of a refusal, `CANCELLED` or `GUARD_ERROR`, or null when the
 call answered, `latency_ms`, `file_ext` of the call's `path` or first of its `paths`, and `bytes`, what the
-call wrote to the user's files. A hook tool writes none, because the pipeline records each hook call. A line
+call wrote to the user's files. The line's `tool_use_id` is the one Claude Code sends in the call's `_meta` as
+`claudecode/toolUseId`, and its trace derives from it as a hook event's does, so an `io.run` call and its
+PreToolUse decision share a trace. A hook tool writes none, because the pipeline records each hook call. A line
 that cannot be written is logged, and the call answers as it would have.
 
 Trace context follows W3C Trace Context. An MCP call takes `traceparent` from `_meta` when present. A hook
