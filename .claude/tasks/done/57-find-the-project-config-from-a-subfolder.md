@@ -64,8 +64,9 @@ Evidence:
 
 - `python tests/run_all.py` ran 849 tests, all passing, up from 847.
 - `live-subfolder-config` passed on 2.1.281 and 2.1.283, and again on 2.1.283 after its prompt source went
-  ASCII: after `cd sub`, a Write of `name = "café"` to `sub/x.py` got `NON_ASCII_ADDED` from the root's
-  `.claude/io-guard.json`. Before the change the config was looked for in `sub/.claude/` and not found.
+  ASCII: after `cd sub`, a Write of `name = "cafe"` with an accented e to `sub/x.py` got `NON_ASCII_ADDED`
+  from the root's `.claude/io-guard.json`. Before the change the config was looked for in `sub/.claude/` and
+  not found.
 - Not built: an io tool's call on a file outside the project still runs with the project's config. Only the
   hooks take `for_file`.
 - The done-when above runs in this repository's desktop session once the plugin is updated.
