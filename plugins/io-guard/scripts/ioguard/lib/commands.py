@@ -44,8 +44,8 @@ def command_problem(kind: Kind, extension: str, command: Any) -> str | None:
         return f"{extension!r} is not a file extension such as .py."
     if (not isinstance(command, list) or not command or not all(isinstance(part, str) for part in command)
             or not any(all(mark in part for mark in kind.marks) for part in command)):
-        return (f"The command for {extension} must be a list of strings, the program first, with {kind.need}, "
-                f"such as {kind.example}.")
+        return (f"The command for {extension} must be a list of strings, the program first, with "
+                f"{kind.need}, such as {kind.example}.")
     return None
 
 

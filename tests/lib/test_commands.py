@@ -44,7 +44,7 @@ class TheShapeIsChecked(unittest.TestCase):
 class TheCommandForAFile(unittest.TestCase):
     def test_the_extension_picks_the_command_as_written(self):
         self.assertEqual(command_for({".py": PY}, Path("C:/other/a.PY"), WINDOWS), tuple(PY),
-                         "the extension matches without case, and the command comes back as the user wrote it")
+                         "the extension matches without case, and the command comes back as written")
 
     def test_a_project_root_wins_for_its_own_files(self):
         value = {".py": PY, "C:/Work/App": {".py": LINT}}
@@ -60,13 +60,14 @@ class TheCommandForAFile(unittest.TestCase):
 class ACommandIsFilledIn(unittest.TestCase):
     def test_the_path_fills_file(self):
         path = Path("C:/other/a.py")
-        self.assertEqual(filled(PY, path), ("python", "-m", "py_compile", str(path)), "{file} becomes the path")
+        self.assertEqual(filled(PY, path), ("python", "-m", "py_compile", str(path)),
+                         "{file} becomes the path")
 
     def test_the_range_argument_repeats_once_per_range(self):
         path = Path("C:/work/a.cpp")
         self.assertEqual(filled(CLANG_FORMAT, path, [(3, 5), (9, 9)]),
-                         ("clang-format", "--style=file", "--fallback-style=none", f"--assume-filename={path}",
-                          "--lines=3:5", "--lines=9:9"),
+                         ("clang-format", "--style=file", "--fallback-style=none",
+                          f"--assume-filename={path}", "--lines=3:5", "--lines=9:9"),
                          "each range gets its own --lines, in the order given")
 
 

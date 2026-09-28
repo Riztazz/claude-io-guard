@@ -52,7 +52,8 @@ def parser() -> argparse.ArgumentParser:
     rate.add_argument("--since", type=measure.since_date, default=measure.ADOPTED,
                       help="the first day with io-guard on, YYYY-MM-DD")
     rate.add_argument("--data", type=Path, action="append", default=[],
-                      help="a plugin data folder for the guard's own time, every installed io-guard's by default")
+                      help="a plugin data folder for the guard's own time, every installed io-guard's by "
+                           "default")
     return top
 
 

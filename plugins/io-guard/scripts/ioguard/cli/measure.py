@@ -17,8 +17,9 @@ ADOPTED = "2026-09-28"               # task 30 turned io-guard on in the lead's 
 SHELLS = frozenset({"Bash", "PowerShell"})
 WRITERS = frozenset({"Edit", "MultiEdit", "Write"})
 SCRIPT = re.compile(r"scratchpad/[^/]+\.(?:py|ps1|sh|js)$", re.I)
-WRITES_A_FILE = re.compile(r"open\([^)]*['\"][wax]b?\+?['\"]|\.write_(?:text|bytes)\(|Set-Content|Add-Content|"
-                           r"Out-File|WriteAll(?:Text|Lines|Bytes)|>\s*\"?\$|shutil\.(?:copy|move)")
+WRITES_A_FILE = re.compile(r"open\([^)]*['\"][wax]b?\+?['\"]|\.write_(?:text|bytes)\(|Set-Content"
+                           r"|Add-Content|Out-File|WriteAll(?:Text|Lines|Bytes)|>\s*\"?\$"
+                           r"|shutil\.(?:copy|move)")
 
 
 @dataclass(frozen=True)
@@ -40,7 +41,8 @@ def scratch_writer(record: Record) -> str | None:
     script written again is still one script."""
     path = str(record.input.get("file_path") or "").replace("\\", "/")
     text = str(record.input.get("content") or "")
-    return path.lower() if record.tool == "Write" and SCRIPT.search(path) and WRITES_A_FILE.search(text) else None
+    writes = record.tool == "Write" and SCRIPT.search(path) and WRITES_A_FILE.search(text)
+    return path.lower() if writes else None
 
 
 MEASURES = (
@@ -51,7 +53,8 @@ MEASURES = (
     Measure("Modified-since-read errors", "at least 50% lower", "30",
             flagged("modified-since-read", tools=WRITERS), 0.5),
     Measure("Git LF and CRLF warnings", "none", "328", flagged("git-eol", tools=SHELLS), None),
-    Measure("New scratchpad scripts that write files", "at least 80% lower", "417 on disk", scratch_writer, 0.8),
+    Measure("New scratchpad scripts that write files", "at least 80% lower", "417 on disk", scratch_writer,
+            0.8),
 )
 FEWEST_CALLS = 1_000                 # a period with fewer calls gives no verdict
 

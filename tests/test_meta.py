@@ -102,5 +102,15 @@ class FixturesKeepTheirRecordedBytes(unittest.TestCase):
                          ".gitattributes marks tests/fixtures -text, so git never converts a fixture")
 
 
+class PythonLinesStopAt110(unittest.TestCase):
+    def test_no_python_line_in_the_repository_is_longer_than_110_characters(self):
+        long = [f"{path.relative_to(REPO).as_posix()}:{number}"
+                for folder in ("plugins", "tests", "tools") for path in sorted((REPO / folder).rglob("*.py"))
+                if "__pycache__" not in path.parts
+                for number, line in enumerate(path.read_bytes().decode("utf-8").splitlines(), 1)
+                if len(line) > 110]
+        self.assertEqual(long, [], "D17: code and comments stop at 110 characters")
+
+
 if __name__ == "__main__":
     unittest.main()
