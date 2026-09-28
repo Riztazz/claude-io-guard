@@ -113,8 +113,9 @@ plugins/io-guard/
         tools_hook.py              hook.pre_tool_use, hook.post_tool_use, hook.post_tool_use_failure, hook.ping
         skill.py                   the skill page's tool and code tables, which tools/skill.py writes
       cli/
-        main.py                    corpus, replay, precommit, report and measure today, then probe, check,
-                                   profile, codes, serve, doctor
+        main.py                    corpus, replay, precommit, report, measure, check and profile today, then
+                                   probe, codes, serve, doctor
+        check.py                   check, render, profiled: one command through the pipeline, nothing written
         labels.py                  the baseline's labels for a recorded call's result and command shape
         corpus.py                  Record, build, load: transcripts -> corpus/<project>.jsonl
         replay.py                  Replay, replay, render: the corpus through the pipeline, offline

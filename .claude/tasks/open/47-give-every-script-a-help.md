@@ -21,7 +21,7 @@ Checked the same day with `--help` on each:
 
 | Script | Today |
 |---|---|
-| `tools/corpus.py`, `replay.py`, `report.py`, `measure.py` | argparse usage, through `cli/main.py` |
+| `tools/corpus.py`, `replay.py`, `report.py`, `measure.py`, `ioguard.py` | argparse usage, through `cli/main.py` |
 | `plugins/io-guard/scripts/precommit.py` | argparse usage |
 | `tools/probes/run_probe.py` | prints its module docstring |
 | `tools/skill.py` | prints nothing |

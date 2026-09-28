@@ -5,6 +5,8 @@
     precommit
     report [--data FOLDER ...] [--days 7]
     measure NAME=FOLDER [NAME=FOLDER ...] [--since YYYY-MM-DD] [--data FOLDER ...]
+    check COMMAND [--tool Bash|PowerShell] [--cwd FOLDER]
+    profile FILE [FILE ...]
 """
 import argparse
 import json
@@ -17,8 +19,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ioguard.checks.registry import default_registry
-from ioguard.cli import corpus, measure, precommit, replay, report
+from ioguard.cli import check, corpus, measure, precommit, replay, report
 from ioguard.lib.context import home_folder
+from ioguard.lib.decisions import Verdict
 
 
 def source(text: str) -> tuple[str, Path]:
@@ -55,6 +58,14 @@ def parser() -> argparse.ArgumentParser:
     rate.add_argument("--data", type=Path, action="append", default=[],
                       help="a folder io-guard wrote telemetry to, for the guard's own time, io-guard's "
                            "own by default")
+    one = commands.add_parser("check", help="what every check decides about one command, which never runs, "
+                                            "exit 1 on a refusal")
+    one.add_argument("shell_command", metavar="COMMAND")
+    one.add_argument("--tool", choices=["Bash", "PowerShell"], default="Bash")
+    one.add_argument("--cwd", type=Path, default=Path.cwd(),
+                     help="the folder it runs from, this one by default")
+    shape = commands.add_parser("profile", help="the profile line a Read of each file gets")
+    shape.add_argument("files", nargs="+", type=Path, metavar="FILE")
     return top
 
 
@@ -98,4 +109,17 @@ def main(argv: Sequence[str]) -> int:
             folders = args.data or [home_folder(os.environ)]
             telemetry = report.summarise(report.files(folders, since), since)
             print(measure.render(before, after, report.spread(telemetry.hook_ms).get("p95")))
+        case "check":
+            if not args.cwd.is_dir():
+                print(f"{args.cwd} is not a folder. Name the folder the command runs from with --cwd.")
+                return 1
+            outcome = check.check(args.shell_command, args.cwd.resolve(), os.environ, args.tool)
+            print(check.render(outcome))
+            return 1 if outcome.verdict is Verdict.DENY else 0
+        case "profile":
+            missing = [path for path in args.files if not path.is_file()]
+            if missing:
+                print(f"{missing[0]} is not a file.")
+                return 1
+            print("\n".join(check.profiled(path) for path in args.files))
     return 0
