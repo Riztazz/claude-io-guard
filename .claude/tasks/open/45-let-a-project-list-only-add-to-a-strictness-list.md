@@ -29,6 +29,9 @@ while asking how CLICKER could keep `.py` and `.md` ASCII.
     `code_pages`, where replacing is the point
   - `commit_policy.forbid`, which a project may not set at all
 - Test a project list that adds to, and one that tries to shrink, a user list, for each key marked.
+- Let `ascii_only` name a whole file name as well as an extension. It matches `path.suffix`, which is empty
+  for `pyrun`, `LICENSE`, `.gitignore`, `.gitattributes` and `.editorconfig`, so this repository's own list,
+  set on 2026-09-28 when the lead asked for ASCII in everything written here, cannot reach them.
 - Say in the README which lists a project adds to.
 
 ## Where

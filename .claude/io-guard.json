@@ -5,6 +5,10 @@
       "build_commands": ["python tests/run_all.py", "python -m unittest", "python -m pytest", "pytest",
                          "python tools/probes/run_probe.py", "python tools/replay.py", "make", "cmake --build",
                          "ninja", "msbuild", "dotnet build", "dotnet test", "npm test", "npm run", "tox"]
+    },
+    "verify.write": {
+      "ascii_only": [".py", ".md", ".json", ".jsonl", ".yml", ".yaml", ".svg", ".html", ".cmd", ".sh", ".txt",
+                     ".toml", ".cfg", ".ini", ".js", ".css"]
     }
   }
 }
