@@ -11,15 +11,15 @@ bashEditDiffEnabled, adds its files. Changes under the skip_trees globs are left
 index alone: a listed file whose status moved while its size and time did not, as git add, git commit and git
 reset leave one, and a file git removed from the index that is still on disk. A tracked file that changed
 while an interpreter ran a script file also gets SHELL_WRITE, because that write skipped the checks an Edit
-gets.
+gets, unless a git command in the same command could have changed it.
 """
 import fnmatch
 from pathlib import Path
 
 from ioguard.checks.base import Check, CheckMeta, Cost
-from ioguard.checks.shell_writes import tracked
+from ioguard.checks.shell_writes import located, resolve, tracked
 from ioguard.checks.verify_write import Written, compare
-from ioguard.lib import paths, shell
+from ioguard.lib import commit_message, paths, shell
 from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context, ShellSnapshot, repository_root
 from ioguard.lib.decisions import Decision, Verdict
@@ -29,6 +29,37 @@ from ioguard.lib.profile import profile
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity, callable_name
 
 LISTED = 8                   # paths each part of the report names before it gives the rest as a count
+TREE_WRITERS = frozenset({"am", "apply", "cherry-pick", "merge", "pull", "rebase", "revert", "switch"})
+RESET_TREE = frozenset({"--hard", "--merge", "--keep"})
+STASH_READS = frozenset({"list", "show"})
+
+
+def git_changes(simple: shell.SimpleCommand, cwd: Path | None, ctx: Context) -> frozenset[Path] | None:
+    """The files a git command can change in the working tree: the paths it names, none, or None when it can
+    change any file. git rm is left out, since it only deletes."""
+    at = commit_message.subcommand(simple.words)
+    if at is None:
+        return frozenset()
+    name, rest = simple.words[at], simple.words[at + 1:]
+    match name:
+        case "mv" | "restore":
+            given = [word for word in rest if not word.startswith("-")]
+        case "checkout" if "--" in rest:
+            given = list(rest[rest.index("--") + 1:])
+        case "checkout":
+            return None                               # a branch or a path, and a branch changes any file
+        case "reset":
+            return None if RESET_TREE & set(rest) else frozenset()
+        case "stash":
+            return frozenset() if rest[:1] and rest[0] in STASH_READS else None
+        case _:
+            return None if name in TREE_WRITERS else frozenset()
+    found = [resolve(word, cwd, ctx) for word in given]
+    return None if None in found else frozenset(found)
+
+
+def under(path: Path, folders: frozenset[Path]) -> bool:
+    return any(path == folder or path.is_relative_to(folder) for folder in folders)
 
 
 def status(ctx: Context, root: Path | None) -> frozenset[tuple[str, str]] | None:
@@ -131,10 +162,19 @@ class Touched(Check):
     @staticmethod
     def scripted(touched: list[Path], event: Event, ctx: Context) -> tuple[Result, ...]:
         """SHELL_WRITE for the tracked files a command changed while an interpreter ran a script file in it,
-        since those writes skipped the checks an Edit gets."""
-        runs = [] if event.tool is not Tool.BASH else \
-            [run for simple in shell.commands(event.command or "") if (run := shell.script_run(simple))]
-        written = [path for path in touched if runs and tracked(path, ctx)]
+        since those writes skipped the checks an Edit gets. A file a git command in it names, as git mv
+        does, is git's. A git command that can change any file, such as a branch checkout, leaves no script
+        named. A redirect, sed -i, tee, cp or mv onto a tracked file never gets here, since shell.writes
+        refuses it before it runs."""
+        simples = shell.commands(event.command or "") if event.tool is Tool.BASH else ()
+        runs = [run for simple in simples if (run := shell.script_run(simple))]
+        if not runs:
+            return ()
+        by_git = [git_changes(simple, cwd, ctx) for simple, cwd in located(simples, event, ctx)]
+        if None in by_git:
+            return ()
+        named_by_git = frozenset().union(*by_git)
+        written = [path for path in touched if tracked(path, ctx) and not under(path, named_by_git)]
         if not written:
             return ()
         batch, script = callable_name("io.edit"), runs[0].script

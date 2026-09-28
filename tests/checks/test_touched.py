@@ -105,6 +105,27 @@ class TheCommandsChangesAreNamed(unittest.TestCase):
         self.assertEqual([code for code, _ in found["make"]], [Code.TOUCHED_BY_SHELL],
                          "a build that changes a file is no script run")
 
+    def test_a_file_git_changed_is_not_blamed_on_the_script(self):
+        blamed = {}
+        for command in ("git mv a.cpp b.cpp && python check.py", "git checkout HEAD -- b.cpp; python m.py",
+                        "cd Source && git mv x.cpp ../b.cpp && python ../check.py",
+                        "git -C . checkout main; python check.py", "git stash pop && python check.py",
+                        "git reset --hard && python check.py", "git mv $F b.cpp && python check.py",
+                        "git checkout HEAD -- a.cpp; python m.py", "git add b.cpp && python check.py",
+                        "git stash list && python check.py", "git rm -q c.cpp && python check.py",
+                        "git reset -q -- b.cpp && python check.py"):
+            session = Session()
+            session.git.tracked = frozenset({CWD / "b.cpp"})
+            session.run(events.bash(command, CWD))
+            session.git.current_status = GitStatus((entry("b.cpp", " M"),))
+            blamed[command] = Code.SHELL_WRITE in [result.code for result in session.after(command=command)]
+        self.assertEqual([command for command, named in blamed.items() if named],
+                         ["git checkout HEAD -- a.cpp; python m.py", "git add b.cpp && python check.py",
+                          "git stash list && python check.py", "git rm -q c.cpp && python check.py",
+                          "git reset -q -- b.cpp && python check.py"],
+                         "a file git names is git's, a git command that can change any file blames no "
+                         "script, and one that changes no file in the tree leaves the script named")
+
     def test_skip_trees_leave_changes_out(self):
         session = Session(skip=["Content/**"])
         session.git.current_status = GitStatus((entry("Content/Hero.uasset", " M"),
