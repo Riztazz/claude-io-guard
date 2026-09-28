@@ -169,6 +169,10 @@ RESULTS = ("Do these in order, one tool call each, and never retry. 1. Run the B
 RESULTS_SEEN = ("OUTPUT_SAVED: The output was",
                 "EXIT_BENIGN: Exit code 1 is the answer grep gives when no line matches",
                 "PIPE_HIDES_EXIT: The output has 1 line that reports errors (1 exception)")
+PIPE_TWICE = ("Do these in order, one tool call each, and never retry. 1. Run the Bash command: "
+              "python -m unittest discover -s . 2>&1 | tail -3 2. Run the same Bash command again. Then "
+              "reply DONE.")
+PIPE_WARNED = "PIPE_HIDES_EXIT: This command pipes python -m unittest into tail"
 IO_READ = "mcp__plugin_io-guard_io__io_read"
 SERVER_READ = (f"Do these in order, one tool call each. 1. Run the Bash command: echo hi 2. Load {IO_READ} "
                f"with the ToolSearch tool, with the query select:{IO_READ} 3. Call {IO_READ} with path "
@@ -451,6 +455,7 @@ PROBES = {
                                                       for n in range(9000))}),
     "live-touched": Probe(0, "", guard="", allowed=("Read", "Bash"), git=True, prompt=TOUCHED,
                           check=("a.cpp", "conv.txt"), setup=TOUCHED_FILES),
+    "live-pipe-once": Probe(0, "", guard="", allowed=("Bash",), prompt=PIPE_TWICE, max_turns=6),
     "live-results": Probe(0, "", guard="", allowed=("Bash", "PowerShell"), prompt=RESULTS, max_turns=10,
                           setup={"s.txt": b"one\ntwo\n"}),
     "live-server": Probe(0, "", guard="", allowed=("Bash", "ToolSearch", IO_READ), prompt=SERVER_READ,
@@ -812,14 +817,23 @@ def debug_has(name: str, needle: str) -> bool:
 def context_reached(name: str, needle: str) -> bool:
     """A hook's additionalContext holding needle is in the session transcript, as the attachment the model
     reads. The model's own summary of what it saw leaves lines out, so the verdicts read the transcript."""
+    return context_count(name, needle) > 0
+
+
+def context_count(name: str, needle: str) -> int:
+    """How many of the session transcript's hook_additional_context attachments hold needle."""
     folder, _ = latest(name)
     project = Path.home() / ".claude" / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(folder / "work"))
-    for path in project.glob("*.jsonl"):
-        for line in path.read_bytes().splitlines():
-            attachment = json.loads(line).get("attachment") or {}
-            if attachment.get("type") == "hook_additional_context" and needle in json.dumps(attachment):
-                return True
-    return False
+    attachments = [json.loads(line).get("attachment") or {} for path in project.glob("*.jsonl")
+                   for line in path.read_bytes().splitlines()]
+    return sum(1 for attachment in attachments if attachment.get("type") == "hook_additional_context"
+               and needle in json.dumps(attachment))
+
+
+def piped_twice_warned_once(summary: dict, name: str) -> bool:
+    """Both piped runs happened, and the warning before a run reached the model once."""
+    runs = [call for call in calls(name) if call["name"] == "Bash" and "unittest" in str(call["input"])]
+    return len(runs) == 2 and context_count(name, PIPE_WARNED) == 1
 
 
 def defaults_applied(summary: dict, name: str) -> bool:
@@ -1172,6 +1186,7 @@ VERDICTS = {
         "TOUCHED_BY_SHELL: This command changed a.cpp, read before it",
         "EOL_MISMATCH: This command changed conv.txt from CRLF to LF line endings.")),
     "live-results": results_shown,
+    "live-pipe-once": piped_twice_warned_once,
     "live-server": lambda s, n: served(s, n, "legacy"),
     "live-server-modern": lambda s, n: served(s, n, "modern"),
     "live-server-down": down_named,

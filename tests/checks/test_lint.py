@@ -152,6 +152,14 @@ class APipeHidesABuildsExitCode(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertEqual(codes(command), (Verdict.OBSERVE, ()), "no build's exit code is lost")
 
+    def test_the_warning_goes_out_once_a_session(self):
+        ctx = context()
+        first, again = (codes("python -m unittest 2>&1 | tail -3", ctx=ctx) for _ in range(2))
+        self.assertEqual((first, again, codes("make | tail")),
+                         ((Verdict.ALLOW, (Code.PIPE_HIDES_EXIT,)), (Verdict.OBSERVE, ()),
+                          (Verdict.ALLOW, (Code.PIPE_HIDES_EXIT,))),
+                         "the second pipe of a session gets nothing before it runs, and a new session warns")
+
     def test_a_projects_own_build_command_counts(self):
         ctx = context(build_commands=["build.bat"])
         self.assertEqual(codes('"C:/Engine/Build.bat" Game | tail -5', ctx=ctx),

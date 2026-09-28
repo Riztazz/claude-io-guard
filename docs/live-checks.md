@@ -126,6 +126,7 @@ match `.claude/tasks/context.md`, "The hook entry point".
 | A shell command that changed a file the model had read names it with the step to read it again, and one that converted its endings names that too | `live-touched` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | An Edit of a read-only file that git marks lockable is refused with the `git lfs lock` step | `live-read-only` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | An Edit of a file another process holds, sharing reads only, fails with EPERM, and the model learns the holder's name and process id | `live-locked` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+| Two piped `python -m unittest` runs in one session get the warning before a run once, for the first | `live-pipe-once` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | `io.format` with `dry_run` returns the diff of the edited lines and leaves the file as `io.edit` left it | `live-format-dry` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | A replace_all Edit whose lost trailing space would join `.Branch.ToInt(),1` is refused with `SPACE_DROPPED`, and the model's Edits one character longer leave `ToInt(), 1` and `ToInt(), 2` | `live-space-dropped` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | With `conform.write` off, a Write that drops a BOM and CRLF gets both put back after it, the model sees `EOL_CONVERTED`, and the next Edit lands in the file's own bytes | `live-verify`, `live-verify-direct` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |

@@ -76,7 +76,7 @@ plugins/io-guard/
                                    write.locks: FILE_LOCKED after a failed write
         transport_body.py          BODY_MOVED_TO_FILE, TRANSPORT_BUDGET, BACKSLASH_TRANSPORT
         shell_writes.py            SHELL_WRITE, scratch script warning
-        lint.py                    shell.lint: quoting, escapes, dialect, Python bodies, PIPE_HIDES_EXIT
+        lint.py                    shell.lint: quoting, escapes, dialect, Python bodies, PIPE_HIDES_EXIT once
         win_paths.py               win.paths: MSYS_PATH for slash arguments and cmd /c, RESERVED_NAME for nul
         conform_write.py           conform.write: EOL_CONVERTED, BOM_RESTORED, EOL_MISMATCH for a mixed file
         conform_edit.py            conform.edit: INDENT_MISMATCH, SPACE_DROPPED, the indent and the join

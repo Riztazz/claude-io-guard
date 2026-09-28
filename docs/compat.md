@@ -32,7 +32,8 @@ ran on 2.1.283 only. Task 17 added `write-quiet`, `edit-trailing` and `live-conf
 `live-edit-parallel`, task 25 `live-run-body`, `live-run-background`, `live-run-denied` and
 `live-run-asked`, task 26 `live-format`, task 27 `live-skill` and `live-skill-doctor`, and task 29
 `live-commit-asked` and `live-commit-policy`, task 39 `live-invisible`, task 32 `live-restore` and `live-stage`,
-task 49 `live-space-dropped`, and task 52 `live-format-dry`, all of which passed on both.
+task 49 `live-space-dropped`, task 52 `live-format-dry`, and task 54 `live-pipe-once`, all of which passed on
+both.
 
 The design review named 2.1.281 as the first release whose `mcp_tool` hooks wait for their server. Today's hooks
 reference names no version for that, so the floor rests on the probes instead. Older releases aren't tested.

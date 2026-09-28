@@ -3,7 +3,8 @@ title: Say once per session that a pipe hides the exit code
 stage: I
 area: transport
 created: 2026-09-28
-status: open
+status: done
+claimed-by: Pala Elektroniczna, session 7eeb509f
 depends-on: [13, 22]
 findings: []
 platforms: [windows, macos]
@@ -38,3 +39,22 @@ A warning an agent reads 35 times and never acts on teaches it to skip the next 
 
 - A session with many piped test runs gets the pre-run `PIPE_HIDES_EXIT` once, and every after-run
   `PIPE_HIDES_EXIT` as before.
+
+## What changed
+
+- `checks/lint.py`: `hidden_exit` returns the build and the command it pipes into, or None, and adds nothing.
+  `Lint.bash` warns with it only the first time a session pipes a build, through
+  `ctx.session.first_time("pipe-hides-exit")`. `shell.results` is unchanged.
+- Tests: `tests/checks/test_lint.py`, a session that pipes twice warns once, and a new session warns again.
+- `tools/probes/run_probe.py`: `live-pipe-once`, and `context_count`, which `context_reached` now reads.
+- Docs: `docs/design/architecture.md` (the layout line), `docs/live-checks.md`, `docs/compat.md`.
+
+Evidence:
+
+- `python tests/run_all.py` ran 833 tests, all passing, up from 832.
+- `live-pipe-once` passed on 2.1.281 and 2.1.283: two piped runs, one warning before them. `live-results`
+  passed again on 2.1.283, so the warning after a run still names what the pipe hid.
+- The corpus of 2026-09-27 holds 58,779 Bash calls, and none pipes a command from the default build list, so
+  its count is 0 before and after. The lead's projects build through their own commands, which a project's
+  `build_commands` names. This repository's session of 2026-09-28 got 35 before its runs, and would get 1.
+- Checked on Windows on 2026-09-28.

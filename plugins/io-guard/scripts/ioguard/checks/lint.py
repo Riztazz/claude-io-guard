@@ -5,8 +5,9 @@ command (SHW-5). A double-quoted Windows path that ends in a backslash escapes i
 and the check rewrites the path to forward slashes under the user's rewrite mode (D12). A Python body that
 does not compile is refused before any part of the command runs, and one that compiles with a warning, such
 as an invalid escape, runs with that warning (SHW-6). PowerShell syntax in the Bash tool and bash syntax in
-the PowerShell tool are refused (SHL-1), and so are the PowerShell calls that always fail (SHL-4, SHL-5). A
-build or test piped into a filter gets a warning that the exit code shown is the filter's (OUT-1). The check
+the PowerShell tool are refused (SHL-1), and so are the PowerShell calls that always fail (SHL-4, SHL-5). The
+first build or test a session pipes into a filter gets a warning that the exit code shown is the filter's
+(OUT-1). Later ones get none here, because shell.results names what a pipe hid after each run. The check
 runs after transport.body, so a body moved into a file is compiled from that file, byte-exact.
 """
 import re
@@ -166,18 +167,17 @@ def python(bodies: list[str], findings: Findings) -> None:
             return
 
 
-def hidden_exit(command: str, simples: tuple[shell.SimpleCommand, ...], builds: list[str],
-                findings: Findings) -> None:
+def hidden_exit(command: str, simples: tuple[shell.SimpleCommand, ...],
+                builds: list[str]) -> tuple[str, str] | None:
+    """The first build piped into another command, and that command's name, unless pipefail or PIPESTATUS
+    keeps the build's exit code."""
     if re.search(r"pipefail|PIPESTATUS", command):
-        return
+        return None
     for index, simple in enumerate(simples[:-1]):
         label = shell.matching(simple, builds)
         if label and shell.piped(command, simple):
-            into = simples[index + 1].name
-            findings.add(Code.PIPE_HIDES_EXIT, f"This command pipes {label} into {into}, so the exit code "
-                         f"shown is {into}'s, not {label}'s.", "Read the output for the result, not the exit "
-                         "code.", command=label)
-            return
+            return label, simples[index + 1].name
+    return None
 
 
 def powershell(command: str, findings: Findings) -> None:
@@ -252,7 +252,12 @@ class Lint(Check):
                          "Put that text in single quotes, or escape each backtick with a backslash.",
                          offset=at)
         python(python_bodies(command, found, simples, ctx), findings)
-        hidden_exit(command, simples, self.options["build_commands"], findings)
+        piped = hidden_exit(command, simples, self.options["build_commands"])
+        if piped is not None and ctx.session.first_time("pipe-hides-exit"):
+            label, into = piped
+            findings.add(Code.PIPE_HIDES_EXIT, f"This command pipes {label} into {into}, so the exit code "
+                         f"shown is {into}'s, not {label}'s.", "Read the output for the result, not the exit "
+                         "code.", command=label)
         unportable(command, found, simples, ctx, findings)
         return self.trailing_backslashes(command, found)
 
