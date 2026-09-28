@@ -12,6 +12,8 @@ import dataclasses
 import hashlib
 import json
 import logging
+import time
+import traceback
 import types
 import typing
 from collections.abc import Callable, Mapping, Sequence
@@ -21,8 +23,10 @@ from typing import Any
 
 from ioguard.lib import bytesio
 from ioguard.lib.context import Context
+from ioguard.lib.events import Surface
 from ioguard.lib.platform import detect
 from ioguard.lib.results import Code, Result, callable_name, render
+from ioguard.lib.telemetry import TelemetryEvent, trace_from
 from ioguard.mcp.progress import CancelToken, ProgressReporter
 
 log = logging.getLogger("ioguard.mcp")
@@ -47,12 +51,14 @@ class InvalidArguments(ValueError):
 class ToolCall:
     """What a handler receives beside its input: the session's context, built on first use, the call's
     cancel token and progress reporter, the project folder, and the folder a result too long for one answer
-    goes into."""
+    goes into. The session id and the request's traceparent go into the call's telemetry line."""
 
     def __init__(self, contexts: Callable[[], Context], cancel: CancelToken, cwd: Path,
-                 spill: Path | None, progress: ProgressReporter | None = None) -> None:
+                 spill: Path | None, progress: ProgressReporter | None = None, session: str = "io-server",
+                 traceparent: str | None = None) -> None:
         self.contexts, self.cancel, self.cwd, self.spill = contexts, cancel, cwd, spill
         self.progress = progress or ProgressReporter()
+        self.session, self.traceparent = session, traceparent
         self.built: Context | None = None
 
     @property
@@ -228,24 +234,51 @@ class ToolRegistry:
                 log.exception("GUARD_ERROR: io-guard's %s tool failed, so it answered no decision.", name)
                 return NO_DECISION
         given = parse(spec.input, arguments)
+        started = time.monotonic()
+        output, result, error = None, None, None
         if call.cancel.cancelled:
-            return failed(cancelled(name))
-        try:
-            output = spec.handler(given, call)
-        except ToolFailure as failure:
-            return failed(failure.result)
-        except InvalidArguments:
-            raise
-        except Exception:
-            log.exception("GUARD_ERROR: io-guard's %s tool failed.", name)
-            return failed(Result.of(Code.GUARD_ERROR, f"{name} failed inside io-guard.", name, detect().os))
-        if call.cancel.cancelled:
-            return failed(cancelled(name))
-        return bounded(spec, output, call)
+            result = cancelled(name)
+        else:
+            try:
+                output = spec.handler(given, call)
+            except ToolFailure as failure:
+                result = failure.result
+            except InvalidArguments:
+                raise
+            except Exception as bug:
+                trace = traceback.format_exc()
+                log.error("GUARD_ERROR: io-guard's %s tool failed.\n%s", name, trace)
+                result = Result.of(Code.GUARD_ERROR, f"{name} failed inside io-guard.", name, detect().os)
+                error = f"{type(bug).__name__} {hashlib.sha256(trace.encode()).hexdigest()[:12]}"
+            else:
+                result = cancelled(name) if call.cancel.cancelled else None
+        recorded(spec, given, call, (time.monotonic() - started) * 1000, output, result, error)
+        return bounded(spec, output, call) if result is None else failed(result)
 
 
 def cancelled(name: str) -> Result:
     return Result.of(Code.CANCELLED, f"The client cancelled this {name} call.", name, detect().os)
+
+
+def recorded(spec: ToolSpec, given: Any, call: ToolCall, latency_ms: float, output: Any,
+             result: Result | None, error: str | None) -> None:
+    """One telemetry line for an io tool call: the tool, the code of a failure, the time it took, the file's
+    extension and the bytes it wrote, and no content (section 9). A line that cannot be written is logged,
+    and the call answers as it would have."""
+    try:
+        ctx = call.context
+        named = getattr(given, "path", None) or next(iter(getattr(given, "paths", None) or ()), None)
+        written = getattr(output, "written_bytes", None)
+        ctx.telemetry.record(TelemetryEvent(
+            ts=ctx.clock.now(), session=call.session, event="tools/call", surface=Surface.MCP_TOOL.value,
+            platform=ctx.platform.os, project=call.cwd.name or None, tool=spec.name,
+            code=None if result is None else result.code.value,
+            severity=None if result is None else result.severity.value, latency_ms=round(latency_ms, 1),
+            error=error, trace=trace_from(None, call.traceparent),
+            file_ext=Path(named).suffix or None if isinstance(named, str) and named else None,
+            bytes=written() if written else None))
+    except Exception:
+        log.exception("io-guard could not record the telemetry line of a %s call.", spec.name)
 
 
 def bounded(spec: ToolSpec, output: Any, call: ToolCall) -> dict:

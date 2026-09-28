@@ -71,6 +71,10 @@ class ChangeOutput:
     sha256: str = doc("The SHA-256 of the file's bytes after the call.")
     indented: list[str] = doc("The new text io-guard indented as the lines around it are.")
     note: str = doc("What the built-in Edit tool needs before its next use of this file.")
+    bytes: int = doc("The file's size in bytes after the call.", default=0)
+
+    def written_bytes(self) -> int:
+        return self.bytes if self.changed else 0
 
     def render(self) -> str:
         head = (f"{places_shown(self.lines)} changed" if self.changed
@@ -84,7 +88,7 @@ def written(loaded: Loaded, text: str, places: list[Place], indented: list[str],
     """The new text written over the file when it changed anything, and the result that says so."""
     done = write(loaded, encoded(loaded, text, ctx, tool), ctx, tool)
     return ChangeOutput(loaded.path.as_posix(), done.profile_line(), done.changed, places, done.sha256,
-                        indented, NOTE)
+                        indented, NOTE, len(done.data))
 
 
 def indent_notes(indented: tuple[tuple[int, str], ...], what: str) -> list[str]:

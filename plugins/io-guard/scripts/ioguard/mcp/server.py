@@ -159,9 +159,10 @@ def main() -> int:
     session = os.environ.get("CLAUDE_CODE_SESSION_ID") or ""
     cwd = Path(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
     spill = None if data is None else data / "results"
+    named = session or "io-server"
     protocol = Protocol(registry(), SERVER_INFO,
-                        lambda cancel: ToolCall(lambda: tools_hook.context_for(session or "io-server", cwd),
-                                                cancel, cwd, spill))
+                        lambda cancel: ToolCall(lambda: tools_hook.context_for(named, cwd), cancel, cwd,
+                                                spill, session=named))
     watchdog = None
     if data is not None and session:
         watchdog = Watchdog(session_file(data, session, "alive"), session, protocol.era)

@@ -145,6 +145,8 @@ class Protocol:
         token = meta.get("progressToken") if isinstance(meta, Mapping) else None
         call = self.calls(cancel)
         call.progress = ProgressReporter(notify, token)
+        traceparent = meta.get("traceparent") if isinstance(meta, Mapping) else None
+        call.traceparent = traceparent if isinstance(traceparent, str) else None
         try:
             return self.tools.call(name, arguments, call)
         except InvalidArguments as failure:

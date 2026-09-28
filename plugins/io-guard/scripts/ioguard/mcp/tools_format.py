@@ -50,6 +50,7 @@ class FormattedFile:
                             "they were.")
     profile: str = doc("The file's endings, BOM, encoding, indent and lines after the call.")
     sha256: str = doc("The SHA-256 of the file's bytes after the call.")
+    bytes: int = doc("The file's size in bytes after the call.", default=0)
 
     def render(self) -> str:
         if not self.formatter:
@@ -68,6 +69,9 @@ class FormattedFile:
 class FormatOutput:
     files: list[FormattedFile] = doc("What io.format did to each file, in the order given.")
     note: str = doc("What the built-in Edit tool needs before its next use of a changed file.")
+
+    def written_bytes(self) -> int:
+        return sum(each.bytes for each in self.files if each.changed)
 
     def render(self) -> str:
         told = [each.render() for each in self.files]
@@ -104,7 +108,7 @@ def format_files(given: FormatInput, call: ToolCall) -> FormatOutput:
         for each in planned:
             done = write(each.loaded, each.data, ctx, TOOL)
             files.append(dataclasses.replace(each.result, changed=done.changed, profile=done.profile_line(),
-                                             sha256=done.sha256))
+                                             sha256=done.sha256, bytes=len(done.data)))
     return FormatOutput(files, NOTE)
 
 

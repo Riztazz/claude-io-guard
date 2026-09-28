@@ -1193,6 +1193,8 @@ class ToolCall:                                           # the context, built o
     cancel: CancelToken
     cwd: Path                                             # the project, from CLAUDE_PROJECT_DIR
     spill: Optional[Path]                                 # the folder a long result is saved in
+    session: str                                          # CLAUDE_CODE_SESSION_ID, for telemetry, task 38
+    traceparent: Optional[str]                            # from the request's _meta, task 38
 
 class ToolRegistry:
     def register(self, spec: ToolSpec) -> None: ...
@@ -1265,7 +1267,7 @@ write (task 24).
 io.edit(path, edits: [{old_string, new_string}], expect_hash = "")
 io.splice(path, start, end, text, include_end = False, expect_hash = "")
 io.append(path, text, wrap_column = None, date_prefix = False, expect_hash = "")
--> ChangeOutput(path, profile, changed, lines: [{first_line, last_line}], sha256, indented, note)
+-> ChangeOutput(path, profile, changed, lines: [{first_line, last_line}], sha256, indented, note, bytes)
 ```
 
 1. **Hold the file.** `paths.LockTable` holds it against the server's other workers, then `lib.locks.file_lock`
@@ -1300,7 +1302,8 @@ result's hash on unasked, and the other subagents' writes refused them. Steps 1,
 
 ```python
 io.format(paths, lines = [])
--> FormatOutput(files: [FormattedFile(path, formatter, asked, reason, changed, lines, left, profile, sha256)],
+-> FormatOutput(files: [FormattedFile(path, formatter, asked, reason, changed, lines, left, profile, sha256,
+                                      bytes)],
                 note)
 ```
 
@@ -1467,6 +1470,12 @@ per session as section 8 says.
 The schema holds no file content, no `old_string`, no `new_string` and at most 200 characters of a command.
 `project` is the repository's basename. A `GUARD_ERROR` line carries the exception type and a hash of the
 traceback, and the traceback itself goes to `debug.log` only when `telemetry.debug` is true.
+
+`ToolRegistry.call` writes one line per io tool call (task 38): `surface` `mcp_tool`, `event` `tools/call`,
+`tool` the io tool's name, `code` and `severity` of a refusal, `CANCELLED` or `GUARD_ERROR`, or null when the
+call answered, `latency_ms`, `file_ext` of the call's `path` or first of its `paths`, and `bytes`, what the
+call wrote to the user's files. A hook tool writes none, because the pipeline records each hook call. A line
+that cannot be written is logged, and the call answers as it would have.
 
 Trace context follows W3C Trace Context. An MCP call takes `traceparent` from `_meta` when present. A hook
 event derives `trace_id` from `tool_use_id`, so the PreToolUse decision, the io tool call and the PostToolUse

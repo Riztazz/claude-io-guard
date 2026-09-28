@@ -177,6 +177,10 @@ knows: it escaped backticks inside double quotes, wrote `/dev/null` for `nul`, a
 refusal, with no retry. In `claude -p` in default mode, a fix answered `ask` is denied, because nobody is there
 to approve it, and `permission_denials` lists the fixed command.
 
+Task 38's io tool telemetry showed up live in `live-format` on both releases: the session's file held a
+`tools/call` line for `io.edit`, 5.0 and 6.9 ms and 68 bytes, and one for `io.format`, 70.6 and 68.1 ms and 88
+bytes, beside the hook calls' lines.
+
 Rules through a junction, checked on 2026-09-27 with Claude Code 2.1.281 and 2.1.283:
 
 - **Claude Code loads a rule, or an `@` import, only when its real path is inside the project.** A junction's real

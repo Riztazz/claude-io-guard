@@ -899,9 +899,12 @@ def run_asked(summary: dict, name: str) -> bool:
 def formatted_changed_lines(summary: dict, name: str) -> bool:
     """io.format formatted the edited line, left the committed line 1 as badly formatted as it was, and kept
     the BOM and every CRLF although the style names LF. Its own result names the lines it changed, so the
-    formatting is io.format's and not the model's own new_string."""
+    formatting is io.format's and not the model's own new_string. The session's telemetry holds a line for
+    each of the two io tool calls (task 38)."""
     changed = [each["lines"] for value in structured(summary) for each in value.get("files", ())]
-    return summary["files"]["a.cpp"] == FORMATTED_CPP and any(changed)
+    recorded = {line.get("tool") for line in summary["probe_log"] if line.get("event") == "tools/call"}
+    return (summary["files"]["a.cpp"] == FORMATTED_CPP and any(changed)
+            and recorded == {"io.edit", "io.format"})
 
 
 def calls(name: str) -> list[dict]:
