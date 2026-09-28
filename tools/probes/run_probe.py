@@ -166,6 +166,19 @@ IO_READ = "mcp__plugin_io-guard_io__io_read"
 SERVER_READ = (f"Do these in order, one tool call each. 1. Run the Bash command: echo hi 2. Load {IO_READ} "
                f"with the ToolSearch tool, with the query select:{IO_READ} 3. Call {IO_READ} with path "
                "keep.txt. Then quote the first line of its result word for word.")
+IO_EDIT = "mcp__plugin_io-guard_io__io_edit"
+COUNT_STEPS = (
+    f"1. Load {IO_EDIT} with the ToolSearch tool, with the query select:{IO_EDIT} 2. Call {IO_EDIT} ten "
+    "times, one call at a time and never two in one message, each with the path counters.txt and one edit: "
+    "the first call replaces {0}=0 with {0}=1, the second {0}=1 with {0}=2, and so on, until the tenth "
+    "replaces {0}=9 with {0}=10. 3. If a call fails, quote its error word for word and stop.")
+PARALLEL_EDITS = (
+    "Start three subagents at once, with three Agent tool calls in one message, then wait for all three. "
+    "Give each one its own steps, copied exactly as written here.\n"
+    + "\n".join(f"Subagent {letter}: {COUNT_STEPS.format(letter)}" for letter in "ABC")
+    + "\nWhen all three are done, reply DONE.")
+COUNTERS = b"\xef\xbb\xbfA=0\r\nB=0\r\nC=0\r\n"
+COUNTED = b"\xef\xbb\xbfA=10\r\nB=10\r\nC=10\r\n".decode("latin-1")
 SERVER_DIES = ("Run this exact Bash command: echo IOGUARD_DIE\nThen reply DONE.",
                "Run this exact Bash command: echo IOGUARD_TWO\nThen quote word for word any hook message or "
                "error you saw, and reply DONE.")
@@ -363,6 +376,9 @@ PROBES = {
                                 prompt=VERIFY_DIRECT, check=("keep.txt",), max_turns=10,
                                 setup={"keep.txt": b"\xef\xbb\xbfalpha\r\nbeta\r\n",
                                        ".claude/io-guard.json": CONFORM_OFF}),
+    "live-edit-parallel": Probe(0, "", guard="", allowed=("Agent", "Task", "ToolSearch", IO_EDIT),
+                                prompt=PARALLEL_EDITS, check=("counters.txt",), max_turns=12,
+                                setup={"counters.txt": COUNTERS}),
 }
 
 
@@ -762,6 +778,22 @@ def down_named(summary: dict, name: str) -> bool:
     return warned and ran and summary.get("skip_cached") is True
 
 
+def edits_interleaved(summary: dict, name: str) -> bool:
+    """All 30 io.edit calls landed, so each counter ends at 10 in the file's BOM and CRLF, and the three
+    subagents' calls interleaved in the stream, so the one server took them at the same time."""
+    folder, _ = latest(name)
+    owners = []
+    for line in (folder / "stream.jsonl").read_bytes().splitlines():
+        message = json.loads(line) if line.startswith(b"{") else {}
+        if message.get("type") != "assistant":
+            continue
+        blocks = (message.get("message") or {}).get("content") or []
+        owners += [message.get("parent_tool_use_id") for block in blocks
+                   if block.get("type") == "tool_use" and block.get("name") == IO_EDIT]
+    runs = sum(1 for index, owner in enumerate(owners) if index == 0 or owner != owners[index - 1])
+    return summary["files"]["counters.txt"] == COUNTED and len(owners) == 30 and runs > len(set(owners))
+
+
 def results_shown(summary: dict, name: str) -> bool:
     """Both saved outputs came back as io-guard's view of them, and each shell.results line reached the
     model."""
@@ -834,6 +866,7 @@ VERDICTS = {
     "live-server": lambda s, n: served(s, n, "legacy"),
     "live-server-modern": lambda s, n: served(s, n, "modern"),
     "live-server-down": down_named,
+    "live-edit-parallel": edits_interleaved,
     "command-output": lambda s, n: logged(s, '"error": "Exit code 1\\nIOPROBE_OUT\\nIOPROBE_ERR"')
     and sum("IOPROBE-SUMMARY" in str(result["content"]) and "persisted-output" not in str(result["content"])
             for result in s["results"]) == 3,

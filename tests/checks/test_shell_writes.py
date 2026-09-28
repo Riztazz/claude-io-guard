@@ -149,6 +149,16 @@ class TheRefusalAndTheWarning(unittest.TestCase):
             with self.subTest(part=part):
                 self.assertIn(part, text, "the model reads what, how and what to do instead")
 
+    def test_an_in_place_edit_names_io_edit_and_a_redirect_does_not(self):
+        for command, named in (("sed -i -e 's/a/b/' -e 's/c/d/' src/a.py", True),
+                               ("python - <<'EOF'\nopen('src/a.py', 'w').write(x)\nEOF\n", True),
+                               ("echo x > src/a.py", False)):
+            with self.subTest(command=command):
+                outcome, _ = run(command)
+                rendered = outcome.decisions[0].results[0].render()
+                self.assertEqual("mcp__plugin_io-guard_io__io_edit" in rendered, named,
+                                 "a command that changes several places in a file gets the batch edit")
+
     def test_a_script_created_in_the_repository_is_a_warning(self):
         outcome, _ = run("cat > tools/try.py <<'EOF'\nprint(1)\nEOF\n")
         result = outcome.decisions[0].results[0]

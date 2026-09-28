@@ -28,8 +28,8 @@ probes the same day. Five passed on both releases, and `guard-large`, which cost
 ran on 2.1.283 only. Task 17 added `write-quiet`, `edit-trailing` and `live-conform`, task 18
 `live-verify` and `live-verify-direct`, task 19 `live-read-only` and `live-locked`, task 20 `edit-refusals`,
 `other-refusals` and `live-diagnose`, task 21 `live-touched`, task 22 `command-output` and
-`live-results`, and task 23 `live-server`, `live-server-modern` and `live-server-down`, all of which passed on
-both.
+`live-results`, task 23 `live-server`, `live-server-modern` and `live-server-down`, and task 24
+`live-edit-parallel`, all of which passed on both.
 
 The design review named 2.1.281 as the first release whose `mcp_tool` hooks wait for their server. Today's hooks
 reference names no version for that, so the floor rests on the probes instead. Older releases aren't tested.
@@ -45,6 +45,7 @@ reference names no version for that, so the floor rests on the probes instead. O
 | An `mcp_tool` hook's server restarts on the next call, and a server that can't start fails open | 2.1.281 | `dead-server`, `dead-for-good`, `live-server-down` | The heartbeat hook warns once at the next turn (task 23) |
 | A plugin's stdio server that fails to start is written to `~/.claude/mcp-needs-auth-cache.json`, and every session skips it for 15 minutes | 2.1.281 | `live-server-down` | io-guard's UserPromptSubmit hook reads that file and names the skip. If the file moves, the skip goes unnamed |
 | An MCP server's environment carries `CLAUDE_CODE_SESSION_ID`, its own session's id | 2.1.281 | `era-legacy`, `live-server` | The server writes no heartbeat, and a server that died goes unnamed |
+| A session's subagents call the plugin's one stdio server, each call as it comes, so their calls on one file overlap | 2.1.281 | `live-edit-parallel` | Nothing breaks: the lock table and `file_lock` serialise the calls whatever process or thread makes them (task 24) |
 | A `UserPromptSubmit` command hook's `additionalContext` and `systemMessage` arrive at the start of the turn | 2.1.281 | `live-server-down` | A stopped server goes unnamed |
 | PreToolUse `updatedInput` with `allow` runs the new input, byte-exact for Write | 2.1.281 | `rewrite-allow`, `write-bytes`, `edit-extend` | Refuse, with the fixed call in the reason |
 | `updatedInput` with `ask` puts the new input in the permission prompt | 2.1.281 | `ask-prompt`, the desktop check | Refuse instead of asking |

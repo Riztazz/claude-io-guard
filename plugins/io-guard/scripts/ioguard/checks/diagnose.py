@@ -46,7 +46,13 @@ CORRECTION_CHARS = 1_500     # the longest corrected old_string a message quotes
 TAIL_BYTES = 256 * 1024
 FIND_LIMIT = 20_000
 PART_BYTES = 60_000
-MARKED = "Copy old_string from those lines, with [TAB] as a tab and [SP] as a space, and call Edit again."
+@dataclass(frozen=True)
+class Wording:
+    """How a diagnosis names the text that failed to match, and the call that tries it again."""
+    subject: str = "old_string of the refused Edit"
+    field: str = "old_string"        # the argument that holds the text, which a fix replaces
+    retry: str = "Edit"              # the tool a fix calls, by the name the model calls it
+    replace_all: bool = True         # the retry can change every place at once
 
 
 @dataclass(frozen=True)
@@ -55,12 +61,12 @@ class Failed:
     tool_input: Mapping[str, Any]
     error: str
     cwd: Path
+    wording: Wording = Wording()
 
 
 def file_text(data: bytes) -> str:
     """The file as the Edit tool reads it: UTF-8, every line ending as LF, no BOM."""
-    decoded = data.decode("utf-8", "replace").removeprefix(chr(0xFEFF))
-    return decoded.replace("\r\n", "\n").replace("\r", "\n")
+    return anchors.edit_view(data.decode("utf-8", "replace").removeprefix(chr(0xFEFF)))
 
 
 def span(match: anchors.Match) -> str:
@@ -74,10 +80,12 @@ def quoted(value: str, instead: str) -> str:
 
 
 class Diagnosis:
-    """The diagnosis of one failed call, from its tool, its input and its error text."""
+    """The diagnosis of one failed call, from its tool, its input and its error text. contents stands in for
+    the file on disk, for a call that failed against text it had not written yet."""
 
-    def __init__(self, failed: Failed, ctx: Context, options: Mapping[str, Any]) -> None:
-        self.failed, self.ctx, self.options = failed, ctx, options
+    def __init__(self, failed: Failed, ctx: Context, options: Mapping[str, Any],
+                 contents: bytes | None = None) -> None:
+        self.failed, self.ctx, self.options, self.contents = failed, ctx, options, contents
         raw = failed.tool_input.get("file_path") or failed.tool_input.get("path")
         self.path = paths.normalise(raw, failed.cwd, ctx.platform) if isinstance(raw, str) and raw else None
 
@@ -106,6 +114,8 @@ class Diagnosis:
         return ()
 
     def file(self) -> tuple[str, bytes] | None:
+        if self.contents is not None:
+            return file_text(self.contents), self.contents
         if self.path is None:
             return None
         try:
@@ -115,7 +125,7 @@ class Diagnosis:
         return file_text(data), data
 
     def old_string(self) -> str:
-        old = self.failed.tool_input.get("old_string")
+        old = self.failed.tool_input.get(self.failed.wording.field)
         return file_text(old.encode("utf-8")) if isinstance(old, str) else ""
 
     def anchor_missing(self) -> tuple[Result, ...]:
@@ -124,30 +134,34 @@ class Diagnosis:
             return ()
         body, data = found
         name, eol = self.path.name, profile(data).eol.value
+        words = self.failed.wording
         endings = f"{name} uses {eol} line endings."
         candidates = anchors.closest(body, old)
         if not candidates:
-            message = (f"old_string of the refused Edit is not in {name}, and no lines there come close. "
-                       f"{endings}")
-            return (self.result(Code.ANCHOR_NOT_FOUND, message),)
+            message = f"{words.subject} is not in {name}, and no lines there come close. {endings}"
+            fix = Fix(words.retry, {},
+                      f"Read {name} again, then call {words.retry} with {words.field} copied from its lines.")
+            return (self.result(Code.ANCHOR_NOT_FOUND, message, fix),)
         best = candidates[0]
         lines = [best.match.first_line, best.match.last_line]
         if best.exact and len(candidates) == 1:
             view = text.snippet(body, best.match.first_line, best.match.last_line, 0)
-            message = (f"old_string of the refused Edit matches {span(best.match)} of {name} once spaces and "
-                       f"tabs are ignored. {endings} The file reads:\n{view}")
-            fix = Fix("Edit", {**self.failed.tool_input, "old_string": best.text},
-                      f"Call Edit again with old_string {quoted(best.text, 'copied from those lines')}.")
+            message = (f"{words.subject} matches {span(best.match)} of {name} once spaces and tabs are "
+                       f"ignored. {endings} The file reads:\n{view}")
+            said = quoted(best.text, "copied from those lines")
+            fix = Fix(words.retry, {**self.failed.tool_input, words.field: best.text},
+                      f"Call {words.retry} again with {words.field} {said}.")
             return (self.result(Code.ANCHOR_NOT_FOUND, message, fix, lines=lines, exact=True),)
         if best.exact:
             return self.places(body, [candidate.match for candidate in candidates],
                                " once spaces and tabs are ignored")
         others = ", ".join(span(candidate.match) for candidate in candidates[1:])
         view = text.snippet(body, best.match.first_line, best.match.last_line, 1)
-        message = (f"old_string of the refused Edit is not in {name}. The closest is {span(best.match)}, "
+        message = (f"{words.subject} is not in {name}. The closest is {span(best.match)}, "
                    f"{best.score:.0%} alike" + (f", then {others}" if others else "") + f". {endings} "
                    f"{span(best.match).capitalize()} read:\n{view}")
-        fix = Fix("Edit", {}, MARKED)
+        fix = Fix(words.retry, {}, f"Copy {words.field} from those lines, with [TAB] as a tab and [SP] as a "
+                                   f"space, and call {words.retry} again.")
         return (self.result(Code.ANCHOR_NOT_FOUND, message, fix, lines=lines, exact=False),)
 
     def anchor_ambiguous(self) -> tuple[Result, ...]:
@@ -163,13 +177,14 @@ class Diagnosis:
         views = "\n".join(f"{span(match)}:\n{text.snippet(body, match.first_line, match.last_line, 1)}"
                           for match in matches[:SHOWN])
         more = f", and {len(matches) - SHOWN} more" if len(matches) > SHOWN else ""
-        message = (f"old_string of the refused Edit is in {self.path.name} {len(matches)} times{how}{more}:\n"
-                   f"{views}")
+        words = self.failed.wording
+        message = f"{words.subject} is in {self.path.name} {len(matches)} times{how}{more}:\n{views}"
         unique = anchors.unique_anchor(body, matches[0])
         said = quoted(unique, "longer, with the lines around it")
-        fix = Fix("Edit", {**self.failed.tool_input, "old_string": unique},
-                  f"For the first place, call Edit with old_string {said}. For another, lengthen old_string "
-                  f"the same way, or set replace_all to true for all of them.")
+        every = ", or set replace_all to true for all of them" if words.replace_all else ""
+        fix = Fix(words.retry, {**self.failed.tool_input, words.field: unique},
+                  f"For the first place, call {words.retry} with {words.field} {said}. For another, lengthen "
+                  f"{words.field} the same way{every}.")
         return (self.result(Code.ANCHOR_AMBIGUOUS, message, fix,
                             lines=[match.first_line for match in matches]),)
 

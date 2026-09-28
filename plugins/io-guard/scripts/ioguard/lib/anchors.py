@@ -34,6 +34,11 @@ class Candidate:
     exact: bool                      # the region equals old_string once whitespace is ignored
 
 
+def edit_view(text: str) -> str:
+    """text as the Edit tool reads it, with every CRLF and every lone CR as LF."""
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def line_of(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
 

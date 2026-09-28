@@ -107,6 +107,10 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
     "io.read.max_bytes": ConfigKey(int, 16 * 1024 * 1024, "The largest file io.read reads, in bytes."),
     "io.read.max_chars": ConfigKey(int, 60_000, "The most characters of a file one io.read returns. The "
                                    "result names the call for the lines after them."),
+    "io.edit.max_bytes": ConfigKey(int, 16 * 1024 * 1024, "The largest file io.edit, io.splice and io.append "
+                                   "change, in bytes."),
+    "io.edit.wait_ms": ConfigKey(int, 5000, "Milliseconds io.edit, io.splice and io.append wait for another "
+                                 "io-guard call that is changing the same file."),
     "telemetry.retention_days": ConfigKey(int, 90, "Days a telemetry file is kept."),
     "telemetry.debug": ConfigKey(bool, False, "Write tracebacks to the debug log."),
     "skip_trees": ConfigKey(list, [], "Globs, from the repository root, such as Content/**, whose changes a "

@@ -2,7 +2,7 @@
 import unittest
 from pathlib import Path
 
-from ioguard.lib.results import CODES, Code, Fix, Result, Severity, render, render_many, spec
+from ioguard.lib.results import CODES, Code, Fix, Result, Severity, callable_name, render, render_many, spec
 
 
 class CodesAreOneDeclaration(unittest.TestCase):
@@ -57,6 +57,10 @@ class ResultsRender(unittest.TestCase):
         results = [Result.of(Code.GUARD_ERROR, "One.", "Bash", "win32"),
                    Result.of(Code.BUDGET_EXCEEDED, "Two.", "Bash", "win32")]
         self.assertEqual(len(render_many(results).splitlines()), 2, "render_many gives one line per result")
+
+    def test_a_fix_names_an_io_tool_by_the_name_the_model_calls(self):
+        self.assertEqual(callable_name("io.read"), "mcp__plugin_io-guard_io__io_read",
+                         "the model calls an io tool with its dots as underscores")
 
 
 if __name__ == "__main__":

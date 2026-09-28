@@ -1,9 +1,10 @@
-"""Paths as the agent names them, turned into one absolute form, and the arguments Git Bash rewrites as
-paths."""
+"""Paths as the agent names them, turned into one absolute form, the arguments Git Bash rewrites as paths,
+and a thread lock per file."""
 import ntpath
 import os
 import posixpath
 import re
+import threading
 import unicodedata
 from collections.abc import Collection
 from pathlib import Path
@@ -52,6 +53,25 @@ def link_target(path: Path) -> Path | None:
     that does not exist yet resolves through the folders that do."""
     real = os.path.realpath(path)
     return None if os.path.normcase(real) == os.path.normcase(os.path.abspath(path)) else Path(real)
+
+
+def resolved(path: Path) -> str:
+    """One name per file for path: absolute, through every junction and link, in the platform's case for
+    names."""
+    return os.path.normcase(os.path.realpath(path))
+
+
+class LockTable:
+    """One thread lock per file, by its resolved path, so two of a process's threads that change one file
+    take turns. The table keeps each lock for the life of the process."""
+
+    def __init__(self) -> None:
+        self.locks: dict[str, threading.Lock] = {}
+        self.guard = threading.Lock()
+
+    def lock(self, path: Path) -> threading.Lock:
+        with self.guard:
+            return self.locks.setdefault(resolved(path), threading.Lock())
 
 
 def inside(path: Path, roots: Collection[Path], platform: Platform) -> Path | None:

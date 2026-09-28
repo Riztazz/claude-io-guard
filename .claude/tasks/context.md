@@ -142,6 +142,13 @@ next turn's UserPromptSubmit hook answered `SERVER_DOWN`, and that turn's Bash c
 `initialize` 141 to 158 ms after its process starts (20 starts). The UserPromptSubmit hook costs 237 to 293 ms a
 turn, of which Python's imports are about 120 ms and Git Bash starting `hook.sh` about 90.
 
+Task 24's `live-edit-parallel` passed on both releases. Three subagents started in one message made 30 `io.edit`
+calls on one BOM and CRLF file, interleaved as A, B, A, C, B and on, with no error, and the file ended as
+`EF BB BF` then `A=10\r\nB=10\r\nC=10\r\n`. Two earlier runs failed on the models' own steps. In one, the
+subagents passed each result's `sha256` back as `expect_hash` unasked, and the other subagents' writes refused
+them with `STALE_VIEW`, so the field docs now name the hash as an opt-in guard. The unit tests show the locks
+matter: with both taken out, two threads and two processes each lost edits in 3 runs of 3.
+
 Rules through a junction, checked on 2026-09-27 with Claude Code 2.1.281 and 2.1.283:
 
 - **Claude Code loads a rule, or an `@` import, only when its real path is inside the project.** A junction's real
@@ -265,6 +272,7 @@ denied, and the rerun denied all three. Ten calls each took:
 | 32 | What a shell result brings to a hook, and what a replaced output shows | `command-output`, task 22 | A failed Bash call's PostToolUseFailure has no `tool_response`, and its `error` is `Exit code 1\nIOPROBE_OUT\nIOPROBE_ERR`: the exit code line, then stdout, then stderr. `seq 1 8000` reached PostToolUse with `stdout` cut to 30,000 characters, `persistedOutputSize` 38,893 and `persistedOutputPath` naming a file that already existed. An `updatedToolOutput` that kept those two fields was shown as the 2 KB preview inside Claude Code's `<persisted-output>` notice. Without them, a 3.8 KB replacement reached the model whole, and the model read no file. PowerShell's shape is `{stdout, stderr, interrupted, isImage}`, and its replacement works the same way. A lone `grep` that matches nothing is a success, with `returnCodeInterpretation` "No matches found". 2.1.281 and 2.1.283 |
 | 33 | A plugin server that fails to start is skipped in later sessions | `live-server-down`, task 23 | Yes. When io-guard's server died and its restart exited at once, Claude Code logged `Connection failed (CONNECTION_CLOSED)` and wrote `{"plugin:io-guard:io": {"timestamp", "id"}}` to `~/.claude/mcp-needs-auth-cache.json` in the same millisecond. Every session after that, on the CLI 2.1.283 and the desktop's 2.1.281, listed the server as `failed` without trying to start it, so every hook failed open. The binary's check keeps a stdio plugin server's entry for 900,000 ms unless the entry names its own `ttlMs`, and matches it by the server's config id. Deleting the entry restored the server at once. 2.1.281 and 2.1.283 |
 | 34 | An MCP server knows its session | `era-legacy`, task 23 | Yes. The server's environment holds `CLAUDE_CODE_SESSION_ID`, the probe session's own id, over the one the parent process had, and `CLAUDE_PROJECT_DIR`. 2.1.283 |
+| 35 | A session's subagents share its io server, and their calls overlap | `live-edit-parallel`, task 24 | Yes. Three subagents from one message, each loading `io.edit` through ToolSearch, called the one server as they went: their 30 calls interleaved in the stream, and all landed under the lock table. A subagent the Agent tool starts runs in the background, and the main turn waits for its notice. 2.1.281 and 2.1.283 |
 
 ## Doc facts, checked on 2026-09-27
 

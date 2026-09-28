@@ -8,8 +8,7 @@ from pathlib import Path
 
 from ioguard.lib.results import Code
 from ioguard.mcp.progress import CancelToken
-from ioguard.mcp.toolspec import (NO_DECISION, InvalidArguments, ToolCall, ToolRegistry, ToolSpec,
-                                  callable_name, doc, schema)
+from ioguard.mcp.toolspec import NO_DECISION, InvalidArguments, ToolCall, ToolRegistry, ToolSpec, doc, schema
 
 
 @dataclass(frozen=True)
@@ -64,8 +63,6 @@ class SchemasComeFromTheDataclasses(unittest.TestCase):
         listed = tools.list()
         self.assertEqual([entry["name"] for entry in listed], ["io.b", "io.a"], "tools/list keeps one order")
         self.assertEqual(listed[0]["annotations"]["readOnlyHint"], True, "the annotations come from the spec")
-        self.assertEqual(callable_name("io.read"), "mcp__plugin_io-guard_io__io_read",
-                         "the model calls a tool with its dots as underscores")
 
 
 class ACallIsParsedAndAnswered(unittest.TestCase):

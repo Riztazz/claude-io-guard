@@ -10,7 +10,6 @@ It locks a file named for the path in the plugin data folder, never the path its
 ever waits on it.
 """
 import hashlib
-import os
 import sys
 import time
 from collections.abc import Iterator
@@ -19,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
-from ioguard.lib import proc
+from ioguard.lib import paths, proc
 from ioguard.lib.platform import Platform
 
 MORE_DATA = 234          # ERROR_MORE_DATA: the list grew between the two RmGetList calls
@@ -101,7 +100,7 @@ def file_lock(path: Path, data_dir: Path, wait_s: float = 5.0) -> Iterator[None]
     block. TimeoutError when another holder keeps it past wait_s seconds."""
     folder = data_dir / "locks"
     folder.mkdir(parents=True, exist_ok=True)
-    name = hashlib.sha1(os.path.normcase(os.path.abspath(path)).encode("utf-8")).hexdigest()
+    name = hashlib.sha1(paths.resolved(path).encode("utf-8")).hexdigest()
     deadline = time.monotonic() + wait_s
     with open(folder / f"{name}.lock", "a+b") as handle:
         while not locked(handle):

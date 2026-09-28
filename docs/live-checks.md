@@ -122,6 +122,7 @@ match `.claude/tasks/context.md`, "The hook entry point".
 | With `conform.write` off, a Write that drops a BOM and CRLF gets both put back after it, the model sees `EOL_CONVERTED`, and the next Edit lands in the file's own bytes | `live-verify`, `live-verify-direct` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | The io server connects, answers the hooks, and returns `io.read` of a CRLF file with a BOM in its structured result, and its heartbeat records the legacy era, or the modern one under `MCP_PROTOCOL_NEGOTIATION=auto` | `live-server`, `live-server-modern` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | A server that dies and cannot start again leaves the tool calls running, and the next turn names SERVER_DOWN | `live-server-down` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
+| Three subagents started in one message make 30 interleaved `io.edit` calls on one BOM and CRLF file, and every edit lands, in the file's BOM and CRLF | `live-edit-parallel` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | A saved Bash or PowerShell output comes back as its first and last 20 lines with the file's path, and the model reads no file. grep's exit code 1 that stopped an `&&` chain is labelled as its answer, and a traceback behind `\| tail` is named with tail's exit code | `live-results` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 
 ## Not checked yet

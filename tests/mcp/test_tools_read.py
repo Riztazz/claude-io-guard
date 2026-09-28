@@ -1,4 +1,5 @@
 """io.read returns a file's lines exactly as the file holds them, after its profile, a part at a time."""
+import hashlib
 import unittest
 from pathlib import Path
 from types import MappingProxyType
@@ -29,6 +30,8 @@ class TheBytesComeBackAsTheyAre(unittest.TestCase):
         self.assertEqual((found.profile, found.text), ("CRLF, BOM, UTF-8, tabs, 2 lines",
                                                        chr(0xFEFF) + "one\r\n\ttwo\r\n"),
                          "the profile names what the built-in Read hides, and the text keeps it")
+        self.assertEqual(found.sha256, hashlib.sha256(b"\xef\xbb\xbfone\r\n\ttwo\r\n").hexdigest(),
+                         "the hash of the bytes read is the expect_hash an io tool checks")
         self.assertIn("     1| [BOM]one[CR]", found.render(), "the text copy marks the BOM and each CR")
 
     def test_a_binary_file_gives_its_first_bytes(self):

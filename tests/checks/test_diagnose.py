@@ -4,6 +4,7 @@ import json
 import unittest
 from pathlib import Path
 
+from ioguard.checks.diagnose import Diagnosis, Failed, Wording
 from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import default_registry
 from ioguard.lib.config import defaults
@@ -101,6 +102,19 @@ class ARefusedEditIsAnsweredAtTheNextHook(unittest.TestCase):
         self.assertEqual((found[0].code, found[0].evidence["nearby"]),
                          (Code.PATH_NOT_FOUND, ["C:/game/Private/a.cpp"]),
                          "a walk from the nearest folder that exists finds the file by its name")
+
+
+class AnIoToolReusesTheDiagnosis(unittest.TestCase):
+    def test_its_wording_names_its_own_argument_and_call_and_reads_text_it_has_not_written(self):
+        wording = Wording("the start marker", "start", "io_splice", replace_all=False)
+        failed = Failed("io.splice", {"path": "a.cpp", "start": "int a = 1;"}, "", CWD, wording)
+        found = Diagnosis(failed, context(), {}, contents=SOURCE).anchor_ambiguous()[0]
+        self.assertEqual((found.code, found.fix.tool, found.fix.input["start"]),
+                         (Code.ANCHOR_AMBIGUOUS, "io_splice", "\tint a = 1;\n\tint b = 2;"),
+                         "the fix corrects the tool's own argument, found in the contents it was handed")
+        self.assertEqual((found.message.startswith("the start marker is in a.cpp 2 times"),
+                          "replace_all" in found.fix.text), (True, False),
+                         "the message names the marker, and a tool with no replace_all is offered none")
 
 
 class AFailedCallIsAnsweredAfterIt(unittest.TestCase):

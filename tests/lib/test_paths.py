@@ -4,7 +4,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from ioguard.lib.paths import inside, link_target, msys_prefix, normalise, reserved
+from ioguard.lib.paths import LockTable, inside, link_target, msys_prefix, normalise, reserved, resolved
 from ioguard.lib.platform import Platform, detect
 from tests.support.project import TemporaryProject
 
@@ -73,6 +73,23 @@ class PathsNormalise(unittest.TestCase):
     def test_detect_names_this_platform(self):
         import sys
         self.assertEqual(detect().os, sys.platform, "detect reports the platform the tests run on")
+
+
+class OneLockPerFile(unittest.TestCase):
+    def test_two_names_for_one_file_share_its_lock(self):
+        with TemporaryProject({"real/a.txt": b"x", "real/b.txt": b"y"}) as root:
+            link = root / "linked"
+            if sys.platform == "win32":
+                _winapi.CreateJunction(str(root / "real"), str(link))
+            else:
+                os.symlink(root / "real", link)
+            table = LockTable()
+            same = (table.lock(root / "real" / "a.txt"), table.lock(link / "a.txt"),
+                    table.lock(root / "real" / "sub" / ".." / "a.txt"))
+            other = table.lock(root / "real" / "b.txt")
+            self.assertEqual((resolved(link / "a.txt"), len({id(lock) for lock in same}), other in same),
+                             (resolved(root / "real" / "a.txt"), 1, False),
+                             "a path through a link and a path with .. name one file, which has one lock")
 
 
 if __name__ == "__main__":

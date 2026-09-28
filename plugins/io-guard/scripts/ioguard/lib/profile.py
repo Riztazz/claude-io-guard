@@ -136,6 +136,20 @@ class Profile:
                 found.append(f"The file holds {count:,} {what}.")
         return tuple(found)
 
+    @property
+    def codec(self) -> str:
+        """The codec that reads the file's bytes whole, a BOM included as U+FEFF: UTF-8, UTF-16 by its BOM,
+        or the code page the bytes suggest."""
+        return "utf-8" if self.encoding.utf8 else self.encoding.guess or "utf-8"
+
+    @property
+    def new_eol(self) -> Eol:
+        """The ending a new line takes: the file's own, the one most lines use in a file that mixes them, and
+        LF in a file with no line ending yet."""
+        if self.eol is Eol.MIXED:
+            return self.eol_counts.dominant
+        return Eol.LF if self.eol is Eol.NONE else self.eol
+
 
 def bom_of(data: bytes) -> Bom:
     if data.startswith(b"\xef\xbb\xbf"):

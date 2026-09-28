@@ -1,8 +1,8 @@
 {
   "0": {"result.protocolVersion": "2025-11-25", "result.serverInfo.name": "io-guard",
         "result.capabilities.tools.listChanged": false, "!result.resultType": null},
-  "1": {"result.tools.*.name": ["io.read", "hook.pre_tool_use", "hook.post_tool_use",
-                                "hook.post_tool_use_failure", "hook.ping"],
+  "1": {"result.tools.*.name": ["io.read", "io.edit", "io.splice", "io.append", "hook.pre_tool_use",
+                                "hook.post_tool_use", "hook.post_tool_use_failure", "hook.ping"],
         "result.tools.0.annotations.readOnlyHint": true, "result.tools.0.outputSchema.additionalProperties": true,
         "result.tools.0.inputSchema.required": ["path"], "!result.ttlMs": null},
   "2": {"result.structuredContent.profile": "CRLF, BOM, UTF-8, 2 lines", "result.structuredContent.total_lines": 2,

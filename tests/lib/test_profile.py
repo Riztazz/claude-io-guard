@@ -108,6 +108,22 @@ class TheLineAndTheWarnings(unittest.TestCase):
     def test_a_mixed_file_knows_its_dominant_ending(self):
         self.assertEqual(profile(b"a\r\nb\r\nc\n").eol_counts.dominant, Eol.CRLF, "two CRLF outweigh one LF")
 
+    def test_a_new_line_takes_the_files_own_ending(self):
+        for data, eol in ((b"a\r\n", Eol.CRLF), (b"a\rb\r", Eol.CR), (b"a\nb\r\nc\n", Eol.LF),
+                          (b"a", Eol.LF)):
+            with self.subTest(data=data):
+                self.assertEqual(profile(data).new_eol, eol,
+                                 "the file's ending, the one most lines use when mixed, and LF with none yet")
+
+    def test_the_codec_reads_the_bytes_whole(self):
+        cases = {"bom-crlf.txt": "utf-8", "cp1250.txt": "cp1250", "lf.txt": "utf-8"}
+        for name, codec in cases.items():
+            with self.subTest(fixture=name):
+                self.assertEqual(of(name).codec, codec, "UTF-8, or the code page the bytes suggest")
+        utf16 = profile(b"\xff\xfe" + "a\n".encode("utf-16-le"))
+        self.assertEqual((utf16.codec, (b"\xff\xfe" + "a\n".encode("utf-16-le")).decode(utf16.codec)),
+                         ("utf-16-le", chr(0xFEFF) + "a\n"), "UTF-16 by its BOM, which reads as U+FEFF")
+
 
 class ANewFilesProfile(unittest.TestCase):
     def test_editorconfig_wins_then_gitattributes_then_siblings(self):

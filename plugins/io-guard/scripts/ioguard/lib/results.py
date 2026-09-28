@@ -177,6 +177,14 @@ Code = Enum("Code", {spec.code: spec.code for spec in CODES})
 SPECS: dict[Code, CodeSpec] = {Code[spec.code]: spec for spec in CODES}
 
 
+CALLABLE_PREFIX = "mcp__plugin_io-guard_io__"
+
+
+def callable_name(name: str) -> str:
+    """The name the model calls an io tool by, such as mcp__plugin_io-guard_io__io_read for io.read."""
+    return CALLABLE_PREFIX + name.replace(".", "_")
+
+
 @dataclass(frozen=True)
 class Fix:
     tool: str                                # "Edit", "Write", "Bash", or a callable MCP name

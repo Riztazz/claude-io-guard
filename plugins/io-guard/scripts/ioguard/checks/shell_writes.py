@@ -4,10 +4,12 @@ A write through the shell skips io-guard's byte checks and Claude Code's checkpo
 each write a command makes: a > or >> redirect, sed -i and perl -i, tee, cp and mv, a heredoc or python -c
 body that opens a file for writing, a body transport.body moved into a file, and PowerShell's Set-Content,
 Add-Content, Out-File, Copy-Item, Move-Item, Tee-Object and [IO.File] calls. The check refuses a write only
-when git tracks its target. A write to the scratchpad, to a device, or outside any repository passes. A target
-built from a variable, or named after a cd the check cannot follow, passes too. A script file the shell
-creates inside a repository gets a warning that points at the scratchpad (GIT-1). A stream redirect such as
-2>&1 writes no file (SHW-8). A command's words inside a script body's string are data, not a write (GRD-1).
+when git tracks its target, and the refusal of an in-place edit, such as sed -i or a script body, names
+io.edit, which makes several changes in one call. A write to the scratchpad, to a device, or outside any
+repository passes. A target built from a variable, or named after a cd the check cannot follow, passes too.
+A script file the shell creates inside a repository gets a warning that points at the scratchpad (GIT-1). A
+stream redirect such as 2>&1 writes no file (SHW-8). A command's words inside a script body's string are
+data, not a write (GRD-1).
 """
 import re
 from dataclasses import dataclass
@@ -19,7 +21,7 @@ from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.git import GitError
-from ioguard.lib.results import Code, Fix, Layer, Result, Severity
+from ioguard.lib.results import Code, Fix, Layer, Result, Severity, callable_name
 
 DEVICES = {"/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty", "nul", "$null", "con"}
 INTERPRETERS = re.compile(r"^(?:python[\d.]*|py|node|perl|ruby)$")
@@ -33,6 +35,7 @@ PS_WRITERS = {"set-content": ("-path", "-literalpath"), "sc": ("-path", "-litera
               "out-file": ("-filepath", "-literalpath", "-path"), "tee-object": ("-filepath", "-path"),
               "tee": ("-filepath", "-path")}
 PS_MOVERS = {"copy-item", "move-item", "copy", "move", "cpi", "mi", "cp", "mv"}
+IN_PLACE = {"sed -i", "perl -i", "a script body"}     # the writes that change a file in several places
 
 
 @dataclass(frozen=True)
@@ -230,13 +233,19 @@ class ShellWrites(Check):
 
     @staticmethod
     def refusal(write: Write, path: Path, event: Event, ctx: Context) -> Result:
+        if write.how in IN_PLACE:
+            batch = callable_name("io.edit")
+            fix = Fix(batch, {"path": path.as_posix()}, f"Use {batch} to make several changes in one call, "
+                                                        "the Edit tool for one, or the Write tool to replace "
+                                                        "it whole.")
+        else:
+            fix = Fix("Edit", {"file_path": path.as_posix()},
+                      "Use the Edit tool to change it, or the Write tool to replace it whole.")
         return Result.of(Code.SHELL_WRITE,
                          f"This command writes {path.as_posix()}, which git tracks, through {write.how}, "
                          "so the write skips io-guard's byte checks and Claude Code's checkpoints.",
                          event.tool_name, ctx.platform.os, file=path,
-                         evidence={"target": write.target, "how": write.how},
-                         fix=Fix("Edit", {"file_path": path.as_posix()},
-                                 "Use the Edit tool to change it, or the Write tool to replace it whole."))
+                         evidence={"target": write.target, "how": write.how}, fix=fix)
 
     @staticmethod
     def warning(path: Path, event: Event, ctx: Context) -> Result:

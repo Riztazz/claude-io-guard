@@ -3,14 +3,14 @@
 A Claude Code plugin that checks what an agent sends to the file and shell tools, fixes what it safely can, and
 returns a structured error for the rest. One codebase runs on Windows and macOS.
 
-**Status: in build.** The plugin installs, its io server runs the hooks and `io.read`, and its hooks answer every
-file and shell call. Seventeen checks run so far: the session probe, where a write lands, what holds a locked
-file, the Bash body move, the shell-write refusal, the quoting and dialect lint, the Git Bash path fix, the
-endings and BOM fix for Write, the indent fix for Edit, the check of each written file against the file before
-it, your own verify command after a write, the files a shell command changed, the profile line after a Read, the
-diagnosis of a failed file call, both after it fails and after Claude Code refuses it, what a shell command's
-result means, and a warning when the io server is not running. The build plan is in `.claude/tasks/`, and this
-page describes the plugin the plan builds.
+**Status: in build.** The plugin installs, its io server runs the hooks, `io.read`, `io.edit`, `io.splice` and
+`io.append`, and its hooks answer every file and shell call. Seventeen checks run so far: the session probe,
+where a write lands, what holds a locked file, the Bash body move, the shell-write refusal, the quoting and
+dialect lint, the Git Bash path fix, the endings and BOM fix for Write, the indent fix for Edit, the check of each
+written file against the file before it, your own verify command after a write, the files a shell command
+changed, the profile line after a Read, the diagnosis of a failed file call, both after it fails and after Claude
+Code refuses it, what a shell command's result means, and a warning when the io server is not running. The build
+plan is in `.claude/tasks/`, and this page describes the plugin the plan builds.
 
 ## Five fixes, by example
 
@@ -112,15 +112,19 @@ tests.
 
 ### The io tools
 
-A few jobs have no safe built-in tool, so the io server adds them. `io.read` works today, and the rest arrive with
-the tasks that build them:
+A few jobs have no safe built-in tool, so the io server adds them. `io.read`, `io.edit`, `io.splice` and
+`io.append` work today, and the rest arrive with the tasks that build them:
 
 | Tool | Job |
 |---|---|
 | `io.read` | A file's lines exactly as the file holds them, after its line endings, BOM, encoding and indent |
-| `io.edit` | Several edits in one file, all or nothing, in the file's own endings |
-| `io.splice` | Replace the text between two unique markers |
-| `io.append` | Add to the end of a file, wrapped and dated |
+| `io.edit` | Several edits in one file, all or nothing, in the file's own endings, BOM and encoding |
+| `io.splice` | Replace the text between a unique start marker and the end marker after it |
+| `io.append` | Add lines to the end of a file, dated if you ask, wrapped at the file's `.editorconfig` column |
+
+The three that change a file write it once, only when every place they name matched once, and a failed one
+writes nothing and names the lines it nearly matched. Two subagents editing one file take turns. After one of
+them changes a file, the built-in Edit tool needs a fresh Read of it, and every result says so.
 | `io.run` | Run a program from an argument list with no shell in between, under your Bash and PowerShell rules |
 | `io.read_log` | The lines a log gained since the last read |
 | `io.format` | Run the formatter over changed lines only |

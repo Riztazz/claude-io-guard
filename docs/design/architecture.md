@@ -29,16 +29,21 @@ plugins/io-guard/
         editorconfig.py            parse, matches, properties: the .editorconfig properties for one file
         drift.py                   drift, edited, changed_lines, restored: what a write changed in a file's bytes
         verify.py                  shape_problem, command_for: the user's verify commands per extension
-        anchors.py                 find, blind, closest, unique_anchor: where an old_string is, or nearly is
+        anchors.py                 find, blind, closest, unique_anchor, edit_view: where an old_string is, or
+                                   nearly is
+        edits.py                   replaced, change, apply, appended, wrapped: changes placed as the Edit tool
+                                   reads a file, and made in the file's own text
+        indent.py                  style, reindented, around, fitted: new text in the indent of the lines where
+                                   it lands
         shell.py                   scan, commands, budget_length, moved, pipelines, exit_candidates, the hazards
                                    bash reads differently
         pwsh.py                    commands, blanked, file_calls
         python_source.py           compile_report: a Python body's syntax error or warning, without running it
-        paths.py                   normalise, msys_prefix, reserved, link_target, inside, same_file
+        paths.py                   normalise, msys_prefix, reserved, link_target, inside, resolved, LockTable
         git.py                     Git, the GitPort implementation
         locks.py                   holders, file_lock
         proc.py                    run, Pump, background
-        results.py                 CodeSpec, CODES, Code, Result, Fix, render
+        results.py                 CodeSpec, CODES, Code, Result, Fix, render, callable_name
         config.py                  Config, SCHEMA, load, validate, merge
         events.py                  HookEvent, Tool, PermissionMode, Surface, Event
         context.py                 Context, the ports, SessionState, Probe
@@ -396,7 +401,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Transport | `MSYS_PATH`, `RESERVED_NAME` | 14, in `CODES` |
 | Bytes | `EOL_CONVERTED`, `BOM_RESTORED`, `EOL_MISMATCH`, `INDENT_MISMATCH` | 17, in `CODES` |
 | Bytes | `BOM_CHANGED`, `ENCODING_INVALID`, `NON_ASCII_ADDED`, `CONTROL_BYTES_ADDED`, `SIZE_COLLAPSED`, `UNINTENDED_CHANGE`, all warnings | 18, in `CODES` |
-| Stale | `ANCHOR_NOT_FOUND`, `ANCHOR_AMBIGUOUS`, `STALE_VIEW`, all warnings on a call that already failed | 20, in `CODES` |
+| Stale | `ANCHOR_NOT_FOUND`, `ANCHOR_AMBIGUOUS`, `STALE_VIEW`, all warnings on a call that already failed, and refusals when an io tool of task 24 answers with them | 20, in `CODES` |
 | Stale | `NOT_READ`, not built: the tool's own "not read yet" error already names the Read to make | - |
 | Stale | `TOUCHED_BY_SHELL`, a warning | 21, in `CODES` |
 | Read | `PATH_NOT_FOUND`, `READ_TOO_LARGE`, `PATTERN_INVALID`, `SEARCH_TOO_BROAD`, all warnings | 20, in `CODES` |
@@ -497,6 +502,8 @@ class Profile:
 
     def line(self) -> str: ...        # "CRLF, BOM, UTF-8, tabs, 1,284 lines"
     def warnings(self) -> tuple[str, ...]: ...
+    codec: str                        # property: reads the bytes whole, a BOM as U+FEFF, task 24
+    new_eol: Eol                      # property: the file's ending, the dominant one when mixed, else LF
 ```
 
 `profile` reads the style from the CRLF and LF counts, as the baseline survey did. A lone CR is counted and
@@ -691,6 +698,22 @@ def find(text: str, anchor: str) -> tuple[Match, ...]       # each place, not ov
 def blind(text: str, anchor: str) -> tuple[Match, ...]      # each place with spaces and tabs ignored
 def closest(text: str, anchor: str, limit: int = 3) -> tuple[Candidate, ...]  # blind, or scored windows
 def unique_anchor(text: str, match: Match) -> str           # whole lines around match, below then above
+def edit_view(text: str) -> str                             # task 24: every CRLF and lone CR as LF
+
+# edits.py, task 24: a place in the LF view, the change in the file's own text
+def replaced(text: str, start: int, end: int, new: str, eol: Eol) -> str   # each break in new as eol
+def change(text: str, start: int, end: int, new: str, eol: Eol, width: Optional[int]) -> Changed
+                                                            # and new in the indent around it
+def apply(text: str, changes: Sequence[Change], eol: Eol, width: Optional[int]) -> Applied | Missed
+                                                            # in order, each old found once, or none made
+def appended(text: str, addition: str, eol: Eol) -> str     # a last line with no break keeps having none
+def wrapped(text: str, column: int) -> str                  # a list item hangs under its first word
+
+# indent.py, task 24, moved from conform_edit
+def style(text: str) -> str                                 # tabs, spaces, mixed or none
+def reindented(text: str, to: str, width: int) -> str
+def around(text: str, first: int, last: int) -> str         # three lines either side
+def fitted(new: str, near: str, width: Optional[int]) -> Optional[str]   # None when the styles agree
 
 # shell.py, task 11
 def scan(command: str) -> Scan              # heredocs, python -c bodies, halving hazards, quoting states
@@ -732,7 +755,8 @@ def msys_prefix(word: str, posix_roots: Collection[str]) -> Optional[str]   # ta
 def reserved(path: Path) -> Optional[str]                   # "nul" for nul.txt, the name before the first dot
 def link_target(path: Path) -> Optional[Path]               # through a junction or symlink, None through none
 def inside(path: Path, roots: Collection[Path], platform: Platform) -> Optional[Path]   # the deepest root
-def same_file(a: Path, b: Path, platform: Platform) -> bool
+def resolved(path: Path) -> str                             # task 24: links followed, case folded as named
+class LockTable: lock(path) -> threading.Lock               # task 24: one per resolved path, per process
 
 # git.py
 class Git(GitPort): ...                                     # every call: -c core.quotepath=false, -z, timeout
@@ -755,6 +779,7 @@ def interpreter_for(lang: str, probe: Probe) -> Optional[Sequence[str]]
 def spec(code: Code) -> CodeSpec
 def render(result: Result) -> str
 def render_many(results: Sequence[Result]) -> str
+def callable_name(name: str) -> str       # io.edit -> mcp__plugin_io-guard_io__io_edit, for every fix text
 
 # config.py
 def defaults(check_keys: Optional[Mapping[str, Mapping[str, ConfigKey]]] = None) -> Config
@@ -856,6 +881,8 @@ task 21 `skip_trees`, empty by default, and `checks.shell.touched.listed`. Task 
 `readers`, `builds`, `runs`, `short_lines` of 50, `head_lines` and `tail_lines` of 20, `shown_errors`,
 `line_chars`, `max_bytes` of 16 MB, `code_pages` and `learn_from_bytes` of 5,000. Task 23 added
 `io.read.max_bytes` of 16 MB and `io.read.max_chars` of 60,000, and `checks.server.heartbeat.stale_s` of 30.
+Task 24 added `io.edit.max_bytes` of 16 MB and `io.edit.wait_ms` of 5,000, which `io.edit`, `io.splice` and
+`io.append` share.
 Each other key arrives with its check. A key marked `project_narrows`, such as
 the budget, takes a lower number from a project file and refuses a higher one. A key with a `shape`, such as
 `verify`, has its inner values checked too, and a wrong one drops the file like any other error.
@@ -1141,12 +1168,47 @@ schema turns a new field into a failed call. `annotations` come from the three b
 
 Each tool is one module with its input and output dataclasses, its `ToolSpec` and its handler. The handler
 takes the input dataclass and a `ToolCall` holding the `Context`, the `CancelToken`, the `ProgressReporter`
-and the `Elicitor`, and returns the output dataclass. `io.edit`, `io.splice` and `io.append` call
-`lib.anchors`, `lib.profile` and `lib.bytesio`, and every result carries the line about a fresh Read before
-the next built-in Edit. `io.run` matches its argv against the user's Bash and PowerShell rules through
-`lib.rules` before it runs anything: a deny rule refuses with `RULE_DENIED`, and an ask rule elicits the
-user's yes and refuses with `RULE_ASKED` when it cannot. The `hook.*` tools are registered last, with the
-description "Called by Claude Code hooks. Not for the model."
+and the `Elicitor`, and returns the output dataclass. `io.run` matches its argv against the user's Bash and
+PowerShell rules through `lib.rules` before it runs anything: a deny rule refuses with `RULE_DENIED`, and an
+ask rule elicits the user's yes and refuses with `RULE_ASKED` when it cannot. The `hook.*` tools are
+registered last, with the description "Called by Claude Code hooks. Not for the model."
+
+### Batch edit, splice and append
+
+`mcp/tools_edit.py` holds the three tools that change a file, and they share one path from the read to the
+write (task 24).
+
+```python
+io.edit(path, edits: [{old_string, new_string}], expect_hash = "")
+io.splice(path, start, end, text, include_end = False, expect_hash = "")
+io.append(path, text, wrap_column = None, date_prefix = False, expect_hash = "")
+-> ChangeOutput(path, profile, changed, lines: [{first_line, last_line}], sha256, indented, note)
+```
+
+1. **Hold the file.** `paths.LockTable` holds it against the server's other workers, then `lib.locks.file_lock`
+   against every other io-guard process, each for up to `io.edit.wait_ms`, past which the call answers
+   `FILE_LOCKED` (section 8).
+2. **Load it.** A missing file is `PATH_NOT_FOUND`, one past `io.edit.max_bytes` `READ_TOO_LARGE`, a read-only
+   one `READ_ONLY`, and one whose SHA-256 is not `expect_hash` `STALE_VIEW`. A binary file, or one whose bytes
+   do not decode and encode back the same in `Profile.codec`, is `ENCODING_INVALID`.
+3. **Change the text in memory.** `lib.edits` finds each place in the LF view the Edit tool reads, and makes
+   the change in the file's own text. Every ending outside the change stays, each new line break takes
+   `Profile.new_eol`, and new text indented the other way from the lines around it takes their style, which
+   the result's `indented` names. `io.edit` makes its edits in order, each `old_string` found exactly once in
+   what the edits before it left. `io.splice` replaces what lies between a unique `start` and the first `end`
+   after it. `io.append` adds lines after the last one, dated after any list marker when asked, and wrapped at
+   `wrap_column`, or at the `.editorconfig` `max_line_length` when none is given.
+4. **Write once.** The text goes back in the file's encoding and BOM, through `write_atomic`, only when a byte
+   changed. A write another program blocks is `FILE_LOCKED`, naming the holder.
+
+A place that does not match once refuses the whole call, and nothing is written (ANC-3). The refusal is task
+20's diagnosis, through `checks.diagnose.Diagnosis` with a `Wording` that names the tool's own argument and
+callable, on the text the earlier edits left rather than the file. Its fix is the whole `io.edit` call again
+with that edit corrected, and it never offers `replace_all`, which the io tools lack. Every result carries
+"The built-in Edit tool needs a fresh Read of this file before its next use", because Claude Code tracks its
+own tools' reads and writes only. `io.read` returns the `sha256` that `expect_hash` compares, which a caller
+passes only when the rest of the file must be as it read it: in `live-edit-parallel` models passed each
+result's hash on unasked, and the other subagents' writes refused them.
 
 ### Handles
 
@@ -1233,16 +1295,17 @@ Telemetry has no thread of its own. One lock in `Telemetry` serialises the appen
 before `record` returns, so a crash loses none. `sys.stdout` points at stderr inside the server, so a stray
 print cannot corrupt an answer.
 
-Locks are few and named. `paths.LockTable.lock(path)` arrives with `io.edit` in task 24: one `threading.Lock`
-per resolved path, held across a read-profile-write sequence, so two subagents editing one file serialise.
-`SessionState` fields are guarded by one `RLock`. Caches carry a TTL: git status 2 seconds, a file profile until
+Locks are few and named. `paths.LockTable.lock(path)` is one `threading.Lock` per resolved path, which
+`io.edit`, `io.splice` and `io.append` hold from the read to the write, so two subagents editing one file take
+turns. Three subagents' 30 interleaved `io.edit` calls on one file all landed in `live-edit-parallel` (task
+24). `SessionState` fields are guarded by one `RLock`. Caches carry a TTL: git status 2 seconds, a file profile until
 its mtime and size change, the probe for the session.
 
 Across processes, three rules keep two servers from corrupting each other's work.
 
 | Shared thing | Rule |
 |---|---|
-| A file an io tool edits | Inside the thread lock, the tool takes `lib.locks.file_lock(path)`: an exclusive lock on `${CLAUDE_PLUGIN_DATA}/locks/<sha1 of the resolved path>.lock` through `msvcrt.locking` on Windows and `fcntl.flock` on macOS, held from the read to the atomic replace, with a 5 second wait and then `FILE_LOCKED`. The write itself is a temp file in the same folder and `os.replace`, so a reader never sees half a file |
+| A file an io tool edits | Inside the thread lock, the tool takes `lib.locks.file_lock(path)`: an exclusive lock on `${CLAUDE_PLUGIN_DATA}/locks/<sha1 of the resolved path>.lock`, or under the system temporary folder's `io-guard` with no data folder, through `msvcrt.locking` on Windows and `fcntl.flock` on macOS, held from the read to the atomic replace, with an `io.edit.wait_ms` wait of 5 seconds and then `FILE_LOCKED`. The write itself is a temp file in the same folder and `os.replace`, so a reader never sees half a file |
 | Telemetry | One file per session, `events/<YYYY-MM>/<session>.jsonl`, so two servers never interleave lines. `tools/report.py` merges them |
 | Config | Loaded once per process and read-only after that. `io.config` writes the project file atomically, and a running server picks the change up at its next start |
 

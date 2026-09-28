@@ -1,7 +1,7 @@
 """lib.anchors finds where an old_string is, where it nearly is, and the shortest text naming one place."""
 import unittest
 
-from ioguard.lib.anchors import blind, closest, find, unique_anchor
+from ioguard.lib.anchors import blind, closest, edit_view, find, unique_anchor
 
 TABS = "void f()\n{\n\tint a = 1;\n\tint b = 2;\n}\n"
 
@@ -14,6 +14,9 @@ class FindCountsAsTheEditToolCounts(unittest.TestCase):
 
     def test_an_empty_anchor_is_nowhere(self):
         self.assertEqual(find("x\n", ""), (), "an empty old_string names no place")
+
+    def test_the_edit_view_reads_every_ending_as_lf(self):
+        self.assertEqual(edit_view("a\r\nb\rc\nd"), "a\nb\nc\nd", "CRLF and a lone CR each become one LF")
 
 
 class WhitespaceIsIgnoredFirst(unittest.TestCase):

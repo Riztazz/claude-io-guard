@@ -27,15 +27,9 @@ from ioguard.mcp.progress import CancelToken
 
 log = logging.getLogger("ioguard.mcp")
 
-CALLABLE_PREFIX = "mcp__plugin_io-guard_io__"
 RESULT_CHARS = 80_000     # about 20,000 tokens, under the 25,000 Claude Code shows of an MCP result
 SAVED_HEAD = 4_000        # the characters of a saved result the answer still shows
 NO_DECISION = {"content": [{"type": "text", "text": "{}"}]}
-
-
-def callable_name(name: str) -> str:
-    """The name the model calls a tool by, such as mcp__plugin_io-guard_io__io_read for io.read."""
-    return CALLABLE_PREFIX + name.replace(".", "_")
 
 
 class ToolFailure(Exception):

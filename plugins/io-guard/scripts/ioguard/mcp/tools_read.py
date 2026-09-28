@@ -10,9 +10,9 @@ import re
 from dataclasses import dataclass
 
 from ioguard.lib import paths, text
-from ioguard.lib.profile import Bom, Profile, profile
-from ioguard.lib.results import Code, Fix, Result
-from ioguard.mcp.toolspec import ToolCall, ToolFailure, ToolSpec, callable_name, doc
+from ioguard.lib.profile import profile
+from ioguard.lib.results import Code, Fix, Result, callable_name
+from ioguard.mcp.toolspec import ToolCall, ToolFailure, ToolSpec, doc
 
 NAME = "io.read"
 LINE = re.compile(r"[^\n]*\n|[^\n]+")
@@ -33,6 +33,8 @@ class ReadOutput:
     profile: str = doc("Endings, BOM, encoding, indent and lines, such as CRLF, BOM, UTF-8, tabs, 12 lines.")
     binary: bool = doc("The bytes are not text, so text is empty and head_hex holds the first bytes.")
     size: int = doc("The file's size in bytes.")
+    sha256: str = doc("The SHA-256 of the file's bytes, which io.edit, io.splice and io.append take as "
+                      "expect_hash.")
     first_line: int = doc("The first line returned, counted from 1. 0 when none was.")
     last_line: int = doc("The last line returned.")
     total_lines: int = doc("The lines in the file.")
@@ -47,7 +49,7 @@ class ReadOutput:
         lines = f"lines {self.first_line:,}-{self.last_line:,}" if self.first_line else "no lines"
         body = text.snippet(self.text, 1, self.last_line - self.first_line + 1, 0) if self.text else ""
         numbered = "\n".join(renumbered(body, self.first_line - 1))
-        header = f"{self.path}: {self.profile}, {lines} of {self.total_lines:,}"
+        header = f"{self.path}: {self.profile}, {lines} of {self.total_lines:,}, sha256 {self.sha256}"
         parts = [header, numbered, self.next, self.note]
         return "\n".join(part for part in parts if part)
 
@@ -60,18 +62,6 @@ def renumbered(snippet: str, shift: int) -> list[str]:
         if number.strip().isdigit():
             out.append(f"{int(number) + shift:>6}| {rest}")
     return out
-
-
-def decoded(data: bytes, found: Profile) -> str:
-    """The file's text, its BOM kept as U+FEFF. A file that is not UTF-8 decodes in the code page its bytes
-    suggest."""
-    if found.bom is Bom.UTF16_LE:
-        return data.decode("utf-16-le", "replace")
-    if found.bom is Bom.UTF16_BE:
-        return data.decode("utf-16-be", "replace")
-    if found.encoding.utf8:
-        return data.decode("utf-8")
-    return data.decode(found.encoding.guess or "utf-8", "replace")
 
 
 def read(given: ReadInput, call: ToolCall) -> ReadOutput:
@@ -97,9 +87,9 @@ def read(given: ReadInput, call: ToolCall) -> ReadOutput:
                                     fix=glob)) from None
     found_profile = profile(data)
     if found_profile.binary:
-        return ReadOutput(shown, found_profile.line(), True, len(data), 0, 0, 0, "",
+        return ReadOutput(shown, found_profile.line(), True, len(data), found_profile.sha256, 0, 0, 0, "",
                           data[:HEAD_BYTES].hex(" "), "", NOTE)
-    lines = LINE.findall(decoded(data, found_profile))
+    lines = LINE.findall(data.decode(found_profile.codec, "replace"))
     first = max(1, given.offset)
     budget, taken = ctx.config.get("io.read.max_chars"), []
     for line in lines[first - 1:first - 1 + max(0, given.limit)]:
@@ -108,8 +98,9 @@ def read(given: ReadInput, call: ToolCall) -> ReadOutput:
         taken.append(line)
     last = first + len(taken) - 1
     after = f"Call {callable_name(NAME)} with offset {last + 1} for the rest." if last < len(lines) else ""
-    return ReadOutput(shown, found_profile.line(), False, len(data), first if taken else 0,
-                      last if taken else 0, len(lines), "".join(taken), "", after, NOTE)
+    return ReadOutput(shown, found_profile.line(), False, len(data), found_profile.sha256,
+                      first if taken else 0, last if taken else 0, len(lines), "".join(taken), "", after,
+                      NOTE)
 
 
 SPECS = (ToolSpec(NAME, "Read a file byte for byte",
