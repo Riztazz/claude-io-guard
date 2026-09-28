@@ -30,8 +30,8 @@ plugins/io-guard/
         editorconfig.py            parse, matches, properties: the .editorconfig properties for one file
         drift.py                   drift, edited, changed_lines, restored: what a write changed in a file's bytes
         commands.py                command_for, filled: the user's verify and format commands per extension
-        anchors.py                 find, blind, closest, unique_anchor, edit_view: where an old_string is, or
-                                   nearly is
+        anchors.py                 find, blind, closest, unique_anchor, edit_view, joins: where an old_string
+                                   is, or nearly is, and where an Edit joins two words
         edits.py                   replaced, change, apply, appended, wrapped, carried: changes placed as the
                                    Edit tool reads a file, and made in the file's own text
         indent.py                  style, reindented, around, fitted: new text in the indent of the lines where
@@ -79,7 +79,7 @@ plugins/io-guard/
         lint.py                    shell.lint: quoting, escapes, dialect, Python bodies, PIPE_HIDES_EXIT
         win_paths.py               win.paths: MSYS_PATH for slash arguments and cmd /c, RESERVED_NAME for nul
         conform_write.py           conform.write: EOL_CONVERTED, BOM_RESTORED, EOL_MISMATCH for a mixed file
-        conform_edit.py            conform.edit: INDENT_MISMATCH, new_string in the indent around the match
+        conform_edit.py            conform.edit: INDENT_MISMATCH, SPACE_DROPPED, the indent and the join
         journal_write.py           journal.write: each Edit and Write into the journal, before verify.write
         verify_write.py            verify.write: the file after an Edit or Write against its snapshot, repairs
         verify_command.py          verify.command: the user's verify command on the written file
@@ -451,6 +451,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Transport | `COMMIT_POLICY`, a git commit whose message holds what `commit_policy` forbids | 29, in `CODES` |
 | Bytes | `FORMAT_FAILED`, when `io.format`'s command cannot start, fails or prints nothing | 26, in `CODES` |
 | Bytes | `INVISIBLE_ADDED`, a warning when a write adds a character the Read tool shows as nothing | 39, in `CODES` |
+| Bytes | `SPACE_DROPPED`, a refusal of an Edit whose old_string ends in a space new_string lacks, mid-line (ANC-4) | 49, in `CODES` |
 
 ### Decision and Rewrite
 
@@ -743,6 +744,9 @@ def blind(text: str, anchor: str) -> tuple[Match, ...]      # each place with sp
 def closest(text: str, anchor: str, limit: int = 3) -> tuple[Candidate, ...]  # blind, or scored windows
 def unique_anchor(text: str, match: Match) -> str           # whole lines around match, below then above
 def edit_view(text: str) -> str                             # task 24: every CRLF and lone CR as LF
+def joins(text: str, old: str, new: str, every: bool) -> tuple[Joined, ...]
+                                                            # task 49: each line new ends up joined to the
+                                                            # text after the space old ends with
 
 # edits.py, task 24: a place in the LF view, the change in the file's own text
 def replaced(text: str, start: int, end: int, new: str, eol: Eol) -> str   # each break in new as eol

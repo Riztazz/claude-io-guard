@@ -4,13 +4,14 @@ A Claude Code plugin that checks what an agent sends to the file and shell tools
 returns a structured error for the rest. One codebase runs on Windows and macOS.
 
 **Status: in build.** The plugin installs, its io server runs the hooks and every io tool, and its hooks answer
-every file and shell call. Nineteen checks run so far: the session probe, where a write lands,
+every file and shell call. Twenty-one checks run so far: the session probe, where a write lands,
 what holds a locked file, the Bash body move, the shell-write refusal, the quoting and dialect lint, the Git Bash
-path fix, the endings and BOM fix for Write, the indent fix for Edit, the check of each written file against the
-file before it, your own verify command after a write, the files a shell command changed, the profile line after
-a Read, the diagnosis of a failed file call, both after it fails and after Claude Code refuses it, what a shell
-command's result means, a warning when the io server is not running, your permission rules on `io.run`, and
-your commit policy. The
+path fix, the endings and BOM fix for Write, the indent fix for Edit and the refusal of one that would join two
+words, the check of each written file against the file before it, your own verify command after a write, the
+files a shell command changed, the profile line after a Read, the diagnosis of a failed file call, both after it
+fails and after Claude Code refuses it, what a shell command's result means, a warning when the io server is not
+running, your permission rules on `io.run`, your commit policy, the question before `io.restore` overwrites your
+edits, and the journal of every write. The
 build plan is in `.claude/tasks/`, and this page describes the plugin the plan builds.
 
 ## Five fixes, by example

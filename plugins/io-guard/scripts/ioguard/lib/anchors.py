@@ -1,4 +1,5 @@
-"""Where an Edit's old_string sits in a file, where it nearly sits, and the shortest text naming one place.
+"""Where an Edit's old_string sits in a file, where it nearly sits, the shortest text naming one place, and
+where an Edit joins the text after its match.
 
 Everything works on the file as the Edit tool reads it: text, every line ending read as LF, no BOM. A miss is
 usually whitespace: a tab where the call has spaces, a trailing space, an indent one level off. So closest
@@ -53,6 +54,35 @@ def find(text: str, anchor: str) -> tuple[Match, ...]:
     while at >= 0:
         found.append(match_at(text, at, at + len(anchor)))
         at = text.find(anchor, at + len(anchor))
+    return tuple(found)
+
+
+@dataclass(frozen=True)
+class Joined:
+    """A line an Edit leaves with new_string's last character against the text after the match."""
+    line: int                        # the match's last line, counted from 1 before the Edit
+    after: str                       # that line as the Edit leaves it
+    next: str                        # the character the dropped spaces stood before
+
+
+def joins(text: str, old: str, new: str, every: bool) -> tuple[Joined, ...]:
+    """Each place where replacing old with new drops the spaces or tabs old ends with, while the line goes
+    on after the match. Only the one match counts unless every, as the Edit tool refuses a repeated one. None
+    when new is empty, keeps some whitespace at its end, or old is only whitespace."""
+    trimmed = old.rstrip(" \t")
+    if not new or trimmed in ("", old) or new != new.rstrip(" \t"):
+        return ()
+    matches = find(text, old)
+    if not every and len(matches) != 1:
+        return ()
+    found = []
+    for match in matches:
+        following = text[match.end:match.end + 1]
+        if following in ("", " ", "\t", "\n"):
+            continue
+        start, stop = text.rfind("\n", 0, match.start) + 1, text.find("\n", match.end)
+        head = (text[start:match.start] + new).rsplit("\n", 1)[-1]
+        found.append(Joined(match.last_line, head + text[match.end:None if stop < 0 else stop], following))
     return tuple(found)
 
 

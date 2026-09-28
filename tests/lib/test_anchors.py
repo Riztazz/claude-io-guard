@@ -1,7 +1,7 @@
 """lib.anchors finds where an old_string is, where it nearly is, and the shortest text naming one place."""
 import unittest
 
-from ioguard.lib.anchors import blind, closest, edit_view, find, unique_anchor
+from ioguard.lib.anchors import blind, closest, edit_view, find, joins, unique_anchor
 
 TABS = "void f()\n{\n\tint a = 1;\n\tint b = 2;\n}\n"
 
@@ -57,6 +57,32 @@ class AUniqueAnchorGrowsByWholeLines(unittest.TestCase):
         text = "a\nx\nb\nx\nc\n"
         self.assertEqual(unique_anchor(text, find(text, "x")[1]), "x\nc",
                          "the line below the second x makes it unique")
+
+
+class ADroppedSpaceJoinsTheTextAfterIt(unittest.TestCase):
+    TEXT = "a = f(x.Branch, 1);\nb = f(y.Branch, 2);\nc = g(z.Branch, \n"
+
+    def test_every_match_the_line_goes_on_after_is_joined(self):
+        found = joins(self.TEXT, ".Branch, ", ".Branch.ToInt(),", every=True)
+        self.assertEqual([(place.line, place.after, place.next) for place in found],
+                         [(1, "a = f(x.Branch.ToInt(),1);", "1"), (2, "b = f(y.Branch.ToInt(),2);", "2")],
+                         "the third match ends its line, so losing its space joins nothing")
+
+    def test_one_match_counts_only_when_it_is_the_only_one(self):
+        self.assertEqual((len(joins(self.TEXT, "x.Branch, ", "x.B,", every=False)),
+                          joins(self.TEXT, ".Branch, ", ".B,", every=False)), (1, ()),
+                         "the Edit tool refuses a repeated match without replace_all, so nothing joins")
+
+    def test_a_new_string_that_keeps_whitespace_or_is_empty_joins_nothing(self):
+        for old, new in ((".Branch, ", ".B, "), (".Branch, ", ".B\t"), (".Branch, ", ""), (" ", "x"),
+                         (".Branch,", ".B")):
+            with self.subTest(old=old, new=new):
+                self.assertEqual(joins(self.TEXT, old, new, every=True), (),
+                                 "only a space after text in old_string, missing from new_string, can join")
+
+    def test_the_joined_line_is_the_last_line_of_a_multi_line_new_string(self):
+        found = joins("f(a, b);\n", "a, ", "a,\n  c,", every=False)
+        self.assertEqual((found[0].line, found[0].after), (1, "  c,b);"), "the join lands on new's last line")
 
 
 if __name__ == "__main__":

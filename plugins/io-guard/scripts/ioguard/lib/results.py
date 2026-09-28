@@ -211,6 +211,10 @@ CODES: tuple[CodeSpec, ...] = (
              "git could not stage the hunks, so the index is as it was.",
              "Fix what git's message names, such as a file git does not track yet, then call io.stage again.",
              "0.1"),
+    CodeSpec("SPACE_DROPPED", Layer.BYTES, Severity.REFUSED,
+             "old_string ends in a space or tab that new_string lacks, so the Edit would join new_string to "
+             "the text after it.",
+             "End old_string and new_string one character later, with the space inside both.", "0.1"),
 )
 Code = Enum("Code", {spec.code: spec.code for spec in CODES})
 SPECS: dict[Code, CodeSpec] = {Code[spec.code]: spec for spec in CODES}

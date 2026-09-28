@@ -350,7 +350,7 @@ denied, and the rerun denied all three. Ten calls each took:
 | 25 | Which backslashes the Windows Bash tool halves | the Bash tool of this session, desktop 2.1.281, task 11 | A run of backslashes that a double quote does not follow loses half its pairs: `'a\\b'` arrived as `a\b`, a run of four as two, a run of three as two, in single quotes and in a quoted heredoc alike. A run before `"` arrives whole: `"\\"` and four before `"` in a quoted heredoc were unchanged. A `\\` before a closing `'` was halved. So Python's `"\\"` in a heredoc runs, and `r'\\d'` silently becomes `r'\d'` |
 | 26 | A moved body runs through `ask` and `refuse` | `live-move-ask`, `live-move-auto`, task 11 | Default mode, Haiku: an 8,973-character `python - <<'PY'` call was answered `ask` with `updatedInput`, the permission prompt received `python - < "<file>"`, and the approved run printed 3 for `len(r"\\n")`. Auto mode, Sonnet: the call was refused with the moved command as the fix, and the rerun printed 3. CLI 2.1.283 |
 | 27 | A PreToolUse `updatedInput` with no `permissionDecision` applies, and keeps the harness's own decision | `write-quiet`, task 17 | Yes. In default mode a Write rewritten to BOM and CRLF content reached the permission prompt as rewritten, and the approved file landed as `EF BB BF` then `line one\r\nline two\r\n`, byte for byte. 2.1.281 and 2.1.283 |
-| 28 | The Edit tool keeps a trailing space in new_string | `edit-trailing`, and the first `live-conform` run, task 17 | Yes. A hook that set new_string to `one = ` left `one = \ntwo = 2\n` in the file, on 2.1.281 and 2.1.283. Asked for `one = `, Haiku's own `tool_use` carried `one =`, so the space is lost before any hook sees the call, and io-guard cannot restore it (2.1.283) |
+| 28 | The Edit tool keeps a trailing space in new_string | `edit-trailing`, and the first `live-conform` run, task 17 | Yes. A hook that set new_string to `one = ` left `one = \ntwo = 2\n` in the file, on 2.1.281 and 2.1.283. Asked for `one = `, Haiku's own `tool_use` carried `one =`, so the space is lost before any hook sees the call, and io-guard cannot restore it (2.1.283). Again on 2026-09-28: a hook's `tool_input` held `.Branch.ToInt(),` for a call asked to end in a space (2.1.283), and `live-space-dropped` saw the same call on 2.1.281 and 2.1.283 |
 | 29 | An Edit straight after io-guard put back a file's endings and BOM succeeds with no new Read | `live-verify-direct`, `live-verify`, task 18 | Yes. A Write dropped keep.txt's BOM and CRLF, `verify.write` wrote both back, and the next Edit, with no Read between, ran and left `EF BB BF` then `GAMMA\r\ndelta`. `live-verify` read the file first and landed the same. The model saw the `EOL_CONVERTED` line both times. 2.1.281 and 2.1.283 |
 | 30 | Which failed file calls reach a hook | `edit-refusals`, `other-refusals`, task 20 | An Edit or Write that Claude Code rejects as a `<tool_use_error>` fires no hook at all, neither PreToolUse nor PostToolUseFailure: not read yet, `String to replace not found`, `Found 2 matches`, `No changes to make` and a missing file for Edit, and not read yet for Write. A Read over 256 KB, a pattern ripgrep rejects, a Grep path and a Glob folder that do not exist all fire PreToolUse and then PostToolUseFailure. 2.1.281 and 2.1.283 |
 | 31 | `${transcript_path}` substitutes in an `mcp_tool` map, and the transcript holds a refused call | `live-diagnose`, `guard-fields`, task 20 | Yes. The transcript records the refused call's `tool_use` and a `tool_result` with `is_error` and its text in `<tool_use_error>`. At the next hook, io-guard read the end of the transcript and its diagnosis reached the model as a `hook_additional_context` attachment, for each of seven failures. 2.1.281 and 2.1.283 |
@@ -456,15 +456,20 @@ listings.
 
 Classes: **data** leaves a file or result wrong, **time** costs retries and tokens, **noise** is friction. Scope:
 **win** happens on Windows only, **all** everywhere. "-" means not planned, because it is outside file and shell
-IO. Two are exceptions. ANC-4's space is gone from the model's own call before any hook sees it ("Hooks and
-MCP", row 28). PTH-3 went with the write-roots rule the lead dropped (D27).
+IO. PTH-3 is the exception: it went with the write-roots rule the lead dropped (D27). ANC-4's space is gone from
+the model's own call before any hook sees it ("Hooks and MCP", row 28), so io-guard cannot put it back. Task 49
+refuses the Edit where the lost space would join two words, `SPACE_DROPPED`, and names the strings one character
+longer, which carry the space either way. It refuses every time. A first version let the same Edit through when
+sent again, and Haiku on 2.1.281 did send it again, in 1 run of 2, so the words were joined anyway. Over
+the corpus of 2026-09-27, 5 of 17,370 Edits have the shape, 4 of them joined text, and all 4 broke the file's own
+spacing, such as `spawned =[` and `CursorAim(const`.
 
 | Id | Title | Class | Scope | Task |
 |---|---|---|---|---|
 | ANC-1 | Anchor not found | time | all | 20, 24 |
 | ANC-2 | Anchor matches more than once | data | all | 20, 24 |
 | ANC-3 | A batch stops half applied | data | all | 24 |
-| ANC-4 | Trailing whitespace is cut from new_string | data | all | - |
+| ANC-4 | Trailing whitespace is cut from new_string | data | all | 49 |
 | ANC-5 | Private-use glyphs are invisible | data | all | 15, 16, 39 |
 | STL-1 | File changed between read and write | time | all | 20, 21 |
 | STL-2 | Edit or Write before Read | noise | all | 20 |

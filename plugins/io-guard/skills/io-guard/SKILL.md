@@ -120,6 +120,7 @@ A refused call did not run. A warning, or a note that io-guard fixed something, 
 | `SHELL_WRITE` | The command writes a file git tracks through the shell, around io-guard's checks. | Use the Edit tool to change the file, or the Write tool to replace it whole. |
 | `SIZE_COLLAPSED` | The file holds far fewer bytes than the call should have left in it. | Read the file, and write the missing text back. |
 | `SNAPSHOT_TOO_LARGE` | The paths hold more files or bytes than one snapshot keeps, so io.snapshot kept nothing. | Call io.snapshot on fewer paths, such as only the folders the task changes. |
+| `SPACE_DROPPED` | old_string ends in a space or tab that new_string lacks, so the Edit would join new_string to the text after it. | End old_string and new_string one character later, with the space inside both. |
 | `STAGE_FAILED` | git could not stage the hunks, so the index is as it was. | Fix what git's message names, such as a file git does not track yet, then call io.stage again. |
 | `STALE_BINARY` | The last build in this session failed, so this run used what an earlier build made. | Fix the build and build again before trusting this result. |
 | `STALE_VIEW` | The file holds something other than what the call expected. | Read the file again, then change only what differs. |

@@ -142,6 +142,12 @@ DIAGNOSE = ("Do these in order, one tool call each, and never retry or fix a fai
             "limit. 7. Grep for the pattern f(x in this folder. 8. Use the Edit tool on a.cpp to replace "
             "'void f()' with 'void f()'. 9. Glob for *.txt in the path missing-dir. Then reply DONE.")
 DIAGNOSE_CPP = b"void f()\r\n{\r\n\tint a = 1;\r\n\tint b = 2;\r\n\tint a = 1;\r\n}\r\n"
+SPACE_DROPPED = ("Read ws.txt. Then use the Edit tool on ws.txt with replace_all true, with old_string "
+                 "exactly '.Branch, ' and new_string exactly '.Branch.ToInt(), '. Each of the two strings "
+                 "ends in one space, and the space is part of the string. If the Edit is refused, do what "
+                 "the refusal says. Then reply DONE.")
+SPACE_DROPPED_FILE = b"a = f(x.Branch, 1);\nb = f(y.Branch, 2);\n"
+SPACE_KEPT = "a = f(x.Branch.ToInt(), 1);\nb = f(y.Branch.ToInt(), 2);\n"
 DIAGNOSED = ("ANCHOR_NOT_FOUND: old_string of the refused Edit matches line 4 of a.cpp",
              "ANCHOR_AMBIGUOUS: ", "PATH_NOT_FOUND: missing.txt does not exist",
              "READ_TOO_LARGE: big.txt holds",
@@ -431,6 +437,9 @@ PROBES = {
     "live-read-only": Probe(0, "", guard="", permission="acceptEdits", allowed=("Read", "Edit"), git=True,
                             prompt=READ_ONLY, check=("Hero.uasset",), extra={"readonly": ("Hero.uasset",)},
                             setup={".gitattributes": b"*.uasset lockable\n", "Hero.uasset": b"hero v1\n"}),
+    "live-space-dropped": Probe(0, "", guard="", permission="acceptEdits", allowed=("Read", "Edit"),
+                                prompt=SPACE_DROPPED, check=("ws.txt",), max_turns=10,
+                                setup={"ws.txt": SPACE_DROPPED_FILE}),
     "live-locked": Probe(0, "", guard="", permission="acceptEdits", allowed=("Read", "Edit"), prompt=LOCKED,
                          check=("keep.txt",), extra={"hold": "keep.txt"}, setup={"keep.txt": b"alpha\n"}),
     "live-diagnose": Probe(0, "", guard="", permission="acceptEdits", prompt=DIAGNOSE, max_turns=16,
@@ -1142,6 +1151,7 @@ VERDICTS = {
     "live-verify-direct": lambda s, n: repaired_then_edited(s, n, ["Read", "Write", "Edit"]),
     "live-read-only": lambda s, n: s["files"]["Hero.uasset"] == "hero v1\n"
     and "READ_ONLY: Hero.uasset is read-only. Lock it with git lfs lock Hero.uasset" in seen(s),
+    "live-space-dropped": lambda s, n: s["files"]["ws.txt"] == SPACE_KEPT and "SPACE_DROPPED: " in seen(s),
     "live-locked": lambda s, n: s["files"]["keep.txt"] == "alpha\n"
     and context_reached(n, "FILE_LOCKED: Python (process"),
     "live-diagnose": lambda s, n: all(context_reached(n, needle) for needle in DIAGNOSED)

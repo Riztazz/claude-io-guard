@@ -2,10 +2,11 @@
 tool."""
 import unittest
 from pathlib import Path
+from types import MappingProxyType
 
 from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import default_registry
-from ioguard.lib.config import defaults
+from ioguard.lib.config import Config, defaults
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Verdict
 from ioguard.lib.events import Event, Surface
@@ -18,11 +19,19 @@ WINDOWS = Platform("win32", True)
 REGISTRY = default_registry()
 
 
-def edit(data: bytes, old: str, new: str, replace_all: bool = False):
+def context(data: bytes, **values) -> Context:
+    config = Config(MappingProxyType({**defaults(REGISTRY.keys()).values, **values}))
+    return Context.fake(files={CWD / "a.cpp": data}, config=config, platform=WINDOWS)
+
+
+def edit(data: bytes, old: str, new: str, replace_all: bool = False, ctx: Context | None = None):
     event = Event.from_hook_json(events.edit(CWD / "a.cpp", old, new, CWD, replace_all), Surface.MCP_HOOK,
                                  WINDOWS)
-    ctx = Context.fake(files={event.file_path: data}, config=defaults(REGISTRY.keys()), platform=WINDOWS)
-    return Pipeline(REGISTRY).run(event, ctx)
+    return Pipeline(REGISTRY).run(event, ctx or context(data))
+
+
+def decided(outcome):
+    return next(decision for decision in outcome.decisions if decision.check_id == "conform.edit")
 
 
 class WhatTheToolHandlesItself(unittest.TestCase):
@@ -64,6 +73,39 @@ class TheIndentFollowsTheLinesAround(unittest.TestCase):
                         if decision.check_id == "conform.edit")
         self.assertEqual((decision.results[0].code, decision.results[0].severity, decision.rewrite),
                          (Code.INDENT_MISMATCH, Severity.WARNING, None), "mixed input is not guessed at")
+
+
+class ADroppedSpaceIsRefused(unittest.TestCase):
+    BRANCHES = b"a = f(x.Place.Branch, 1);\r\nb = f(y.Place.Branch, 2);\r\n"
+
+    def test_the_recorded_replace_all_is_refused_with_its_joined_lines_and_the_strings_to_send(self):
+        outcome = edit(self.BRANCHES, ".Place.Branch, ", ".Place.Branch.ToInt(),", replace_all=True)
+        result = decided(outcome).results[0]
+        self.assertEqual((outcome.verdict, result.code, result.evidence["lines"]),
+                         (Verdict.DENY, Code.SPACE_DROPPED, [1, 2]), "both matches go on after the space")
+        self.assertIn("1| a = f(x.Place.Branch.ToInt(),1);", result.message, "the line as the Edit leaves it")
+        self.assertEqual(dict(result.fix.input), {"old_string": ".Place.Branch, 1",
+                                                  "new_string": ".Place.Branch.ToInt(), 1"},
+                         "both strings end one character later, with the space kept")
+        self.assertIn("one Edit for each character", result.fix.text, "1 and 2 follow, so one Edit each")
+
+    def test_the_same_edit_sent_again_is_refused_again_and_the_longer_strings_run(self):
+        ctx = context(self.BRANCHES)
+        first = edit(self.BRANCHES, ".Place.Branch, ", ".Place.Branch,", replace_all=True, ctx=ctx)
+        again = edit(self.BRANCHES, ".Place.Branch, ", ".Place.Branch,", replace_all=True, ctx=ctx)
+        longer = edit(self.BRANCHES, ".Place.Branch, 1", ".Place.Branch,1", ctx=ctx)
+        self.assertEqual((first.verdict, again.verdict, longer.verdict),
+                         (Verdict.DENY, Verdict.DENY, Verdict.OBSERVE),
+                         "a model that means to drop the space ends both strings one character later")
+
+    def test_a_space_at_the_end_of_its_line_is_safe_to_lose(self):
+        outcome = edit(b"a = f(x.Place.Branch, \n", ".Place.Branch, ", ".Place.Branch.ToInt(),")
+        self.assertEqual(outcome.verdict, Verdict.OBSERVE, "nothing follows the space on its line")
+
+    def test_the_setting_turns_the_refusal_off(self):
+        ctx = context(self.BRANCHES, **{"checks.conform.edit.space_dropped": False})
+        outcome = edit(self.BRANCHES, ".Place.Branch, ", ".Place.Branch,", replace_all=True, ctx=ctx)
+        self.assertEqual(outcome.verdict, Verdict.OBSERVE, "space_dropped false lets the Edit run")
 
 
 if __name__ == "__main__":

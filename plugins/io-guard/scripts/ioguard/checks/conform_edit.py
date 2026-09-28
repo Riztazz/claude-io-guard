@@ -1,13 +1,24 @@
-"""Give an Edit's new text the indent of the lines around it.
+"""Give an Edit's new text the indent of the lines around it, and stop one that joins two words.
 
 When every indented line of new_string uses spaces and the lines around the one match of old_string use
 tabs, or the other way round, the check converts new_string's indent. A new_string that mixes the two beside
-lines that do not is a warning. A missing or repeated match, and replace_all, are left to the tool. The Edit
-tool keeps a file's line endings, its BOM and the whitespace at the end of new_string, and matches old_string
-against the file with every ending read as LF, so the check reads the file the same way.
+lines that do not is a warning. The indent of a missing or repeated match, or of replace_all, is left alone.
+The Edit tool keeps a file's line endings, its BOM and the whitespace at the end of new_string, and matches
+old_string against the file with every ending read as LF, so the check reads the file the same way.
+
+A space or tab at the end of new_string is gone from the model's own call before any hook sees it (context.md,
+"Hooks and MCP", row 28). So an old_string that ends in one, beside a new_string that ends in none, joins
+new_string to the text after the match wherever the line goes on: .Branch, 1 becomes .Branch.ToInt(),1. The
+check refuses that Edit, with the joined lines and the strings that end one character later. Those carry the
+model's intent either way, since the space inside them survives: .Branch, 1 to .Branch.ToInt(), 1 keeps it,
+and .Branch, 1 to .Branch.ToInt(),1 drops it.
 """
+import json
+
 from ioguard.checks.base import Check, CheckMeta, Cost
+from ioguard.checks.verify_write import SHOWN, listed
 from ioguard.lib import anchors, indent
+from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Rewrite, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
@@ -20,20 +31,29 @@ class ConformEdit(Check):
         id="conform.edit", layer=Layer.BYTES, events=frozenset({HookEvent.PRE_TOOL_USE}),
         tools=frozenset({Tool.EDIT}), platforms=frozenset({"win32", "darwin"}), severity=Severity.FIXED,
         cost=Cost.MEDIUM, reads=frozenset({"file_path", "old_string", "new_string", "replace_all"}),
-        writes=frozenset({"new_string"}), after=frozenset(), config={},
-        codes=frozenset({Code.INDENT_MISMATCH}),
-        description="Gives an Edit's new text the indent of the lines around it.")
+        writes=frozenset({"new_string"}), after=frozenset(),
+        config={
+            "space_dropped": ConfigKey(bool, True, "Refuse an Edit whose old_string ends in a space or tab "
+                                       "that new_string lacks, where the line goes on after it."),
+        },
+        codes=frozenset({Code.INDENT_MISMATCH, Code.SPACE_DROPPED}),
+        description="Gives an Edit's new text the indent of the lines around it, and stops one that joins "
+                    "two words.")
 
     def run(self, event: Event, ctx: Context) -> Decision:
         path, old, new = event.file_path, event.old_string, event.new_string
-        if path is None or old is None or new is None or event.replace_all or not old:
+        if path is None or old is None or new is None or not old:
             return Decision.observe(self.meta.id)
         try:
             data = ctx.fs.read_bytes(path)
             text = anchors.edit_view(data.decode("utf-8").removeprefix(chr(0xFEFF)))
         except (OSError, UnicodeDecodeError):
             return Decision.observe(self.meta.id)
-        if text.count(old) != 1:
+        every = event.replace_all is True
+        joined = anchors.joins(text, old, new, every) if self.options["space_dropped"] else ()
+        if joined:
+            return Decision(self.meta.id, Verdict.DENY, results=(dropped(joined, old, new, event, ctx),))
+        if every or text.count(old) != 1:
             return Decision.observe(self.meta.id)
         first = anchors.line_of(text, text.index(old))
         near = indent.around(text, first, first + old.count("\n"))
@@ -52,3 +72,21 @@ class ConformEdit(Check):
                                fix=Fix("Edit", {}, f"Indent new_string with {here} only."))
             return Decision(self.meta.id, Verdict.ALLOW, results=(result,))
         return Decision.observe(self.meta.id)
+
+
+def dropped(joined: tuple[anchors.Joined, ...], old: str, new: str, event: Event, ctx: Context) -> Result:
+    """The refusal: the lines as the Edit would leave them, and the strings that end one character later."""
+    space = old[len(old.rstrip(" \t")):]
+    what = "a space" if space == " " else "a tab" if space == "\t" else "spaces or tabs"
+    name, first = event.file_path.name, joined[0]
+    shown = "\n".join(f"{place.line}| {place.after}" for place in joined[:SHOWN])
+    message = (f"This Edit joins the text on {listed(tuple(place.line for place in joined))} of {name}, "
+               f"because old_string ends in {what} and new_string arrived without it:\n{shown}")
+    followers = {place.next for place in joined}
+    each = "" if len(followers) == 1 else " Make one Edit for each character that follows."
+    keep = {"old_string": old + first.next, "new_string": new + space + first.next}
+    text = (f"A trailing space in new_string never reaches the Edit tool, so end both strings one character "
+            f"later, as old_string {json.dumps(keep['old_string'])} and new_string "
+            f"{json.dumps(keep['new_string'])} to keep the space.{each}")
+    return Result.of(Code.SPACE_DROPPED, message, event.tool_name, ctx.platform.os, file=event.file_path,
+                     evidence={"lines": [place.line for place in joined]}, fix=Fix("Edit", keep, text))
