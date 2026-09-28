@@ -129,4 +129,5 @@ A refused call did not run. A warning, or a note that io-guard fixed something, 
 | `TRAILING_BACKSLASH_QUOTE` | A backslash before a closing double quote escapes the quote in bash, so io-guard wrote the path with forward slashes. | Nothing to do. |
 | `TRANSPORT_BUDGET` | The command is longer than the Bash tool carries on this platform. | Write the script to a file with the Write tool, then run the file. |
 | `UNINTENDED_CHANGE` | Lines changed that the call did not ask to change. | Read the lines the message names, and put back any change the call did not make. |
+| `VERIFY_OUTPUT` | The user's verify command for this file printed something, failed, ran out of time or could not start after the write. | Read what it printed, and fix what it names before the next step. |
 <!-- The generated codes table ends here. -->

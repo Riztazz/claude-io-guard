@@ -86,6 +86,27 @@ class AWeekFitsOneScreen(unittest.TestCase):
                          "a tool result lands in the model's context, so it takes counts and percentiles")
 
 
+class EveryLineEndsWhole(unittest.TestCase):
+    def test_names_past_the_width_are_counted_never_cut(self):
+        found = report.Report(lines=1, first=NOW, last=NOW)
+        found.events.update({f"PostToolUseFailureOf{number}": 100 - number for number in range(12)})
+        found.projects.update({f"project-with-a-long-name-{number}": 10 for number in range(9)})
+        lines = report.render(found, 1).splitlines()
+        for line in (lines[1], lines[3]):
+            with self.subTest(line=line):
+                self.assertTrue(len(line) <= report.WIDTH and (line.endswith("more") or line[-1].isdigit()),
+                                "a line ends on a count or on how many were left out, never inside a name")
+
+    def test_an_info_code_is_counted_in_its_own_column(self):
+        found = report.Report(lines=1, first=NOW, last=NOW)
+        found.codes["EXIT_BENIGN"]["info"] += 3
+        lines = report.render(found, 1).splitlines()
+        header = next(line for line in lines if line.startswith("Code"))
+        row = next(line for line in lines if line.startswith("EXIT_BENIGN"))
+        self.assertEqual((header.split()[-1], row.split()[-1]), ("info", "3"),
+                         "a code that fired shows its count")
+
+
 class ALineIsReadAsWritten(unittest.TestCase):
     def test_a_broken_line_is_counted_and_skipped(self):
         folder = Path(tempfile.mkdtemp(prefix="ioguard-report-"))

@@ -17,6 +17,7 @@ from ioguard.lib.decisions import Verdict
 from ioguard.lib.events import Event, Surface
 from ioguard.lib.platform import detect
 from ioguard.lib.proc import RunResult
+from ioguard.lib.results import Code, Severity
 from tests.support import events
 from tests.support.project import TemporaryProject
 
@@ -36,8 +37,10 @@ def after_write(project: Path, name: str, verify: dict, ctx: Context | None = No
 
 
 def lines(outcome) -> tuple[str, ...]:
-    return next((decision.context for decision in outcome.decisions
-                 if decision.check_id == "verify.command"), ())
+    """The first line of verify.command's message and the rest, or () when it said nothing."""
+    results = next((decision.results for decision in outcome.decisions
+                    if decision.check_id == "verify.command"), ())
+    return tuple(results[0].message.split("\n", 1)) if results else ()
 
 
 class TheCommandRuns(unittest.TestCase):
@@ -46,6 +49,14 @@ class TheCommandRuns(unittest.TestCase):
             found = lines(after_write(project, "bad.py", {".py": COMPILE}))
         self.assertIn("and it exited 1:", found[0], "the first line names the command and its exit code")
         self.assertIn("SyntaxError", found[1], "the compiler's own message follows")
+
+    def test_what_the_command_said_carries_a_code_the_telemetry_counts(self):
+        with TemporaryProject({"bad.py": b"def f(:\n"}) as project:
+            outcome = after_write(project, "bad.py", {".py": COMPILE})
+        result = next(decision.results[0] for decision in outcome.decisions
+                      if decision.check_id == "verify.command")
+        self.assertEqual((result.code, result.severity, result.evidence["exit_code"]),
+                         (Code.VERIFY_OUTPUT, Severity.WARNING, 1), "a warning with a code the report counts")
 
     def test_a_passing_quiet_command_adds_nothing(self):
         with TemporaryProject({"good.py": b"x = 1\n"}) as project:

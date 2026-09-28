@@ -14,7 +14,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-SEVERITIES = ("fixed", "warning", "refused")
+SEVERITIES = ("fixed", "warning", "refused", "info")
+COLUMNS = {"fixed": "fixed", "warning": "warned", "refused": "refused", "info": "info"}
 TOOL_CALL = "tools/call"
 SHOWN_CODES = 12
 SHOWN_SHAPES = 5
@@ -139,23 +140,24 @@ def shown(values: Sequence[float]) -> str:
            f"({found['n']:,})"
 
 
-def listed(counter: Counter, limit: int = 6) -> str:
-    top = [f"{name} {count:,}" for name, count in counter.most_common(limit)]
-    more = len(counter) - limit
-    return ", ".join(top) + (f", and {more} more" if more > 0 else "") if top else "none"
+def counted(head: str, counter: Counter, limit: int | None = None) -> str:
+    """head and the commonest names with their counts, as many whole ones as fit in WIDTH and no more than
+    limit, then how many are left out."""
+    names = [f"{name} {count:,}" for name, count in counter.most_common(limit)]
+    return fitted(head, names, len(counter)) if names else f"{head} none"
 
 
 def render(report: Report, days: int) -> str:
-    """The report on one screen: at most about 45 lines, none wider than 110 characters."""
+    """The report on one screen: at most about 45 lines, none wider than 110 characters, and none cut
+    inside a name."""
     if not report.lines:
         return f"io-guard wrote no telemetry in the last {days} days."
     period = f"{report.first:%Y-%m-%d} to {report.last:%Y-%m-%d}"
     out = [f"io-guard, {period}: {len(report.sessions):,} sessions, {report.lines:,} lines"
            + (f", {report.unreadable:,} unreadable" if report.unreadable else ""),
-           f"Calls: {listed(report.events)}",
-           f"Tools: {listed(report.tools)}",
-           f"Projects: {listed(report.projects)}. Platforms: {listed(report.platforms)}",
-           "", f"{'Code':30}{'fixed':>8}{'warned':>8}{'refused':>8}"]
+           counted("Calls:", report.events), counted("Tools:", report.tools),
+           counted("Projects:", report.projects), counted("Platforms:", report.platforms),
+           "", f"{'Code':30}" + "".join(f"{COLUMNS[severity]:>8}" for severity in SEVERITIES)]
     ranked = sorted(report.codes.items(), key=lambda item: (-sum(item[1].values()), item[0]))
     out += [f"{code:30}" + "".join(f"{by.get(severity, 0):>8,}" for severity in SEVERITIES)
             for code, by in ranked[:SHOWN_CODES]]
@@ -165,24 +167,25 @@ def render(report: Report, days: int) -> str:
     out += ["", f"Hook call: {shown(report.hook_ms)}", f"io tool call: {shown(report.io_ms)}",
             f"One tool use, all its hooks: {shown(uses(report.traces))}"]
     if report.shapes:
-        out += ["", "Refused most: " + listed(report.shapes, SHOWN_SHAPES)[:98]]
+        out += ["", counted("Refused most:", report.shapes, SHOWN_SHAPES)]
     if report.errors:
         out += ["", f"GUARD_ERROR, {sum(report.errors.values()):,} in all:"]
-        out += [f"  {count:>5,}  {where}: {error}"[:110]
+        out += [f"  {count:>5,}  {where}: {error}"[:WIDTH]
                 for (where, error), count in report.errors.most_common(SHOWN_ERRORS)]
         if len(report.errors) > SHOWN_ERRORS:
             out.append(f"  and {len(report.errors) - SHOWN_ERRORS} more kinds")
-    return "\n".join(line[:WIDTH] for line in out)
+    return "\n".join(out)
 
 
-def fitted(head: str, names: Sequence[str]) -> str:
-    """head and as many whole names as fit in WIDTH, then how many are left out."""
+def fitted(head: str, names: Sequence[str], total: int | None = None) -> str:
+    """head and as many whole names as fit in WIDTH, then how many of total, or of names, are left out."""
+    total = len(names) if total is None else total
     for count in range(len(names), 0, -1):
-        left = len(names) - count
+        left = total - count
         line = f"{head} {', '.join(names[:count])}" + (f", and {left} more" if left else "")
         if len(line) <= WIDTH:
             return line
-    return head
+    return f"{head} {total:,} of them"
 
 
 def run(folders: Sequence[Path], days: int, now: datetime) -> str:

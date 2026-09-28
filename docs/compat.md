@@ -34,7 +34,7 @@ ran on 2.1.283 only. Task 17 added `write-quiet`, `edit-trailing` and `live-conf
 `live-commit-asked` and `live-commit-policy`, task 39 `live-invisible`, task 32 `live-restore` and `live-stage`,
 task 49 `live-space-dropped`, task 52 `live-format-dry`, task 54 `live-pipe-once`, task 46
 `live-touched-index`, task 48 `live-script-write`, task 58 `edit-delete-join` and `live-lines-joined`, and
-task 56 `live-read-width`, all of which passed on both. Since 2026-09-28 every probe turns off the lead's installed io-guard, which a user
+task 56 `live-read-width`, and task 55 `live-verify-output`, all of which passed on both. Since 2026-09-28 every probe turns off the lead's installed io-guard, which a user
 setting enables in every session and the CLI loads from this checkout.
 
 The design review named 2.1.281 as the first release whose `mcp_tool` hooks wait for their server. Today's hooks

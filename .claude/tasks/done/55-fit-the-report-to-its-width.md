@@ -3,7 +3,8 @@ title: Fit the report's lines to its width, and count the info codes
 stage: I
 area: infra
 created: 2026-09-28
-status: open
+status: done
+claimed-by: Pala Elektroniczna, session 7eeb509f
 depends-on: [28]
 findings: []
 platforms: [windows, macos]
@@ -37,3 +38,27 @@ info code falls in none of them, so a code that fired reads as one that never di
 ## Done when
 
 - Every line of the report ends on a whole name or a count, and `EXIT_BENIGN` shows the number of times it fired.
+
+## What changed
+
+- `cli/report.py`: `counted` builds the calls, tools, projects, platforms and refused-shapes lines through
+  `fitted`, which keeps whole names and says how many are left out. Platforms have a line of their own.
+  The code table has an `info` column. Only a GUARD_ERROR line is still cut, since its error is free text.
+  `listed` is gone.
+- `checks/verify_command.py`: what the verify command said reaches the model as `VERIFY_OUTPUT`, a warning
+  with the command and its exit code, where it was bare context. The text the model reads is the same, with the
+  code in front. The code is not `VERIFY_FAILED`, because a command that passes and prints something reports
+  too.
+- `lib/results.py`: `VERIFY_OUTPUT`. `tools/skill.py` wrote its row.
+- Tests: `tests/cli/test_report.py` (2), `tests/checks/test_verify_command.py` (1, and its reader moved to
+  the result).
+- `tools/probes/run_probe.py`: `live-verify-output`.
+- Docs: `docs/design/architecture.md`, `docs/live-checks.md`, `docs/compat.md`.
+
+Evidence:
+
+- `python tests/run_all.py` ran 847 tests, all passing, up from 844.
+- `python tools/report.py --days 1` on 2026-09-28: the calls, tools and projects lines end on counts and
+  "and N more", platforms stand alone, and `EXIT_BENIGN` shows 1 under `info` where it showed 0, 0 and 0.
+- `live-verify-output` passed on 2.1.281 and 2.1.283, and the probes' report lists `VERIFY_OUTPUT`.
+- Checked on Windows on 2026-09-28.

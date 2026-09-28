@@ -456,6 +456,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Bytes | `INVISIBLE_ADDED`, a warning when a write adds a character the Read tool shows as nothing | 39, in `CODES` |
 | Bytes | `SPACE_DROPPED`, a refusal of an Edit whose old_string ends in a space new_string lacks, mid-line (ANC-4) | 49, in `CODES` |
 | Bytes | `LINES_JOINED`, a refusal of a deletion that would join two lines of text | 58, in `CODES` |
+| Bytes | `VERIFY_OUTPUT`, a warning carrying what the user's verify command said after a write | 55, in `CODES` |
 
 ### Decision and Rewrite
 
