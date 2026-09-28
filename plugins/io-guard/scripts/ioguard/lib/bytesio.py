@@ -24,6 +24,13 @@ def read_bytes(path: Path, limit: int | None = None) -> bytes:
         return source.read() if limit is None else source.read(limit)
 
 
+def read_from(path: Path, offset: int, limit: int) -> bytes:
+    """Up to limit bytes of the file from byte offset on."""
+    with open(path, "rb") as source:
+        source.seek(offset)
+        return source.read(limit)
+
+
 def read_tail(path: Path, limit: int) -> bytes:
     """The file's last limit bytes, from the first line break in them when the file is longer, so every line
     in the result is whole."""

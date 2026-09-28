@@ -23,7 +23,7 @@ from ioguard.lib import bytesio
 from ioguard.lib.context import Context
 from ioguard.lib.platform import detect
 from ioguard.lib.results import Code, Result, render
-from ioguard.mcp.progress import CancelToken
+from ioguard.mcp.progress import CancelToken, ProgressReporter
 
 log = logging.getLogger("ioguard.mcp")
 
@@ -46,11 +46,13 @@ class InvalidArguments(ValueError):
 
 class ToolCall:
     """What a handler receives beside its input: the session's context, built on first use, the call's
-    cancel token, the project folder, and the folder a result too long for one answer goes into."""
+    cancel token and progress reporter, the project folder, and the folder a result too long for one answer
+    goes into."""
 
     def __init__(self, contexts: Callable[[], Context], cancel: CancelToken, cwd: Path,
-                 spill: Path | None) -> None:
+                 spill: Path | None, progress: ProgressReporter | None = None) -> None:
         self.contexts, self.cancel, self.cwd, self.spill = contexts, cancel, cwd, spill
+        self.progress = progress or ProgressReporter()
         self.built: Context | None = None
 
     @property
@@ -156,6 +158,10 @@ def value_of(hint: Any, value: Any, name: str) -> Any:
         if not isinstance(value, Mapping):
             raise InvalidArguments(f"The argument {name} must be an object.")
         return parse(hint, value)
+    if hint in (dict, Mapping) or origin in (dict, Mapping):
+        if not isinstance(value, Mapping):
+            raise InvalidArguments(f"The argument {name} must be an object.")
+        return {key: value_of(args[1], item, name) if len(args) == 2 else item for key, item in value.items()}
     return value
 
 
@@ -221,6 +227,8 @@ class ToolRegistry:
             output = spec.handler(given, call)
         except ToolFailure as failure:
             return failed(failure.result)
+        except InvalidArguments:
+            raise
         except Exception:
             log.exception("GUARD_ERROR: io-guard's %s tool failed.", name)
             return failed(Result.of(Code.GUARD_ERROR, f"{name} failed inside io-guard.", name, detect().os))

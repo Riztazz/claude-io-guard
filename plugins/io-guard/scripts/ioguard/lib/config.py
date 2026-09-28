@@ -2,9 +2,10 @@
 
 Every policy value is a key with its default in code (D16). A later layer overrides an earlier one key by
 key. Dictionaries merge, lists replace, and a list key that ends in "extra" appends. A project file restricts
-and never widens: it cannot set a key marked project_may_set=False, set a value in project_forbids, or raise a
-number marked project_narrows above the layers below it. A file with any error is dropped whole, and the guard
-runs on the layers that loaded.
+and never widens: it cannot set a key marked project_may_set=False, set a value in project_forbids, raise a
+number marked project_narrows above the layers below it, or set a regex in a key marked project_regex that
+lib.patterns finds could stall. A file with any error is dropped whole, and the guard runs on the layers that
+loaded.
 """
 import difflib
 import json
@@ -16,7 +17,7 @@ from types import MappingProxyType
 from typing import Any
 
 from ioguard import CONFIG_SCHEMA
-from ioguard.lib import bytesio, verify
+from ioguard.lib import bytesio, patterns, verify
 
 
 class Scope(IntEnum):
@@ -40,6 +41,7 @@ class ConfigKey:
     project_forbids: tuple = ()      # values a project file may not set
     project_narrows: bool = False    # a project file may lower this number and never raise it
     shape: Callable[[Any], str | None] | None = None   # what is wrong inside a list or dict value, or None
+    project_regex: bool = False      # its strings are regexes, which a project file sets only if bounded
 
 
 @dataclass(frozen=True)
@@ -111,6 +113,15 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
                                    "change, in bytes."),
     "io.edit.wait_ms": ConfigKey(int, 5000, "Milliseconds io.edit, io.splice and io.append wait for another "
                                  "io-guard call that is changing the same file."),
+    "io.run.timeout_s": ConfigKey(int, 120, "Seconds a run to its end may take when the call names none, "
+                                  "after which io-guard stops the program."),
+    "io.run.handle_ttl_s": ConfigKey(int, 3600, "Seconds a background run's handle lasts after the program "
+                                     "ends."),
+    "io.read_log.max_lines": ConfigKey(int, 500, "The most log lines one io.read_log returns. The result "
+                                       "names the call for the rest."),
+    "noise_patterns": ConfigKey(list, [], "Regular expressions for log lines io.read_log leaves out, such as "
+                                "^LogTemp: Display:. A line counts when one matches anywhere in it.",
+                                shape=patterns.list_problem, project_regex=True),
     "telemetry.retention_days": ConfigKey(int, 90, "Days a telemetry file is kept."),
     "telemetry.debug": ConfigKey(bool, False, "Write tracebacks to the debug log."),
     "skip_trees": ConfigKey(list, [], "Globs, from the repository root, such as Content/**, whose changes a "
@@ -183,7 +194,14 @@ def validate(raw: Any, scope: Scope, keys: Mapping[str, ConfigKey], file: Path |
                                                  f"{json.dumps(value)}. {USER_FILE}"))
         elif spec.shape is not None and (problem := spec.shape(value)):
             errors.append(ConfigError(file, key, problem))
+        elif scope.project and spec.project_regex and (problem := unbounded(value)):
+            errors.append(ConfigError(file, key, problem))
     return tuple(errors)
+
+
+def unbounded(value: Any) -> str | None:
+    """The first regex in a project file's value that could stall a line's match, as patterns.problem says."""
+    return next((found for text in patterns.leaves(value) if (found := patterns.problem(text))), None)
 
 
 def widened(flat: Mapping[str, Any], keys: Mapping[str, ConfigKey], below: Mapping[str, Any],

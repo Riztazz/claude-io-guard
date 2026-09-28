@@ -1,10 +1,17 @@
-"""Running a program from an argument list, with no shell and always with a timeout.
+"""Running a program from an argument list, with no shell: to the end with a timeout, or in the background
+with its output going to a log.
 
-Task 25 adds background runs.
+A background program starts in its own process group, so stopping it stops what it started too: taskkill /T
+on Windows, and a signal to the group on macOS. Its stdin is empty, because nothing would ever answer a
+prompt, and its stdout and stderr go to one log in the order the program flushes them.
 """
+import os
+import signal
 import subprocess
+import sys
+import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -38,3 +45,69 @@ def run(argv: Sequence[str], cwd: Path, env: Mapping[str, str] | None = None,
     except OSError as error:
         return RunResult(command, None, b"", b"", False, time.monotonic() - started, start_error=str(error))
     return RunResult(command, done.returncode, done.stdout, done.stderr, False, time.monotonic() - started)
+
+
+class Pump:
+    """A program running with its output going to a log, and the moment it ended. A thread waits on the
+    process, so ended is set even when nobody asks."""
+
+    def __init__(self, process: subprocess.Popen, argv: tuple[str, ...], log: Path) -> None:
+        self.process, self.argv, self.log = process, argv, log
+        self.started = time.monotonic()
+        self.ended: float | None = None
+        self.done = threading.Event()
+        self.lock = threading.Lock()
+        self.callbacks: list[Callable[[], None]] = []
+        threading.Thread(target=self.watch, name="io-guard run", daemon=True).start()
+
+    def watch(self) -> None:
+        self.process.wait()
+        with self.lock:
+            self.ended = time.monotonic()
+            self.done.set()
+            callbacks, self.callbacks = self.callbacks, []
+        for callback in callbacks:
+            callback()
+
+    def when_done(self, callback: Callable[[], None]) -> None:
+        """Call callback when the program ends, or now when it has."""
+        with self.lock:
+            if not self.done.is_set():
+                self.callbacks.append(callback)
+                return
+        callback()
+
+    @property
+    def exit_code(self) -> int | None:
+        return self.process.returncode if self.done.is_set() else None
+
+    def wait(self, timeout_s: float) -> bool:
+        """True when the program ended within timeout_s seconds."""
+        return self.done.wait(timeout_s)
+
+    def seconds(self) -> float:
+        return (self.ended if self.ended is not None else time.monotonic()) - self.started
+
+    def stop(self) -> None:
+        """End the program and everything it started."""
+        if self.done.is_set():
+            return
+        if sys.platform == "win32":
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(self.process.pid)], capture_output=True,
+                           timeout=10, check=False)
+        else:
+            try:
+                os.killpg(self.process.pid, signal.SIGKILL)
+            except OSError:
+                self.process.kill()
+        self.done.wait(10)
+
+
+def background(argv: Sequence[str], cwd: Path, env: Mapping[str, str], log: Path) -> Pump:
+    """argv started in cwd, its stdout and stderr going to log. OSError when it cannot start."""
+    log.parent.mkdir(parents=True, exist_ok=True)
+    group = {} if sys.platform == "win32" else {"start_new_session": True}
+    with open(log, "wb") as out:
+        process = subprocess.Popen(list(argv), cwd=cwd, env=dict(env), stdin=subprocess.DEVNULL, stdout=out,
+                                   stderr=subprocess.STDOUT, **group)
+    return Pump(process, tuple(argv), log)

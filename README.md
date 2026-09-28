@@ -3,14 +3,14 @@
 A Claude Code plugin that checks what an agent sends to the file and shell tools, fixes what it safely can, and
 returns a structured error for the rest. One codebase runs on Windows and macOS.
 
-**Status: in build.** The plugin installs, its io server runs the hooks, `io.read`, `io.edit`, `io.splice` and
-`io.append`, and its hooks answer every file and shell call. Seventeen checks run so far: the session probe,
-where a write lands, what holds a locked file, the Bash body move, the shell-write refusal, the quoting and
-dialect lint, the Git Bash path fix, the endings and BOM fix for Write, the indent fix for Edit, the check of each
-written file against the file before it, your own verify command after a write, the files a shell command
-changed, the profile line after a Read, the diagnosis of a failed file call, both after it fails and after Claude
-Code refuses it, what a shell command's result means, and a warning when the io server is not running. The build
-plan is in `.claude/tasks/`, and this page describes the plugin the plan builds.
+**Status: in build.** The plugin installs, its io server runs the hooks and every io tool but `io.format`, and
+its hooks answer every file and shell call. Eighteen checks run so far: the session probe, where a write lands,
+what holds a locked file, the Bash body move, the shell-write refusal, the quoting and dialect lint, the Git Bash
+path fix, the endings and BOM fix for Write, the indent fix for Edit, the check of each written file against the
+file before it, your own verify command after a write, the files a shell command changed, the profile line after
+a Read, the diagnosis of a failed file call, both after it fails and after Claude Code refuses it, what a shell
+command's result means, a warning when the io server is not running, and your permission rules on `io.run`. The
+build plan is in `.claude/tasks/`, and this page describes the plugin the plan builds.
 
 ## Five fixes, by example
 
@@ -112,8 +112,8 @@ tests.
 
 ### The io tools
 
-A few jobs have no safe built-in tool, so the io server adds them. `io.read`, `io.edit`, `io.splice` and
-`io.append` work today, and the rest arrive with the tasks that build them:
+A few jobs have no safe built-in tool, so the io server adds them. All but `io.format` work today, and it
+arrives with the task that builds it:
 
 | Tool | Job |
 |---|---|
@@ -121,13 +121,18 @@ A few jobs have no safe built-in tool, so the io server adds them. `io.read`, `i
 | `io.edit` | Several edits in one file, all or nothing, in the file's own endings, BOM and encoding |
 | `io.splice` | Replace the text between a unique start marker and the end marker after it |
 | `io.append` | Add lines to the end of a file, dated if you ask, wrapped at the file's `.editorconfig` column |
+| `io.run` | Run a program from an argument list, or a script body byte for byte, with no shell in between, under your Bash and PowerShell rules |
+| `io.status` | Whether a background `io.run` still runs, from the process itself, and how it ended |
+| `io.read_log` | The whole lines a log gained since the last read, less your noise patterns |
+| `io.format` | Run the formatter over changed lines only |
 
 The three that change a file write it once, only when every place they name matched once, and a failed one
 writes nothing and names the lines it nearly matched. Two subagents editing one file take turns. After one of
 them changes a file, the built-in Edit tool needs a fresh Read of it, and every result says so.
-| `io.run` | Run a program from an argument list with no shell in between, under your Bash and PowerShell rules |
-| `io.read_log` | The lines a log gained since the last read |
-| `io.format` | Run the formatter over changed lines only |
+
+`io.run` meets your deny and ask rules for Bash and PowerShell, from every settings file Claude Code reads. A
+deny rule refuses the run, and an ask rule brings up Claude Code's own permission prompt. A background run's
+handle lasts an hour past the program's end.
 
 ## What it never does
 
@@ -203,7 +208,16 @@ such as grep's 1 for no match, and quotes the lines that report errors. A projec
 `{"lint-check": {"3": "the files need formatting"}}`. In `checks.shell.results.error_patterns`, add a group of
 regular expressions for its error lines, such as `{"log": ["^Log\\w+: Error: "]}`. A run of what a failed
 build made gets a warning. `checks.shell.results.builds` and `runs` name those commands, and by default
-`ctest` runs what `cmake --build` makes.
+`ctest` runs what `cmake --build` makes. `io.run` labels its results the same way.
+
+**Log noise:** `io.read_log` leaves out the lines a regular expression in `noise_patterns` matches, such as
+`["^LogTemp: Display:"]`. A project file's pattern in `noise_patterns` or `error_patterns` must compile, stay
+under 200 characters, and never repeat a group that repeats inside it, such as `(a+)+`, because one such pattern
+can stall on a single line of output. Your own `config.json` may set any pattern.
+
+**Runs:** `io.run.timeout_s`, 120 by default, is how long a run to its end may take when the call names no
+timeout. `io.run.handle_ttl_s` is how long a background run's handle lasts after the program ends, an hour.
+`io.read_log.max_lines` caps one read of a log at 500 lines.
 
 **After each write:** io-guard compares the file with the file before the call. A BOM or line endings the
 write lost go back on, and the model is told to read the file again. Turn that off with

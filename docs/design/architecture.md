@@ -55,7 +55,10 @@ plugins/io-guard/
         transcript.py              refusals: the calls Claude Code refused before any hook, from the transcript
         output.py                  exit_code, saved_path, error_lines, mojibake, excerpt: what a shell result says
         heartbeat.py               Heartbeat, parse, skipped_since: the io server's beat, and Claude Code's skip
-        rules.py                   permission rules: load, match_argv
+        rules.py                   settings_files, load, match_argv: Claude Code's Bash and PowerShell deny and
+                                   ask rules, met by an argument list
+        runs.py                    interpreter, argv_of, key: what an io.run call runs
+        patterns.py                problem, nested: a project file's regex that could stall a line's match
       checks/                      policy, one module per check
         base.py                    Check, CheckMeta, Cost
         registry.py                Registry, default_registry
@@ -77,6 +80,7 @@ plugins/io-guard/
         command_results.py         shell.results: EXIT_BENIGN, ERRORS_IN_OUTPUT, OUTPUT_SAVED, MOJIBAKE,
                                    STALE_BINARY, PIPE_HIDES_EXIT after the run, and the learned budget
         heartbeat.py               server.heartbeat: SERVER_DOWN at the start of a turn
+        run_rules.py               run.rules: RULE_DENIED and RULE_ASKED at the PreToolUse hook on io.run
         commit_policy.py           task 29
       hooks/
         entry.py                   run_event: an event in, the answer dict out, never raising
@@ -86,9 +90,9 @@ plugins/io-guard/
         server.py                  stdio loop, threads, shutdown
         protocol.py                framing, _meta, eras, JSON-RPC errors
         toolspec.py                ToolSpec, schema generation, tools/list
-        handles.py                 HandleStore, task 25
+        handles.py                 Handle, HandleStore, HandleExpired, STORE
         elicit.py                  Elicitor, LegacyElicitor, ModernElicitor, when a client shows a form
-        progress.py                CancelToken, and ProgressReporter with task 25
+        progress.py                CancelToken, ProgressReporter
         tools_read.py              io.read
         tools_edit.py              io.edit, io.splice, io.append
         tools_run.py               io.run, io.status, io.read_log
@@ -212,6 +216,7 @@ class GitPort(Protocol):
 class FsPort(Protocol):
     def read_bytes(self, path: Path, limit: Optional[int] = None) -> bytes: ...
     def read_tail(self, path: Path, limit: int) -> bytes: ...       # the last whole lines in limit bytes
+    def read_from(self, path: Path, offset: int, limit: int) -> bytes: ...   # task 25, for io.read_log
     def write_atomic(self, path: Path, data: bytes) -> WriteReport: ...
     def stat(self, path: Path) -> Optional[FileStat]: ...
     def exists(self, path: Path) -> bool: ...
@@ -265,6 +270,8 @@ class SessionState:
     warned: MutableSet[str]                      # one user warning per key per session
     budget_override: Optional[int]               # learned from an EOF failure
     tracked: MutableMapping[Path, bool]          # whether git tracks a path, asked once by shell.writes
+    asked_runs: MutableSet[str]                  # io.run calls run.rules put to the user, by runs.key, task 25
+    read_logs: MutableMapping[Path, tuple[int, int]]   # io.read_log's last line and byte per log, task 25
     last_failed_build: Optional[str]             # the words of the build that last failed, task 22
     lock: RLock                                  # guards every field
     data_dir: Optional[Path]                     # with session_id, where the warned keys are shared, task 23
@@ -408,8 +415,8 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Output | `EXIT_BENIGN`, `OUTPUT_SAVED`, `ERRORS_IN_OUTPUT`, `MOJIBAKE`, `STALE_BINARY` | 22, in `CODES` |
 | Internal | `GUARD_ERROR`, `REWRITE_CONFLICT`, `BUDGET_EXCEEDED` | 07, in `CODES` |
 | Internal | `SERVER_DOWN`, `CANCELLED` | 23, in `CODES` |
-| Internal | `HANDLE_EXPIRED`, with the first tool that makes a handle | 25 |
-| Internal | `RULE_DENIED`, `RULE_ASKED` | 25 |
+| Internal | `HANDLE_EXPIRED`, with the first tool that makes a handle | 25, in `CODES` |
+| Transport | `RULE_DENIED`, `RULE_ASKED`, from `run.rules` and `io.run` itself | 25, in `CODES` |
 
 ### Decision and Rewrite
 
@@ -581,7 +588,7 @@ class Registry:
 CHECKS: tuple[type[Check], ...] = (SessionProbe, Location, LockHolders, ShellWrites, TransportBody, Lint,
                                    WinPaths, ConformWrite, ConformEdit, VerifyWrite, VerifyCommand, Touched,
                                    ReadProfile, DiagnoseFailure, DiagnoseRefused, CommandResults, Heartbeat,
-                                   CommitPolicy)
+                                   RunRules, CommitPolicy)
 
 def default_registry() -> Registry:
     registry = Registry()
@@ -773,7 +780,18 @@ def file_lock(path: Path, data_dir: Path, wait_s: float = 5.0) -> ContextManager
 def run(argv: Sequence[str], cwd: Path, env: Optional[Mapping[str, str]] = None,
         timeout_s: float = 10.0) -> RunResult                # a timeout or a missing program is a result
 def background(argv: Sequence[str], cwd: Path, env: Mapping[str, str], log: Path) -> Pump
-def interpreter_for(lang: str, probe: Probe) -> Optional[Sequence[str]]
+                                                            # task 25: stdout and stderr in one log
+class Pump: exit_code, wait(timeout_s), when_done(callback), seconds(), stop()   # stop ends the whole tree
+
+# runs.py, task 25
+def interpreter(lang: str, probe: Probe, platform: Platform) -> Optional[tuple[str, ...]]
+def argv_of(given: Mapping[str, Any], probe: Probe, platform: Platform, body: Optional[str] = None)
+    -> Optional[tuple[str, ...]]                            # argv, or the interpreter and the body's file
+def key(given: Mapping[str, Any]) -> str                    # one per command, which run.rules records
+
+# patterns.py, task 25
+def problem(pattern: str) -> Optional[str]                  # does not compile, over 200 characters, or nested
+def nested(pattern: str) -> bool                            # a quantified group whose text holds a quantifier
 
 # results.py
 def spec(code: Code) -> CodeSpec
@@ -822,9 +840,14 @@ def error_lines(text: str, patterns: Mapping[str, Pattern]) -> tuple[ErrorLine, 
 def mojibake(text: str, code_pages: Sequence[str]) -> Mojibake # U+FFFD, and UTF-8 a console read in a code page
 def excerpt(text: str, head: int, tail: int, marked: Sequence[ErrorLine], width: int) -> str   # numbered lines
 
-# rules.py
-def load_rules(user_settings: Path, project_settings: Sequence[Path]) -> Rules
-def match_argv(rules: Rules, argv: Sequence[str], tool: Tool) -> RuleMatch  # deny, ask, allow, none
+# rules.py, task 25
+def settings_files(env: Mapping[str, str], project: Path, platform: Platform) -> tuple[Path, ...]
+                                                            # managed, user, project, project local
+def load(files: Sequence[Path], read: Callable[[Path], Optional[bytes]]) -> Rules   # deny and ask rules
+def match_argv(rules: Rules, argv: Sequence[str]) -> RuleMatch   # deny, then ask, then none
+def command_text(words: Sequence[str]) -> str               # a word with a space or quote in single quotes
+def unwrapped(words: Sequence[str]) -> list[str]            # timeout, nohup, NAME=value and the rest stripped
+def named(words: Sequence[str]) -> list[str]                # the program by its bare name
 ```
 
 ## 5. Configure the policy
@@ -882,7 +905,12 @@ task 21 `skip_trees`, empty by default, and `checks.shell.touched.listed`. Task 
 `line_chars`, `max_bytes` of 16 MB, `code_pages` and `learn_from_bytes` of 5,000. Task 23 added
 `io.read.max_bytes` of 16 MB and `io.read.max_chars` of 60,000, and `checks.server.heartbeat.stale_s` of 30.
 Task 24 added `io.edit.max_bytes` of 16 MB and `io.edit.wait_ms` of 5,000, which `io.edit`, `io.splice` and
-`io.append` share.
+`io.append` share. Task 25 added `io.run.timeout_s` of 120, `io.run.handle_ttl_s` of 3,600,
+`io.read_log.max_lines` of 500 and `noise_patterns`. A key marked `project_regex`, `noise_patterns` and
+`checks.shell.results.error_patterns`, holds regexes io-guard runs on every line of output, and Python's `re`
+has no timeout. So a project file's pattern that does not compile, is over 200 characters, or repeats a group
+that repeats inside, such as `(a+)+`, drops the file (`lib.patterns`). The user's own `config.json` may still
+set one.
 Each other key arrives with its check. A key marked `project_narrows`, such as
 the budget, takes a lower number from a project file and refuses a higher one. A key with a `shape`, such as
 `verify`, has its inner values checked too, and a wrong one drops the file like any other error.
@@ -976,7 +1004,7 @@ scoped name `plugin:io-guard:io`, and the tools are `hook.pre_tool_use`, `hook.p
 {
   "hooks": {
     "PreToolUse": [{
-      "matcher": "Bash|PowerShell|Edit|Write|Read|Grep|Glob",
+      "matcher": "Bash|PowerShell|Edit|Write|Read|Grep|Glob|mcp__plugin_io-guard_io__io_run",
       "hooks": [{
         "type": "mcp_tool",
         "server": "plugin:io-guard:io",
@@ -1008,7 +1036,10 @@ scoped name `plugin:io-guard:io`, and the tools are `hook.pre_tool_use`, `hook.p
 
 PostToolUse and PostToolUseFailure bind the same way to `hook.post_tool_use` and
 `hook.post_tool_use_failure`, with `"tool_response": "${tool_response}"` and `"error": "${error}"` added to the
-map.
+map, and their matchers leave `io.run` out. The PreToolUse matcher names `io.run`'s callable name, so
+`run.rules` holds it to the user's Bash and PowerShell rules (task 25). The hook on the plugin's own tool fires,
+and its `ask` brings up the permission prompt although `--allowedTools` allowed the tool (`context.md`, "Hooks
+and MCP", row 36).
 
 An Edit or Write that Claude Code rejects as a `<tool_use_error>`, such as an `old_string` it cannot find, fires
 no hook at all (`context.md`, "Hooks and MCP", row 30). The transcript still records the call and its error.
@@ -1157,7 +1188,8 @@ class ToolRegistry:
 
 A hook tool takes the map an `mcp_tool` hook sends and returns its MCP result as it is. A bug in one answers
 `{}`, so the call it guards goes on with no hook notice. A bug in an io tool answers a `GUARD_ERROR` tool
-error, and arguments that do not fit the input schema get `-32602`.
+error, and arguments that do not fit the input schema get `-32602`, as do arguments a handler finds do not
+make one call, which it raises as `InvalidArguments`.
 
 `toolspec.schema(dataclass)` generates JSON Schema 2020-12 from the dataclass fields and their type hints:
 `str`, `int`, `bool`, `Path` as string, `Optional`, `Sequence` and nested dataclasses. Every output schema
@@ -1167,11 +1199,43 @@ schema turns a new field into a failed call. `annotations` come from the three b
 `mcp__plugin_io-guard_io__io_edit`, because the harness replaces the dot, and every fix text uses that name.
 
 Each tool is one module with its input and output dataclasses, its `ToolSpec` and its handler. The handler
-takes the input dataclass and a `ToolCall` holding the `Context`, the `CancelToken`, the `ProgressReporter`
-and the `Elicitor`, and returns the output dataclass. `io.run` matches its argv against the user's Bash and
-PowerShell rules through `lib.rules` before it runs anything: a deny rule refuses with `RULE_DENIED`, and an
-ask rule elicits the user's yes and refuses with `RULE_ASKED` when it cannot. The `hook.*` tools are
-registered last, with the description "Called by Claude Code hooks. Not for the model."
+takes the input dataclass and a `ToolCall` holding the `Context`, the `CancelToken` and the
+`ProgressReporter`, and returns the output dataclass. The `hook.*` tools are registered last, with the
+description "Called by Claude Code hooks. Not for the model."
+
+### Run a program, and read its log
+
+`mcp/tools_run.py` holds `io.run`, `io.status` and `io.read_log` (task 25).
+
+```python
+io.run(argv = [], lang = "", code = "", cwd = "", env = {}, timeout_s = 0, background = False)
+io.status(handle)
+-> RunOutput(command, state, exit, ok, meaning, duration_s, log_path, log_bytes, errors, tail, handle, note)
+io.read_log(path, since_line = None) -> LogOutput(path, first_line, last_line, text, dropped, more, note)
+```
+
+- **The user's rules hold first (D14).** `hooks.json` runs the PreToolUse hook on `io.run` too, where
+  `run.rules` reads the Bash and PowerShell deny and ask rules of every settings file Claude Code reads, and
+  meets them with the command the call runs, as `lib.rules` says. A deny rule refuses with `RULE_DENIED`. An
+  ask rule answers `ask` with `RULE_ASKED` as the reason, so Claude Code shows its own permission prompt, and
+  records the call's `runs.key` in the session. `io.run` checks again: a deny rule refuses, and an ask rule's
+  command runs only when the hook recorded it, once. Elicitation cannot carry the question, because no
+  surface shows its form (section 7, "Elicitation in both eras").
+- **No shell.** `argv` runs as given. A `code` body is written byte for byte to `runs/<id>/body.<ext>` in the
+  plugin data folder, a PowerShell body with a UTF-8 BOM for Windows PowerShell, and runs with
+  `runs.interpreter` for its `lang`: the probe's Python, bash, pwsh or Windows PowerShell, or node. The
+  program starts in `cwd` with the session's variables, `session.probe`'s UTF-8 ones over them and the call's
+  `env` over both, an empty stdin, and stdout and stderr in `runs/<id>/output.log`.
+- **To its end, or in the background.** A run to its end waits up to `timeout_s`, or `io.run.timeout_s`,
+  sends `notifications/progress` when the request carried a `progressToken`, and is stopped, its whole
+  process tree, past the timeout or on the client's cancel. A background run answers at once with a handle,
+  which `io.status` reads. Either result is labelled by `shell.results`' options: a nonzero exit that
+  `benign_exits` names is `ok` with its meaning, `error_patterns` pick the error lines, and the log's last
+  `tail_lines` follow.
+- **`io.read_log`** returns the whole lines a log gained since the last call, from the line and byte the
+  session keeps per log, less the lines a `noise_patterns` regex matches. A half-written last line waits for
+  its line break, `since_line` starts after a given line, a log shorter than the last call's byte starts
+  over, and past `io.read_log.max_lines` the result says more lines wait.
 
 ### Batch edit, splice and append
 
@@ -1218,21 +1282,23 @@ class Handle:
     id: str              # UUIDv4
     kind: str            # "run" or "snapshot"
     created: datetime
-    expires: datetime
+    expires: Optional[datetime]   # None while the work it names still runs
     payload: Mapping[str, Any]
 
 class HandleStore:
-    def create(self, kind: str, payload: Mapping[str, Any], ttl: timedelta) -> Handle: ...
+    def create(self, kind: str, payload: Mapping[str, Any]) -> Handle: ...
     def get(self, id: str, kind: str) -> Handle: ...      # raises HandleExpired
+    def settle(self, id: str, ttl: timedelta) -> None: ...   # the work ended, so it expires ttl from now
     def close(self, id: str) -> None: ...
     def sweep(self) -> int: ...
 ```
 
-Task 25 builds the store with `io.run`, the first tool that hands out a handle. Handles live in memory and in
-`${CLAUDE_PLUGIN_DATA}/handles/<id>.json`, so a snapshot survives a server
-restart and a run handle does not. A run handle expires one hour after its process ends. A snapshot handle
-expires after seven days. Each tool description states the lifetime. `HandleExpired` becomes a tool execution
-error `HANDLE_EXPIRED` whose fix names the creating tool.
+Task 25 built the store with `io.run`, the first tool that hands out a handle, as `handles.STORE`, one per
+server. A run handle lives in memory, so it ends with the server while its log stays on disk, and it
+expires `io.run.handle_ttl_s`, one hour, after its program ends: the run's `Pump` calls `settle` when it sees
+the end. Task 32 adds `${CLAUDE_PLUGIN_DATA}/handles/<id>.json` for a snapshot handle, which survives a server
+restart and expires after seven days. Each tool description states the lifetime. `HandleExpired` becomes a
+tool execution error `HANDLE_EXPIRED` whose fix names the creating tool.
 
 ### Elicitation in both eras
 
@@ -1264,9 +1330,10 @@ refusal that names the decision.
 
 `CancelToken` is a `threading.Event` per request id that the reader thread sets on `notifications/cancelled`.
 Every loop in a long tool checks it, and a call cancelled before or while its tool runs answers a result with
-`isError: true` and the code `CANCELLED`. `ProgressReporter` arrives with `io.run`, the first long tool, in task
-25: it sends `notifications/progress` when the request carried `progressToken`, at most twice per second. A
-cancelled background run keeps running, because its handle owns the process.
+`isError: true` and the code `CANCELLED`. `ProgressReporter` sends `notifications/progress` when the request
+carried `progressToken` in `_meta`, at most twice per second, and `io.run` reports each run to its end through
+it (task 25). The reader passes `dispatch` the writer's `send`, and `Protocol.call` builds each call's reporter
+from it. A background run keeps running when its call is cancelled, because its handle owns the process.
 
 ### The ui resource
 
@@ -1288,7 +1355,7 @@ another server is safe across processes.
 | reader | reads stdin, parses, answers every method but `tools/call` itself so their order holds, hands each `tools/call` to a worker, sets cancel events | run a tool or a check |
 | writer lock | serialises `stdout.write` and `flush` | hold the lock across a tool |
 | workers, 4 | run hook tools and io tools | block on another worker |
-| pumps, per run, task 25 | copy a child's stdout and stderr into its log | parse output |
+| a waiter per run, task 25 | waits on the run's process, whose stdout and stderr go straight to its log, and settles its handle when it ends | parse output |
 | watchdog | writes the heartbeat file every 5 seconds, and marks it stopped at the end | anything on the request path |
 
 Telemetry has no thread of its own. One lock in `Telemetry` serialises the appends, and each line is on disk
@@ -1326,8 +1393,9 @@ records the failure in `~/.claude/mcp-needs-auth-cache.json` and skips the serve
 minutes (row 33). With no heartbeat for its session, the check reads that cache and names the skip and its
 end. That hook is the only Python spawn per turn, and costs about 250 ms.
 
-Shutdown is one ordered list: stop accepting, drain the workers with a 2 second cap, terminate background
-runs whose handles asked for it, flush telemetry, close the heartbeat.
+Shutdown is one ordered list: stop accepting, drain the workers with a 2 second cap, close the heartbeat. A
+background run keeps running past the server's end, and its log stays in the plugin data folder. Telemetry
+needs no flush, because each line is on disk before `record` returns.
 
 ## 9. Record telemetry
 

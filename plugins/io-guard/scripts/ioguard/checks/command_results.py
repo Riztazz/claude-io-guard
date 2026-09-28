@@ -291,7 +291,7 @@ def options() -> dict[str, ConfigKey]:
     return {
         "error_patterns": ConfigKey(dict, ERROR_PATTERNS, "Regular expressions, grouped by kind, for the "
                                     "output lines that report an error. A line counts when one matches from "
-                                    "its start.", shape=patterns_problem),
+                                    "its start.", shape=patterns_problem, project_regex=True),
         "benign_exits": ConfigKey(dict, BENIGN_EXITS, "For a command, by its first words, the exit codes "
                                   "that give an answer rather than a failure, and what each means.",
                                   shape=exits_problem),

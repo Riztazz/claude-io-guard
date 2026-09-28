@@ -123,6 +123,9 @@ match `.claude/tasks/context.md`, "The hook entry point".
 | The io server connects, answers the hooks, and returns `io.read` of a CRLF file with a BOM in its structured result, and its heartbeat records the legacy era, or the modern one under `MCP_PROTOCOL_NEGOTIATION=auto` | `live-server`, `live-server-modern` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | A server that dies and cannot start again leaves the tool calls running, and the next turn names SERVER_DOWN | `live-server-down` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | Three subagents started in one message make 30 interleaved `io.edit` calls on one BOM and CRLF file, and every edit lands, in the file's BOM and CRLF | `live-edit-parallel` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
+| A 21 KB Python body with 500 pairs of backslashes reaches its file through `io.run` byte for byte, and Python prints both backslashes of each pair | `live-run-body` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
+| A 15-minute background `io.run` reports `running` through `io.status` while it runs, and `ended` with exit code 0 after it | `live-run-background` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
+| With `Bash(git push *)` denied, `io.run` of `git push origin main` is refused with `RULE_DENIED`. With `Bash(git fetch *)` in the ask rules, the permission prompt receives the `io.run` call, and the approved run goes through | `live-run-denied`, `live-run-asked` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | A saved Bash or PowerShell output comes back as its first and last 20 lines with the file's path, and the model reads no file. grep's exit code 1 that stopped an `&&` chain is labelled as its answer, and a traceback behind `\| tail` is named with tail's exit code | `live-results` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 
 ## Not checked yet

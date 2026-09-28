@@ -128,6 +128,16 @@ class ProjectsNeverWiden(ConfigFiles):
         self.assertIn("may lower this number and not raise it past 5000", report.errors[0].message,
                       "the error names the value the project may not pass")
 
+    def test_a_project_regex_that_could_stall_is_refused_and_the_users_is_not(self):
+        stalls = {"noise_patterns": ["^(a+)+$"]}
+        project = self.load(self.layer(Scope.PROJECT, "p.json", stalls))
+        user = self.load(self.layer(Scope.USER, "u.json", stalls))
+        self.assertEqual((project.errors[0].key, project.config.get("noise_patterns")),
+                         ("noise_patterns", []),
+                         "a cloned repository cannot make io-guard run a pattern that backtracks")
+        self.assertEqual((user.errors, user.config.get("noise_patterns")), ((), ["^(a+)+$"]),
+                         "the user's own file may set it")
+
 
 class BadFilesAreDroppedWhole(ConfigFiles):
     def test_an_unknown_key_drops_the_file_and_names_the_nearest_key(self):

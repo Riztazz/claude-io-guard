@@ -74,6 +74,9 @@ class FakeFs:
         tail = data[-limit:]
         return tail[tail.find(b"\n") + 1:] if b"\n" in tail else b""
 
+    def read_from(self, path: Path, offset: int, limit: int) -> bytes:
+        return self.read_bytes(path)[offset:offset + limit]
+
     def find_named(self, root: Path, name: str, limit: int) -> tuple[Path, ...]:
         return tuple(sorted(file for file in self.files
                             if file.name.casefold() == name.casefold() and root in file.parents))[:limit]

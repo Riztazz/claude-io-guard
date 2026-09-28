@@ -23,7 +23,7 @@ from ioguard import PLUGIN_VERSION
 from ioguard.lib import bytesio
 from ioguard.lib.context import plugin_data, session_file
 from ioguard.lib.heartbeat import Heartbeat
-from ioguard.mcp import tools_edit, tools_hook, tools_read
+from ioguard.mcp import tools_edit, tools_hook, tools_read, tools_run
 from ioguard.mcp.progress import CancelToken
 from ioguard.mcp.protocol import INVALID_REQUEST, PARSE_ERROR, Era, Protocol, error
 from ioguard.mcp.toolspec import ToolCall, ToolRegistry
@@ -39,7 +39,7 @@ DRAIN_S = 2.0
 def registry() -> ToolRegistry:
     """Every tool the server offers: the io tools first, and the hook tools last."""
     tools = ToolRegistry()
-    for spec in (*tools_read.SPECS, *tools_edit.SPECS, *tools_hook.SPECS):
+    for spec in (*tools_read.SPECS, *tools_edit.SPECS, *tools_run.SPECS, *tools_hook.SPECS):
         tools.register(spec)
     return tools
 
@@ -128,7 +128,7 @@ class Server:
 
     def work(self, message: dict, token: CancelToken) -> None:
         try:
-            self.send(self.protocol.dispatch(message, token))
+            self.send(self.protocol.dispatch(message, token, self.send))
         finally:
             with self.state_lock:
                 self.tokens.pop(message["id"], None)

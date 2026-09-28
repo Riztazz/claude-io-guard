@@ -56,6 +56,7 @@ class GitPort(Protocol):
 class FsPort(Protocol):
     def read_bytes(self, path: Path, limit: int | None = None) -> bytes: ...
     def read_tail(self, path: Path, limit: int) -> bytes: ...  # the last whole lines within limit bytes
+    def read_from(self, path: Path, offset: int, limit: int) -> bytes: ...   # limit bytes from offset on
     def write_atomic(self, path: Path, data: bytes) -> bytesio.WriteReport: ...
     def stat(self, path: Path) -> FileStat | None: ...
     def exists(self, path: Path) -> bool: ...
@@ -155,6 +156,8 @@ class SessionState:
     budget_override: int | None = None                            # learned from an EOF failure
     tracked: dict[Path, bool] = field(default_factory=dict)       # git's answer per path, asked once
     last_failed_build: str | None = None                          # the words of the build that last failed
+    asked_runs: set[str] = field(default_factory=set)             # io.run calls the hook put to the user
+    read_logs: dict[Path, tuple[int, int]] = field(default_factory=dict)   # io.read_log's line and byte
     lock: threading.RLock = field(default_factory=threading.RLock)
     data_dir: Path | None = None       # with a session id, the folder whose warned file the processes share
     session_id: str | None = None
@@ -211,6 +214,9 @@ class LiveFs:
 
     def read_tail(self, path: Path, limit: int) -> bytes:
         return bytesio.read_tail(path, limit)
+
+    def read_from(self, path: Path, offset: int, limit: int) -> bytes:
+        return bytesio.read_from(path, offset, limit)
 
     def write_atomic(self, path: Path, data: bytes) -> bytesio.WriteReport:
         return bytesio.write_atomic(path, data)

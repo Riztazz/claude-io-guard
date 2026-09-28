@@ -55,6 +55,15 @@ CODES: tuple[CodeSpec, ...] = (
     CodeSpec("CANCELLED", Layer.INTERNAL, Severity.WARNING,
              "The client cancelled the io tool call before it finished.",
              "Call the tool again if its result is still needed.", "0.1"),
+    CodeSpec("HANDLE_EXPIRED", Layer.INTERNAL, Severity.REFUSED,
+             "The handle names work io-guard no longer holds, because it ended over an hour ago or the "
+             "server restarted.", "Start the work again with the tool that made the handle.", "0.1"),
+    CodeSpec("RULE_DENIED", Layer.TRANSPORT, Severity.REFUSED,
+             "One of the user's permission rules denies this command, so io.run did not run it.",
+             "Leave the command out, or ask the user whether the rule should change.", "0.1"),
+    CodeSpec("RULE_ASKED", Layer.TRANSPORT, Severity.WARNING,
+             "One of the user's permission rules asks about this command, so the user decides whether io.run "
+             "runs it.", "Wait for the user's answer, and run nothing else in its place.", "0.1"),
     CodeSpec("LINKED_PATH", Layer.LOCATION, Severity.WARNING,
              "The path runs through a junction or symbolic link into another repository.",
              "Change the file in the repository that owns it, unless the task is about that repository.",

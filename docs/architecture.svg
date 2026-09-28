@@ -238,7 +238,7 @@
       'A refusal names its code and its fix, and the skill tells the model which tool to call instead.'
     ] },
     B: { name: 'B. An io tool call', steps: [
-      'The model calls an io tool, after ToolSearch loads it.',
+      'The model calls an io tool, after ToolSearch loads it. An io.run call first meets the user\'s Bash and PowerShell rules at its PreToolUse hook.',
       'The MCP client sends tools/call to the io server.',
       'The protocol layer checks the era and dispatches by name.',
       'The registry hands the typed input to the tool.',

@@ -14,7 +14,7 @@ from collections.abc import Callable, Mapping
 from enum import Enum
 from typing import Any
 
-from ioguard.mcp.progress import CancelToken
+from ioguard.mcp.progress import CancelToken, ProgressReporter
 from ioguard.mcp.toolspec import InvalidArguments, ToolCall, ToolRegistry
 
 log = logging.getLogger("ioguard.mcp")
@@ -67,8 +67,10 @@ class Protocol:
         with self.lock:
             return self.state
 
-    def dispatch(self, message: Mapping[str, Any], cancel: CancelToken | None = None) -> dict | None:
-        """The response to a request, or None for a notification. Never raises: a bug is an internal error."""
+    def dispatch(self, message: Mapping[str, Any], cancel: CancelToken | None = None,
+                 notify: Callable[[dict], None] | None = None) -> dict | None:
+        """The response to a request, or None for a notification. notify sends a tool's progress to the
+        client. Never raises: a bug is an internal error."""
         if "id" not in message:
             return None
         ident = message["id"]
@@ -76,7 +78,7 @@ class Protocol:
         try:
             if not isinstance(params, Mapping):
                 raise RpcError(INVALID_PARAMS, "params must be an object.")
-            result = self.handle(str(message.get("method")), params, cancel or CancelToken())
+            result = self.handle(str(message.get("method")), params, cancel or CancelToken(), notify)
         except RpcError as failure:
             return error(ident, failure.code, failure.message, failure.data)
         except Exception:
@@ -84,7 +86,8 @@ class Protocol:
             return error(ident, INTERNAL_ERROR, f"io-guard failed on {message.get('method')}.")
         return {"jsonrpc": "2.0", "id": ident, "result": result}
 
-    def handle(self, method: str, params: Mapping[str, Any], cancel: CancelToken) -> dict:
+    def handle(self, method: str, params: Mapping[str, Any], cancel: CancelToken,
+               notify: Callable[[dict], None] | None = None) -> dict:
         if method == "server/discover":
             return self.modern({"supportedVersions": list(SUPPORTED), "capabilities": CAPABILITIES,
                                 "serverInfo": self.server_info, "ttlMs": TTL_MS, "cacheScope": "private"})
@@ -99,7 +102,7 @@ class Protocol:
                 if modern:
                     body |= {"ttlMs": TTL_MS, "cacheScope": "private"}
             case "tools/call":
-                body = self.call(params, cancel)
+                body = self.call(params, cancel, notify)
             case "resources/list":
                 body = {"resources": []}
             case _:
@@ -133,12 +136,17 @@ class Protocol:
                            {"supported": list(SUPPORTED)})
         return True
 
-    def call(self, params: Mapping[str, Any], cancel: CancelToken) -> dict:
+    def call(self, params: Mapping[str, Any], cancel: CancelToken,
+             notify: Callable[[dict], None] | None) -> dict:
         name, arguments = params.get("name"), params.get("arguments") or {}
         if not isinstance(name, str) or not isinstance(arguments, Mapping):
             raise RpcError(INVALID_PARAMS, "tools/call takes a name and an arguments object.")
+        meta = params.get("_meta")
+        token = meta.get("progressToken") if isinstance(meta, Mapping) else None
+        call = self.calls(cancel)
+        call.progress = ProgressReporter(notify, token)
         try:
-            return self.tools.call(name, arguments, self.calls(cancel))
+            return self.tools.call(name, arguments, call)
         except InvalidArguments as failure:
             raise RpcError(INVALID_PARAMS, str(failure)) from None
 

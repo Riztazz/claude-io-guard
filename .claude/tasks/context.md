@@ -149,6 +149,14 @@ subagents passed each result's `sha256` back as `expect_hash` unasked, and the o
 them with `STALE_VIEW`, so the field docs now name the hash as an opt-in guard. The unit tests show the locks
 matter: with both taken out, two threads and two processes each lost edits in 3 runs of 3.
 
+Task 25's `live-run-body`, `live-run-denied`, `live-run-asked` and `live-run-background` passed on both
+releases. A 21,527-byte Python body with 500 pairs of backslashes reached its file through `io.run` byte for
+byte, and Python printed both backslashes of each pair, where the Bash tool halves them (row 25). With
+`Bash(git push *)` denied in the project's settings, `io.run` of `git push origin main` was refused with
+`RULE_DENIED`, and with `Bash(git fetch *)` in the ask rules the permission prompt received the call (row 36).
+A background run of 15 minutes answered `running` through `io.status` while it ran, and after a 16-minute
+pause `ended` with exit code 0 at 900 s, in sessions of 979 and 986 s.
+
 Rules through a junction, checked on 2026-09-27 with Claude Code 2.1.281 and 2.1.283:
 
 - **Claude Code loads a rule, or an `@` import, only when its real path is inside the project.** A junction's real
@@ -273,6 +281,7 @@ denied, and the rerun denied all three. Ten calls each took:
 | 33 | A plugin server that fails to start is skipped in later sessions | `live-server-down`, task 23 | Yes. When io-guard's server died and its restart exited at once, Claude Code logged `Connection failed (CONNECTION_CLOSED)` and wrote `{"plugin:io-guard:io": {"timestamp", "id"}}` to `~/.claude/mcp-needs-auth-cache.json` in the same millisecond. Every session after that, on the CLI 2.1.283 and the desktop's 2.1.281, listed the server as `failed` without trying to start it, so every hook failed open. The binary's check keeps a stdio plugin server's entry for 900,000 ms unless the entry names its own `ttlMs`, and matches it by the server's config id. Deleting the entry restored the server at once. 2.1.281 and 2.1.283 |
 | 34 | An MCP server knows its session | `era-legacy`, task 23 | Yes. The server's environment holds `CLAUDE_CODE_SESSION_ID`, the probe session's own id, over the one the parent process had, and `CLAUDE_PROJECT_DIR`. 2.1.283 |
 | 35 | A session's subagents share its io server, and their calls overlap | `live-edit-parallel`, task 24 | Yes. Three subagents from one message, each loading `io.edit` through ToolSearch, called the one server as they went: their 30 calls interleaved in the stream, and all landed under the lock table. A subagent the Agent tool starts runs in the background, and the main turn waits for its notice. 2.1.281 and 2.1.283 |
+| 36 | A PreToolUse hook on the plugin's own MCP tool fires, and its `ask` shows the permission prompt | `live-run-asked`, `live-run-denied`, task 25 | Yes. With `mcp__plugin_io-guard_io__io_run` in the PreToolUse matcher and in `--allowedTools`, the `mcp_tool` hook answered `ask` with `RULE_ASKED` as its reason, the `--permission-prompt-tool` received the io.run call, and the approved run went through. A `deny` blocked the call, and the model saw `PreToolUse:mcp__plugin_io-guard_io__io_run hook error: RULE_DENIED:` and the rule. 2.1.281 and 2.1.283 |
 
 ## Doc facts, checked on 2026-09-27
 

@@ -177,6 +177,29 @@ PARALLEL_EDITS = (
     "Give each one its own steps, copied exactly as written here.\n"
     + "\n".join(f"Subagent {letter}: {COUNT_STEPS.format(letter)}" for letter in "ABC")
     + "\nWhen all three are done, reply DONE.")
+IO_RUN = "mcp__plugin_io-guard_io__io_run"
+IO_STATUS = "mcp__plugin_io-guard_io__io_status"
+LOAD_RUN = (f"Load {IO_RUN} and {IO_STATUS} with the ToolSearch tool, with the query "
+            f"select:{IO_RUN},{IO_STATUS}")
+RUN_BODY = (
+    f"Do these in order. 1. {LOAD_RUN} 2. Call {IO_RUN} once, with lang python and a code body of 252 lines, "
+    "written out in full in that one call: first the line s = [] then 250 lines, where line NNN, for NNN "
+    "from 001 to 250, is exactly: s.append(r'C:\\\\dir\\\\NNN')  # io-guard io.run transport check, padding "
+    "line NNN of 250 and last the line print(len(s), s[-1]). Each of those lines holds two pairs of "
+    "backslashes, two backslash characters side by side before dir and two before NNN, and the test is "
+    "whether all four arrive, so write both of each pair. Then quote the last line of its result word for "
+    "word.")
+RUN_PRINTED = "250 C:\\\\dir\\\\250"
+RUN_SLOW = (f"1. {LOAD_RUN} 2. Call {IO_RUN} with lang python, background true, and this code: import time\n"
+            "for minute in range(15):\n    print('minute', minute, flush=True)\n    time.sleep(60)\n"
+            f"3. Call {IO_STATUS} with the handle it returned. Then quote its state and reply DONE.",
+            f"Call {IO_STATUS} again with the same handle. Then quote its state and exit code and reply "
+            "DONE.")
+RUN_RULES = {"permissions": {"deny": ["Bash(git push *)"], "ask": ["Bash(git fetch *)"]}}
+RUN_DENIED = (f"Do these in order. 1. {LOAD_RUN} 2. Call {IO_RUN} with argv [\"git\", \"push\", \"origin\", "
+              "\"main\"]. Then quote its result word for word and reply DONE.")
+RUN_ASKED = (f"Do these in order. 1. {LOAD_RUN} 2. Call {IO_RUN} with argv [\"git\", \"fetch\", "
+             "\"--dry-run\"]. Then quote its result, or any refusal, word for word and reply DONE.")
 COUNTERS = b"\xef\xbb\xbfA=0\r\nB=0\r\nC=0\r\n"
 COUNTED = b"\xef\xbb\xbfA=10\r\nB=10\r\nC=10\r\n".decode("latin-1")
 SERVER_DIES = ("Run this exact Bash command: echo IOGUARD_DIE\nThen reply DONE.",
@@ -379,6 +402,15 @@ PROBES = {
     "live-edit-parallel": Probe(0, "", guard="", allowed=("Agent", "Task", "ToolSearch", IO_EDIT),
                                 prompt=PARALLEL_EDITS, check=("counters.txt",), max_turns=12,
                                 setup={"counters.txt": COUNTERS}),
+    "live-run-body": Probe(0, "", guard="", allowed=("ToolSearch", IO_RUN, IO_STATUS), prompt=RUN_BODY,
+                           env={"CLAUDE_CODE_MAX_OUTPUT_TOKENS": "64000"}),
+    "live-run-background": Probe(0, "", guard="", allowed=("ToolSearch", IO_RUN, IO_STATUS), prompt="",
+                                 turns=RUN_SLOW, pause_s=960),
+    "live-run-denied": Probe(0, "", guard="", allowed=("ToolSearch", IO_RUN, IO_STATUS), prompt=RUN_DENIED,
+                             setup={".claude/settings.json": json.dumps(RUN_RULES).encode("ascii")}),
+    "live-run-asked": Probe(0, "record", guard="", server=True, extra_args=PERMIT,
+                            allowed=("ToolSearch", IO_RUN, IO_STATUS), prompt=RUN_ASKED,
+                            setup={".claude/settings.json": json.dumps(RUN_RULES).encode("ascii")}),
 }
 
 
@@ -596,7 +628,7 @@ def run(name: str) -> Path:
     with (out / "stderr.txt").open("wb") as stderr:
         session = subprocess.Popen(argv, cwd=work, stdout=subprocess.PIPE, stderr=stderr,
                                    stdin=subprocess.PIPE if probe.turns else None, env={**os.environ, **env})
-        killer = threading.Timer(600, session.kill)
+        killer = threading.Timer(600 + probe.pause_s * len(probe.turns), session.kill)
         killer.start()
         if probe.turns:
             threading.Thread(target=feed, args=(session, probe, answered), daemon=True).start()
@@ -794,6 +826,50 @@ def edits_interleaved(summary: dict, name: str) -> bool:
     return summary["files"]["counters.txt"] == COUNTED and len(owners) == 30 and runs > len(set(owners))
 
 
+def structured(summary: dict) -> list[dict]:
+    """Each tool result the model read as a JSON object, which an io tool's structuredContent is."""
+    found = []
+    for result in summary["results"]:
+        content = result["content"]
+        texts = [content] if isinstance(content, str) else [block.get("text", "") for block in content or []
+                                                            if isinstance(block, dict)]
+        for text in texts:
+            try:
+                value = json.loads(text)
+            except ValueError:
+                continue
+            if isinstance(value, dict):
+                found.append(value)
+    return found
+
+
+def body_ran(summary: dict, name: str) -> bool:
+    """A body of 20,000 bytes or more reached its file byte for byte, and Python printed each pair of
+    backslashes whole."""
+    sent = next((tool["input"].get("code") for tool in summary["tools"] if tool["name"] == IO_RUN), None)
+    bodies = sorted(GUARD_DATA.glob("runs/*/body.py"), key=lambda path: path.stat().st_mtime)
+    exact = sent is not None and bodies != [] and bodies[-1].read_bytes() == sent.encode("utf-8")
+    printed = any(RUN_PRINTED in value.get("tail", []) for value in structured(summary))
+    return exact and len(sent.encode("utf-8")) >= 20_000 and printed
+
+
+def ran_in_background(summary: dict, name: str) -> bool:
+    """io.status said running during the run, then ended with exit code 0 after 15 minutes."""
+    states = [value for value in structured(summary) if "state" in value and value.get("handle")]
+    return (len(states) >= 2 and states[0]["state"] == "running" and states[-1]["state"] == "ended"
+            and states[-1]["exit"] == 0 and states[-1]["duration_s"] >= 900)
+
+
+def run_asked(summary: dict, name: str) -> bool:
+    """The hook answered ask with RULE_ASKED, and the permission prompt tool received the io.run call."""
+    folder, _ = latest(name)
+    permit = folder / "permit.jsonl"
+    lines = permit.read_bytes().decode("utf-8").splitlines() if permit.is_file() else []
+    prompted = any("probe_permit" in line and IO_RUN in line for line in lines)
+    asked = any("RULE_ASKED" in json.dumps(event) for event in summary["hook_events"])
+    return prompted and asked
+
+
 def results_shown(summary: dict, name: str) -> bool:
     """Both saved outputs came back as io-guard's view of them, and each shell.results line reached the
     model."""
@@ -867,6 +943,10 @@ VERDICTS = {
     "live-server-modern": lambda s, n: served(s, n, "modern"),
     "live-server-down": down_named,
     "live-edit-parallel": edits_interleaved,
+    "live-run-body": body_ran,
+    "live-run-background": ran_in_background,
+    "live-run-denied": lambda s, n: "RULE_DENIED: io.run would run git push origin main" in seen(s),
+    "live-run-asked": run_asked,
     "command-output": lambda s, n: logged(s, '"error": "Exit code 1\\nIOPROBE_OUT\\nIOPROBE_ERR"')
     and sum("IOPROBE-SUMMARY" in str(result["content"]) and "persisted-output" not in str(result["content"])
             for result in s["results"]) == 3,
