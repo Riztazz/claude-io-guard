@@ -61,6 +61,9 @@ CODES: tuple[CodeSpec, ...] = (
     CodeSpec("RULE_DENIED", Layer.TRANSPORT, Severity.REFUSED,
              "One of the user's permission rules denies this command, so io.run did not run it.",
              "Leave the command out, or ask the user whether the rule should change.", "0.1"),
+    CodeSpec("COMMIT_POLICY", Layer.TRANSPORT, Severity.REFUSED,
+             "The commit message holds text the user's commit policy forbids, so the commit did not run.",
+             "Take that text out of the message, then commit again.", "0.1"),
     CodeSpec("RULE_ASKED", Layer.TRANSPORT, Severity.WARNING,
              "One of the user's permission rules asks about this command, so the user decides whether io.run "
              "runs it.", "Wait for the user's answer, and run nothing else in its place.", "0.1"),

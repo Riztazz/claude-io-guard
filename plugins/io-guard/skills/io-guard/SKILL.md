@@ -78,6 +78,7 @@ A refused call did not run. A warning, or a note that io-guard fixed something, 
 | `BOM_RESTORED` | io-guard kept the file's byte order mark, which the Write tool drops. | Nothing to do. |
 | `BUDGET_EXCEEDED` | io-guard ran out of time on this call and skipped its remaining checks. | Nothing to do, because the call went ahead without those checks. |
 | `CANCELLED` | The client cancelled the io tool call before it finished. | Call the tool again if its result is still needed. |
+| `COMMIT_POLICY` | The commit message holds text the user's commit policy forbids, so the commit did not run. | Take that text out of the message, then commit again. |
 | `CONTROL_BYTES_ADDED` | The write added NUL or other control bytes to a text file. | Remove them with the Edit tool, on the lines the message names. |
 | `DIALECT_MISMATCH` | The command is written for the other shell. | Send it to the tool for that shell, or write it for this one. |
 | `ENCODING_INVALID` | The write left bytes that are not UTF-8, or U+FFFD characters where others could not be read. | Read the lines the message names, and put back the characters they lost. |

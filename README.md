@@ -4,12 +4,13 @@ A Claude Code plugin that checks what an agent sends to the file and shell tools
 returns a structured error for the rest. One codebase runs on Windows and macOS.
 
 **Status: in build.** The plugin installs, its io server runs the hooks and every io tool, and its hooks answer
-every file and shell call. Eighteen checks run so far: the session probe, where a write lands,
+every file and shell call. Nineteen checks run so far: the session probe, where a write lands,
 what holds a locked file, the Bash body move, the shell-write refusal, the quoting and dialect lint, the Git Bash
 path fix, the endings and BOM fix for Write, the indent fix for Edit, the check of each written file against the
 file before it, your own verify command after a write, the files a shell command changed, the profile line after
 a Read, the diagnosis of a failed file call, both after it fails and after Claude Code refuses it, what a shell
-command's result means, a warning when the io server is not running, and your permission rules on `io.run`. The
+command's result means, a warning when the io server is not running, your permission rules on `io.run`, and
+your commit policy. The
 build plan is in `.claude/tasks/`, and this page describes the plugin the plan builds.
 
 ## Five fixes, by example
@@ -277,6 +278,26 @@ exec python "<plugin folder>/scripts/precommit.py"
 ```
 
 `git commit --no-verify` skips it for one commit.
+
+**Your commit policy:** list the texts no commit message may hold in `commit_policy.forbid`, such as
+`["Co-Authored-By", "Generated with"]`, and set `commit_policy.ascii_only` to keep messages ASCII. io-guard then
+refuses a `git commit` whose message breaks either, from Bash, PowerShell or `io.run`, and the model commits
+again without it. It reads the message from `-m`, from a `-F` file or heredoc, and from a PowerShell
+here-string. Both are off by default. `forbid` is yours alone, and a project file may only turn `ascii_only`
+on.
+
+**Commits and pushes you approve:** a plugin cannot ship permission rules, so add these to your own
+`settings.json` to be asked before every commit and every push, auto mode included, and to never have
+`git reset --hard` run:
+
+```json
+{
+  "permissions": {
+    "ask": ["Bash(git commit *)", "Bash(git push *)", "PowerShell(git commit *)", "PowerShell(git push *)"],
+    "deny": ["Bash(git reset --hard *)", "PowerShell(git reset --hard *)"]
+  }
+}
+```
 
 **Recommended Claude Code settings**, proposed until the release confirms them:
 

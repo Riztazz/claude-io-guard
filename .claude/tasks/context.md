@@ -181,6 +181,14 @@ Task 38's io tool telemetry showed up live in `live-format` on both releases: th
 `tools/call` line for `io.edit`, 5.0 and 6.9 ms and 68 bytes, and one for `io.format`, 70.6 and 68.1 ms and 88
 bytes, beside the hook calls' lines.
 
+Task 29's `live-commit-policy` passed on both releases: with `commit_policy.forbid` naming `Co-Authored-By`,
+Haiku's `git commit --allow-empty -m 'feat: two' -m 'Co-Authored-By: ...'` met `COMMIT_POLICY` with the line
+named, and its next call committed without the line. A probe session loads the lead's own `~/.claude/CLAUDE.md`:
+the first run's model refused to commit at all, quoting the lead's grant rule, so the probes' prompts now grant
+the commit in their throwaway repository. Over the corpus, 339 recorded commands run `git commit`, and the
+lead's policy, `Co-Authored-By` and `Generated with` forbidden and ASCII only, would refuse 74: all for a
+`Co-Authored-By` line, 73 of them in calls that ran, and none for any other reason.
+
 Rules through a junction, checked on 2026-09-27 with Claude Code 2.1.281 and 2.1.283:
 
 - **Claude Code loads a rule, or an `@` import, only when its real path is inside the project.** A junction's real
@@ -306,6 +314,8 @@ denied, and the rerun denied all three. Ten calls each took:
 | 34 | An MCP server knows its session | `era-legacy`, task 23 | Yes. The server's environment holds `CLAUDE_CODE_SESSION_ID`, the probe session's own id, over the one the parent process had, and `CLAUDE_PROJECT_DIR`. 2.1.283 |
 | 35 | A session's subagents share its io server, and their calls overlap | `live-edit-parallel`, task 24 | Yes. Three subagents from one message, each loading `io.edit` through ToolSearch, called the one server as they went: their 30 calls interleaved in the stream, and all landed under the lock table. A subagent the Agent tool starts runs in the background, and the main turn waits for its notice. 2.1.281 and 2.1.283 |
 | 36 | A PreToolUse hook on the plugin's own MCP tool fires, and its `ask` shows the permission prompt | `live-run-asked`, `live-run-denied`, task 25 | Yes. With `mcp__plugin_io-guard_io__io_run` in the PreToolUse matcher and in `--allowedTools`, the `mcp_tool` hook answered `ask` with `RULE_ASKED` as its reason, the `--permission-prompt-tool` received the io.run call, and the approved run went through. A `deny` blocked the call, and the model saw `PreToolUse:mcp__plugin_io-guard_io__io_run hook error: RULE_DENIED:` and the rule. 2.1.281 and 2.1.283 |
+| 37 | Settings `ask` and `deny` rules hold for git in auto mode | `live-commit-asked`, task 29 | Yes. With `Bash(git commit *)` in a project's `permissions.ask` and `Bash(git reset --hard *)` in its `permissions.deny`, Sonnet in auto mode ran `git commit`, the `--permission-prompt-tool` received the call first, and `git reset --hard HEAD` was refused with no prompt, listed in `permission_denials`. 2.1.281 and 2.1.283 |
+| 38 | An MCP tool call names its tool use | `live-commit-asked`, task 29 | Yes. Claude Code's `tools/call` to a plugin server carries `_meta` `claudecode/toolUseId`, the id the call's hooks receive as `tool_use_id`, beside `progressToken`. 2.1.281 and 2.1.283 |
 
 ## Doc facts, checked on 2026-09-27
 
@@ -486,7 +496,7 @@ MCP", row 28). PTH-3 went with the write-roots rule the lead dropped (D27).
 | GIT-5 | Shared stash across worktrees | data | all | - |
 | GIT-6 | Whole-file undo loses other edits | data | all | 32 |
 | GIT-7 | git status lists files that did not change | noise | all | 21 |
-| GIT-8 | Commit rules | time | all | - |
+| GIT-8 | Commit rules | time | all | 29 |
 | GIT-9 | Junk in the staged diff | data | all | 18 |
 | INP-1 | Tool input that is not valid JSON | time | all | - |
 | INP-2 | MCP call shape errors | time | all | - |

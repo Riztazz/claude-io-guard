@@ -59,6 +59,8 @@ plugins/io-guard/
                                    ask rules, met by an argument list
         runs.py                    interpreter, argv_of, key: what an io.run call runs
         patterns.py                problem, nested: a project file's regex that could stall a line's match
+        commit_message.py          subcommand, sources, problems: where a git commit's message comes from, and
+                                   what in it a policy forbids
       checks/                      policy, one module per check
         base.py                    Check, CheckMeta, Cost
         registry.py                Registry, default_registry
@@ -81,7 +83,7 @@ plugins/io-guard/
                                    STALE_BINARY, PIPE_HIDES_EXIT after the run, and the learned budget
         heartbeat.py               server.heartbeat: SERVER_DOWN at the start of a turn
         run_rules.py               run.rules: RULE_DENIED and RULE_ASKED at the PreToolUse hook on io.run
-        commit_policy.py           task 29
+        commit_policy.py           commit.policy: COMMIT_POLICY for a commit message the user's policy forbids
       hooks/
         entry.py                   run_event: an event in, the answer dict out, never raising
         answer.py                  Outcome -> hook JSON, per event and rewrite mode
@@ -423,6 +425,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Internal | `SERVER_DOWN`, `CANCELLED` | 23, in `CODES` |
 | Internal | `HANDLE_EXPIRED`, with the first tool that makes a handle | 25, in `CODES` |
 | Transport | `RULE_DENIED`, `RULE_ASKED`, from `run.rules` and `io.run` itself | 25, in `CODES` |
+| Transport | `COMMIT_POLICY`, a git commit whose message holds what `commit_policy` forbids | 29, in `CODES` |
 | Bytes | `FORMAT_FAILED`, when `io.format`'s command cannot start, fails or prints nothing | 26, in `CODES` |
 
 ### Decision and Rewrite
@@ -922,11 +925,12 @@ task 21 `skip_trees`, empty by default, and `checks.shell.touched.listed`. Task 
 Task 24 added `io.edit.max_bytes` of 16 MB and `io.edit.wait_ms` of 5,000, which `io.edit`, `io.splice` and
 `io.append` share. Task 25 added `io.run.timeout_s` of 120, `io.run.handle_ttl_s` of 3,600,
 `io.read_log.max_lines` of 500 and `noise_patterns`. Task 26 added `format`, the command `io.format` runs per
-extension, clang-format for C and C++ by default, and `io.format.timeout_s` of 30. A key marked
-`project_regex`, `noise_patterns` and `checks.shell.results.error_patterns`, holds regexes io-guard runs on
-every line of output, and Python's `re` has no timeout. So a project file's pattern that does not compile, is
-over 200 characters, or repeats a group that repeats inside, such as `(a+)+`, drops the file (`lib.patterns`).
-The user's own `config.json` may still set one.
+extension, clang-format for C and C++ by default, and `io.format.timeout_s` of 30. Task 29 added
+`commit_policy.forbid`, empty and the user's alone, and `commit_policy.ascii_only`, false, which a project file
+may only turn on. A key marked `project_regex`, `noise_patterns` and `checks.shell.results.error_patterns`,
+holds regexes io-guard runs on every line of output, and Python's `re` has no timeout. So a project file's
+pattern that does not compile, is over 200 characters, or repeats a group that repeats inside, such as
+`(a+)+`, drops the file (`lib.patterns`). The user's own `config.json` may still set one.
 Each other key arrives with its check. A key marked `project_narrows`, such as
 the budget, takes a lower number from a project file and refuses a higher one. A key with a `shape`, such as
 `verify`, has its inner values checked too, and a wrong one drops the file like any other error.

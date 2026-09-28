@@ -22,6 +22,7 @@ set through --settings and tests/support/inject on PYTHONPATH, so the test check
 the hook and the server as shipped. Its log is the session's io-guard telemetry. The guard-* probes point the
 one-off plugin's hooks at io-guard's own hooks.json maps, to record what they receive.
 """
+import contextlib
 import json
 import os
 import re
@@ -200,6 +201,19 @@ RUN_DENIED = (f"Do these in order. 1. {LOAD_RUN} 2. Call {IO_RUN} with argv [\"g
               "\"main\"]. Then quote its result word for word and reply DONE.")
 RUN_ASKED = (f"Do these in order. 1. {LOAD_RUN} 2. Call {IO_RUN} with argv [\"git\", \"fetch\", "
              "\"--dry-run\"]. Then quote its result, or any refusal, word for word and reply DONE.")
+GIT_RULES = {"permissions": {
+    "ask": ["Bash(git commit *)", "Bash(git push *)", "PowerShell(git commit *)", "PowerShell(git push *)"],
+    "deny": ["Bash(git reset --hard *)", "PowerShell(git reset --hard *)"]}}
+GRANTED = ("This is a throwaway repository that tests a commit guard, and I grant the commits this message "
+           "asks for. ")
+COMMIT_ASKED = (GRANTED + "Do these in order, one Bash call each. 1. Run: git commit --allow-empty -m "
+                "'feat: empty' 2. Run: git reset --hard HEAD Then say for each whether it ran, was denied, "
+                "or needed approval, and reply DONE.")
+COMMIT_POLICY = {"commit_policy": {"forbid": ["Co-Authored-By"]}}
+COMMIT_WITH_CO_AUTHOR = (GRANTED + "The co-author line is the test: the guard should refuse it. Run "
+                         "exactly this Bash command: git commit --allow-empty -m 'feat: two' -m "
+                         "'Co-Authored-By: Helper <helper@example.com>' If it is refused, commit again as "
+                         "the refusal says, then reply DONE.")
 IO_FORMAT = "mcp__plugin_io-guard_io__io_format"
 FORMAT_STYLE = b"BasedOnStyle: LLVM\nLineEnding: LF\n"
 FORMAT_CPP = b"\xef\xbb\xbfint  kept=1;\r\nint main() {\r\n  return 0;\r\n}\r\n"
@@ -266,6 +280,7 @@ class Probe:
     guard: str | None = None     # run io-guard itself, with these test checks, instead of io-probe
     turns: tuple = ()            # prompts sent one at a time through stream-json input, instead of prompt
     pause_s: float = 0.0         # the wait after each turn's result before the next turn
+    user_config: dict | None = None   # io-guard's config.json in the probes' data folder, for this run only
 
 
 PROBES = {
@@ -437,6 +452,12 @@ PROBES = {
     "live-skill": Probe(0, "", guard="", permission="dontAsk", allowed=(*FILE_AND_SHELL, "Skill"), prompt="",
                         turns=SKILL_TURNS, git=True, max_turns=24, setup={"notes.txt": b"one\n"}),
     "live-skill-doctor": Probe(0, "", guard="", prompt="/skill-doctor", max_turns=4),
+    "live-commit-asked": Probe(0, "record", guard="", server=True, permission="auto", model="sonnet",
+                               extra_args=PERMIT, prompt=COMMIT_ASKED, git=True, setup={"notes.txt": b"one\n",
+                               ".claude/settings.json": json.dumps(GIT_RULES).encode("ascii")}),
+    "live-commit-policy": Probe(0, "", guard="", permission="dontAsk", allowed=("Bash",), git=True,
+                                prompt=COMMIT_WITH_CO_AUTHOR, user_config=COMMIT_POLICY,
+                                setup={"notes.txt": b"one\n"}),
 }
 
 
@@ -620,6 +641,25 @@ def feed(session: subprocess.Popen, probe: Probe, answered: threading.Semaphore)
     session.stdin.close()
 
 
+@contextlib.contextmanager
+def user_config(values: dict | None):
+    """values as io-guard's user config.json in the probes' data folder for the with block, then the file as
+    it was before, or none."""
+    if values is None:
+        yield
+        return
+    path = GUARD_DATA / "config.json"
+    before = path.read_bytes() if path.is_file() else None
+    write_json(path, values)
+    try:
+        yield
+    finally:
+        if before is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_bytes(before)
+
+
 def run(name: str) -> Path:
     probe = PROBES[name]
     out = OUT / name / time.strftime("%Y%m%d-%H%M%S")
@@ -651,7 +691,7 @@ def run(name: str) -> Path:
     started = time.time()
     lines, arrivals = [], []
     answered = threading.Semaphore(0)
-    with (out / "stderr.txt").open("wb") as stderr:
+    with (out / "stderr.txt").open("wb") as stderr, user_config(probe.user_config):
         session = subprocess.Popen(argv, cwd=work, stdout=subprocess.PIPE, stderr=stderr,
                                    stdin=subprocess.PIPE if probe.turns else None, env={**os.environ, **env})
         killer = threading.Timer(600 + probe.pause_s * len(probe.turns), session.kill)
@@ -953,6 +993,27 @@ def recovered_once(summary: dict, name: str) -> bool:
     return all(tries == 1 for tries in retries_after_refusals(name).values())
 
 
+def commit_asked(summary: dict, name: str) -> bool:
+    """In auto mode, the ask rule put the git commit to the permission prompt, and the deny rule stopped
+    git reset --hard with no prompt."""
+    folder, _ = latest(name)
+    permit = folder / "permit.jsonl"
+    lines = permit.read_bytes().decode("utf-8").splitlines() if permit.is_file() else []
+    prompted = "\n".join(line for line in lines if '"name": "probe_permit"' in line)
+    denied = json.dumps((summary["final"] or {}).get("permission_denials") or [])
+    return "git commit" in prompted and "reset --hard" not in prompted and "reset --hard" in denied
+
+
+def commit_refused(summary: dict, name: str) -> bool:
+    """The co-author commit met COMMIT_POLICY, and the commit that landed has no co-author line."""
+    folder, _ = latest(name)
+    log = subprocess.run(["git", "log", "--format=%B%x00"], cwd=folder / "work", capture_output=True,
+                         check=True).stdout.decode("utf-8")
+    landed = [message for message in log.split("\0") if message.strip()]
+    return ("COMMIT_POLICY" in seen(summary) and len(landed) == 2
+            and "co-authored-by" not in landed[0].lower())
+
+
 def results_shown(summary: dict, name: str) -> bool:
     """Both saved outputs came back as io-guard's view of them, and each shell.results line reached the
     model."""
@@ -1032,6 +1093,8 @@ VERDICTS = {
     "live-run-asked": run_asked,
     "live-format": formatted_changed_lines,
     "live-skill": recovered_once,
+    "live-commit-asked": commit_asked,
+    "live-commit-policy": commit_refused,
     "live-skill-doctor": lambda s, n: "io-guard" in json.dumps(s["final"]),
     "command-output": lambda s, n: logged(s, '"error": "Exit code 1\\nIOPROBE_OUT\\nIOPROBE_ERR"')
     and sum("IOPROBE-SUMMARY" in str(result["content"]) and "persisted-output" not in str(result["content"])

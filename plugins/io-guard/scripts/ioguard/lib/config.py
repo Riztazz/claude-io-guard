@@ -133,6 +133,11 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
                         "lines, per file extension, and per project root for one project only. It reads the "
                         "text on stdin and writes the formatted text on stdout.", project_may_set=False,
                         shape=commands.format_problem),
+    "commit_policy.forbid": ConfigKey(list, [], "Texts no git commit message may hold, matched without case, "
+                                      "such as Co-Authored-By. A commit whose message holds one is refused.",
+                                      project_may_set=False),
+    "commit_policy.ascii_only": ConfigKey(bool, False, "Refuse a git commit whose message holds a non-ASCII "
+                                          "character.", project_forbids=(False,)),
     "io.format.timeout_s": ConfigKey(int, 30, "Seconds a format command may take on one file, after which "
                                      "io-guard stops it and io.format writes nothing."),
     **{f"transport.rewrite_mode.{mode}": ConfigKey(
