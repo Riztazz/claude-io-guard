@@ -37,6 +37,7 @@ at all:
 | Format the changed lines of files | `io.format` | `mcp__plugin_io-guard_io__io_format` |
 | Keep files before a task | `io.snapshot` | `mcp__plugin_io-guard_io__io_snapshot` |
 | Put files back as a snapshot kept them | `io.restore` | `mcp__plugin_io-guard_io__io_restore` |
+| Show whether a pass changed code | `io.compare` | `mcp__plugin_io-guard_io__io_compare` |
 <!-- The generated tools table ends here. -->
 
 ## What io-guard fixes on its own

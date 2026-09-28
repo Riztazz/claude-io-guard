@@ -18,7 +18,8 @@ from ioguard.lib.fakes import FakeFs
 from ioguard.lib.platform import Platform, detect
 from ioguard.lib.results import Code, callable_name
 from ioguard.mcp.progress import CancelToken
-from ioguard.mcp.tools_history import RestoreInput, SnapshotInput, restore, snapshot
+from ioguard.mcp.tools_history import (CompareInput, RestoreInput, SnapshotInput, compare, restore,
+                                       snapshot)
 from ioguard.mcp.toolspec import InvalidArguments, ToolCall, ToolFailure
 from tests.support import events
 
@@ -130,6 +131,37 @@ class RestoreWritesBackOnlyWhatChangedAndOnlyWhenAsked(HistoryTest):
         ctx = self.kept_then_edited()
         result = self.refusal(restore, RestoreInput("pass", ["c.txt"]), ctx)
         self.assertEqual(result.code, Code.PATH_NOT_FOUND, "a restore of a file never kept writes nothing")
+
+
+class CompareShowsWhetherAPassChangedCode(HistoryTest):
+    def compared(self, mode: str = "code", paths: list | None = None):
+        ctx = self.context({CWD / "a.cpp": b"int a; // old\n", CWD / "b.cpp": b"int b = 1;\n",
+                            CWD / "c.txt": b"same\n", CWD / "d.h": b"#pragma once\n"})
+        self.call(snapshot, SnapshotInput(["*"], "pass"), ctx)
+        ctx.fs.files[CWD / "a.cpp"] = b"// header\nint a; // new\n"
+        ctx.fs.files[CWD / "b.cpp"] = b"// header\nint b = 2;\n"
+        del ctx.fs.files[CWD / "d.h"]
+        return self.call(compare, CompareInput("pass", mode, paths or []), ctx)
+
+    def test_a_comment_pass_is_same_and_a_code_change_is_named_with_its_lines(self):
+        found = self.compared()
+        self.assertEqual(found.same, ["C:/project/a.cpp", "C:/project/c.txt"],
+                         "a.cpp changed only comments, and c.txt did not change at all")
+        changed = {each.path: each for each in found.differ}
+        b = changed["C:/project/b.cpp"]
+        self.assertEqual((b.before_line, b.after_line, b.before, b.after), (1, 2, "int b = 1;", "int b = 2;"),
+                         "the result quotes the line whose code changed, on each side")
+        self.assertEqual(changed["C:/project/d.h"].after_line, 0, "a file that is gone differs, at no line")
+        self.assertIn("2 of 4 files hold the same code", found.render(), "the text leads with the count")
+
+    def test_exact_mode_counts_the_comment_pass_as_a_change(self):
+        found = self.compared("exact", ["a.cpp", "c.txt"])
+        self.assertEqual((found.same, [each.path for each in found.differ]),
+                         (["C:/project/c.txt"], ["C:/project/a.cpp"]), "exact compares every line")
+
+    def test_an_unknown_mode_is_not_one_call(self):
+        with self.assertRaises(InvalidArguments):
+            self.compared("tokens")
 
 
 class ABatchOfTenFilesRestoresExactly(HistoryTest):

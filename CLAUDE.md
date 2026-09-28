@@ -13,7 +13,7 @@ probe, `write.location`, `write.locks`, `shell.writes`, `transport.body`, `shell
 `diagnose.refused`, `shell.results`, `server.heartbeat`, `run.rules`, `commit.policy`, `restore.ask` and
 `journal.write`), the hook entry point and bridge in `hooks/`, the io MCP server in `mcp/` with `io.read`,
 `io.edit`, `io.splice`, `io.append`, `io.run`, `io.status`, `io.read_log`, `io.format`, `io.snapshot`,
-`io.restore` and the hook tools, the corpus, replay, precommit and report commands in `cli/` with their
+`io.restore`, `io.compare` and the hook tools, the corpus, replay, precommit and report commands in `cli/` with their
 scripts, `tests/` with its fixtures and helpers, `tools/probes/`, `.github/workflows/ci.yml`, `.claude/`,
 `docs/`, `workbench/` and this file exist.
 

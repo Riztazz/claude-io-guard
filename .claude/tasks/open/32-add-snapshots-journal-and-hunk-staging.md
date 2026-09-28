@@ -62,3 +62,9 @@ It comes after the measurement (D20), so task 31's numbers can reshape it.
   and `mcp.in_place.write` records the io tools' own writes. `io.snapshot` sets the session's tag. Live on
   2.1.283, `live-restore` journaled its `io.edit` under the tag `probe`, and `live-verify` its Write and Edit.
   Tests: 767 before, 782 after.
+- **Part 3, compare, 2026-09-28.** `lib.code_tokens` reads a C-family, Python or hash-comment file as its
+  tokens less comments and layout, Python through its own tokenizer with docstrings dropped and indentation
+  kept, or as its lines with the include lines apart. `io.compare(tag, mode, paths)` compares each file the
+  snapshot holds in `code`, `includes` or `exact` mode, and names the first line that differs on each side.
+  It uses no harness feature the other io tools do not, so it has no probe of its own. Tests: 782 before,
+  797 after.

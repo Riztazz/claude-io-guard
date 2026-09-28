@@ -127,6 +127,7 @@ A few jobs have no safe built-in tool, so the io server adds them:
 | `io.format` | Run your formatter, clang-format by default, over the lines changed since the last commit and no others |
 | `io.snapshot` | Keep the bytes of files, folders or globs under a tag for seven days, before a pass over many files |
 | `io.restore` | Put back the files a snapshot kept, only those that changed, after your yes |
+| `io.compare` | Show whether a pass changed code since a snapshot, ignoring comments or include lines, and where |
 
 The three that change a file write it once, only when every place they name matched once, and a failed one
 writes nothing and names the lines it nearly matched. Two subagents editing one file take turns. After one of

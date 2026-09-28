@@ -1,17 +1,22 @@
-"""io.snapshot and io.restore: the bytes of a batch of files kept before a task, and put back file by file.
+"""io.snapshot, io.restore and io.compare: the bytes of a batch of files kept before a task, put back file by
+file, or compared with the files now.
 
-Agents copied files into before-folders before a risky pass, 722 files in one session, and undid a mistake
-with git checkout, which threw away every other edit of the file (GIT-6). io.snapshot keeps the files' bytes
-in io-guard's folder under a tag for seven days, and io.restore writes them back, only the files asked for
-and only those that changed. A restore replaces edits made after the snapshot, so the PreToolUse hook on its
-call puts it to the user first (checks.restore_ask), and io.restore writes nothing the hook did not ask about.
+Agents copied files into before-folders before a risky pass, 722 files in one session, undid a mistake with
+git checkout, which threw away every other edit of the file (GIT-6), and built a checker per pass to show a
+comment pass changed no code (VFY-6). io.snapshot keeps the files' bytes in io-guard's folder under a tag for
+seven days. io.restore writes them back, only the files asked for and only those that changed. A restore
+replaces edits made after the snapshot, so the PreToolUse hook on its call puts it to the user first
+(checks.restore_ask), and io.restore writes nothing the hook did not ask about. io.compare reads each file's
+code through lib.code_tokens and names the first place it differs.
 """
+import json
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path, PurePosixPath
 
-from ioguard.lib import paths, snapshots
+from ioguard.lib import code_tokens, paths, snapshots
 from ioguard.lib.context import Context, read_or_none
+from ioguard.lib.journal import text_of
 from ioguard.lib.results import Code, Fix, callable_name
 from ioguard.mcp.in_place import NOTE, held, refused
 from ioguard.mcp.toolspec import InvalidArguments, ToolCall, ToolSpec, doc
@@ -58,6 +63,51 @@ class RestoreOutput:
         head = (f"Restored {len(self.restored):,} files from snapshot {self.snapshot}"
                 + (f", and {len(self.unchanged):,} already matched it." if self.unchanged else "."))
         return "\n".join([head, *self.restored, self.note])
+
+
+@dataclass(frozen=True)
+class CompareInput:
+    tag: str = doc("The tag io.snapshot kept the files under, or the snapshot's id.")
+    mode: str = doc("code ignores comments, docstrings and layout. includes ignores include and import lines "
+                    "and their order. exact compares every line.", default="code")
+    paths: list[str] = doc("Only these files, absolute or from the project folder. Left out, every file the "
+                           "snapshot holds.", default_factory=list)
+
+
+@dataclass(frozen=True)
+class Difference:
+    path: str = doc("The file.")
+    how: str = doc("How it was compared: code, includes, or exact for a kind of file io-guard has no rules "
+                   "for in this mode.")
+    before_line: int = doc("The first line that differs in the snapshot's copy, from 1. 0 where that copy "
+                           "has ended.")
+    after_line: int = doc("The same place in the file now, from 1. 0 where the file has ended or is gone.")
+    before: str = doc("The snapshot's line, cut at 200 characters.")
+    after: str = doc("The line now, cut at 200 characters.")
+    includes_added: list[str] = doc("Include lines the file gained, in includes mode.", default_factory=list)
+    includes_removed: list[str] = doc("Include lines the file lost, in includes mode.", default_factory=list)
+
+
+@dataclass(frozen=True)
+class CompareOutput:
+    snapshot: str = doc("The snapshot's id.")
+    mode: str = doc("The mode the files were compared in.")
+    same: list[str] = doc("The files that hold the same code as the snapshot, as the mode reads it.")
+    differ: list[Difference] = doc("The files that do not, each with the first place they differ.")
+
+    def render(self) -> str:
+        total = len(self.same) + len(self.differ)
+        head = f"{len(self.same):,} of {total:,} files hold the same code as snapshot {self.snapshot}, " \
+               f"compared as {self.mode}."
+        lines = [head]
+        for each in self.differ:
+            where = (f"line {each.after_line:,}, line {each.before_line:,} in the snapshot"
+                     if each.after_line and each.before_line else "its end")
+            lines.append(f"{each.path} differs at {where}, compared as {each.how}: "
+                         f"{json.dumps(each.before)} became {json.dumps(each.after)}.")
+            lines += [f"  gained {line}" for line in each.includes_added]
+            lines += [f"  lost {line}" for line in each.includes_removed]
+        return "\n".join(lines)
 
 
 def gathered(raw: list[str], cwd: Path, ctx: Context, limit: int, tool: str) -> list[Path]:
@@ -116,21 +166,30 @@ def snapshot(given: SnapshotInput, call: ToolCall) -> SnapshotOutput:
     return SnapshotOutput(kept.id, kept.tag, len(files), total, kept.expires.isoformat(timespec="seconds"))
 
 
-def restore(given: RestoreInput, call: ToolCall) -> RestoreOutput:
-    ctx, tool = call.context, "io.restore"
-    found = snapshots.find(home_of(ctx), given.tag, call.cwd, ctx.clock.now())
+def planned(tag: str, raw: list[str], call: ToolCall, tool: str) -> snapshots.Pending:
+    """The snapshot tag names in this project, against the files raw names, or every file it holds. A tag
+    no snapshot holds, or a path the snapshot never kept, refuses the call."""
+    ctx = call.context
+    found = snapshots.find(home_of(ctx), tag, call.cwd, ctx.clock.now())
     if found is None:
-        again = Fix(callable_name("io.snapshot"), {"tag": given.tag},
-                    "Call io.snapshot before the next task, then io.restore with its tag.")
-        raise refused(Code.HANDLE_EXPIRED, f"No snapshot in this project is tagged or named {given.tag}, so "
-                      f"{tool} wrote nothing. A snapshot lasts seven days.", tool, call.cwd, ctx, again)
-    wanted = [paths.normalise(each, call.cwd, ctx.platform) for each in given.paths] or None
+        again = Fix(callable_name("io.snapshot"), {"tag": tag},
+                    f"Call io.snapshot before the next task, then {tool} with its tag.")
+        raise refused(Code.HANDLE_EXPIRED, f"No snapshot in this project is tagged or named {tag}, so {tool} "
+                      f"did nothing. A snapshot lasts seven days.", tool, call.cwd, ctx, again)
+    wanted = [paths.normalise(each, call.cwd, ctx.platform) for each in raw] or None
     plan = snapshots.pending(found, wanted, partial(read_or_none, ctx.fs), ctx.platform.case_insensitive)
     if plan.unknown:
         names = ", ".join(kept.path.name for kept in found.files[:5])
         more = " and more" if len(found.files) > 5 else ""
         raise refused(Code.PATH_NOT_FOUND, f"Snapshot {found.id} holds no {plan.unknown[0].as_posix()}, so "
-                      f"{tool} wrote nothing. It holds {names}{more}.", tool, plan.unknown[0], ctx)
+                      f"{tool} did nothing. It holds {names}{more}.", tool, plan.unknown[0], ctx)
+    return plan
+
+
+def restore(given: RestoreInput, call: ToolCall) -> RestoreOutput:
+    ctx, tool = call.context, "io.restore"
+    plan = planned(given.tag, given.paths, call, tool)
+    found = plan.snapshot
     if plan.changed:
         with ctx.session.lock:
             asked = plan.key() in ctx.session.asked_restores
@@ -151,6 +210,36 @@ def restore(given: RestoreInput, call: ToolCall) -> RestoreOutput:
     return RestoreOutput(found.id, restored, [kept.path.as_posix() for kept in plan.same], NOTE)
 
 
+def line_of(text: str, number: int) -> str:
+    """Line number of text, from 1, cut at 200 characters, or empty where the text has none."""
+    lines = text.splitlines()
+    return lines[number - 1][:200] if 0 < number <= len(lines) else ""
+
+
+def compare(given: CompareInput, call: ToolCall) -> CompareOutput:
+    ctx, tool = call.context, "io.compare"
+    if given.mode not in code_tokens.MODES:
+        raise InvalidArguments(f"mode must be one of {', '.join(code_tokens.MODES)}.")
+    plan = planned(given.tag, given.paths, call, tool)
+    same, differ = [kept.path.as_posix() for kept in plan.same], []
+    for kept in plan.changed:
+        before = text_of(plan.snapshot.blob(kept))
+        now = read_or_none(ctx.fs, kept.path)
+        if now is None:
+            differ.append(Difference(kept.path.as_posix(), given.mode, 1 if before else 0, 0,
+                                     line_of(before, 1), ""))
+            continue
+        after = text_of(now)
+        found = code_tokens.compare(before, after, kept.path.suffix, given.mode)
+        if found.same:
+            same.append(kept.path.as_posix())
+            continue
+        differ.append(Difference(kept.path.as_posix(), found.how, found.before_line, found.after_line,
+                                 line_of(before, found.before_line), line_of(after, found.after_line),
+                                 list(found.added), list(found.removed)))
+    return CompareOutput(plan.snapshot.id, given.mode, sorted(same), differ)
+
+
 SPECS = (
     ToolSpec("io.snapshot", "Keep files before a task",
              "Keeps the bytes of files, folders or globs in io-guard's folder under a tag, for seven days. "
@@ -164,4 +253,10 @@ SPECS = (
              "every other edit of the file.",
              RestoreInput, RestoreOutput, read_only=False, destructive=True, idempotent=True,
              handler=restore),
+    ToolSpec("io.compare", "Show whether a pass changed code",
+             "Compares files with the snapshot io.snapshot kept, ignoring comments, docstrings and layout, "
+             "or include lines and their order, and names the first place each file's code differs. Use it "
+             "to prove a comment or include pass changed no code.",
+             CompareInput, CompareOutput, read_only=True, destructive=False, idempotent=True,
+             handler=compare),
 )

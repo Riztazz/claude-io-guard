@@ -65,6 +65,7 @@ plugins/io-guard/
                                    what in it a policy forbids
         snapshots.py               take, find, pending, sweep: files' bytes kept under a tag for seven days
         journal.py                 changed, record, entries: each write's lines and task tag, as line keys
+        code_tokens.py             code_tokens, split_includes, compare: a file's code without comments
       checks/                      policy, one module per check
         base.py                    Check, CheckMeta, Cost
         registry.py                Registry, default_registry
@@ -1376,11 +1377,14 @@ times to format changed hunks, with the same clang-format (`context.md`, task 26
 
 ### Keep files, and put them back
 
-`mcp/tools_history.py` holds `io.snapshot` and `io.restore` (task 32).
+`mcp/tools_history.py` holds `io.snapshot`, `io.restore` and `io.compare` (task 32).
 
 ```python
 io.snapshot(paths, tag) -> SnapshotOutput(snapshot, tag, files, bytes, expires)
 io.restore(tag, paths = []) -> RestoreOutput(snapshot, restored, unchanged, note)
+io.compare(tag, mode = "code", paths = [])
+-> CompareOutput(snapshot, mode, same, differ: [Difference(path, how, before_line, after_line, before, after,
+                                                           includes_added, includes_removed)])
 ```
 
 - **Keep.** `paths` names files, folders and globs from the project folder, and a folder takes every file
@@ -1396,6 +1400,14 @@ io.restore(tag, paths = []) -> RestoreOutput(snapshot, restored, unchanged, note
   whose files all match the snapshot asks nothing and writes nothing.
 - **Put back.** Each changed file, a deleted one included, is written back whole through `write_atomic`,
   held as the edit tools hold one. Unlike `git checkout`, the other files stay as they are (GIT-6).
+- **Compare.** `io.compare` reads each file the snapshot holds against the file now, through
+  `lib.code_tokens` (VFY-6). In `code` mode a C-family, Python or hash-comment file becomes its tokens less
+  comments and layout, and Python's come from its own tokenizer, with docstrings counted as comments and
+  indentation kept as code. In `includes` mode the include and import lines go apart from the rest, and a
+  reordering compares equal while a gained or lost include is named. `exact` compares every line, and so
+  does a kind of file with no rules for the mode, which the result says. A file whose bytes are unchanged is
+  the same without being read, and each file that differs comes back with the first line that differs on
+  each side. The call only reads.
 
 ### The edit journal
 
