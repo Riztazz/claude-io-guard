@@ -64,3 +64,11 @@ of 2026-09-28 found it, and the lead chose `~/.claude/io-guard/`.
   function, a paragraph on D30, the config table, section 8's shared state, the report), `docs/architecture.svg`
   (the `~/.claude/io-guard` box and its step), `CLAUDE.md`, the `io-guard-dev` skill, `context.md` (D30), and
   tasks 32 and 36.
+- **The install, 2026-09-28.** The lead's `config.json` and 22 telemetry files were copied from
+  `~/.claude/plugins/data/io-guard-claude-io-guard` into `~/.claude/io-guard`, with every hash matching, and the
+  originals left in place. The install went from `1be0ad68a969` to `4aa7ec5f912c`. A fresh session on the CLI
+  2.1.283 and on the desktop's 2.1.281 binary connected the server with nothing set, and wrote its telemetry and
+  heartbeat to `~/.claude/io-guard`. After the lead restarted the desktop app, its log still read `Passing 6
+  plugin(s) to SDK (skills: 1, remote: 4, local: 1)`, so io-guard ran as `io-guard@inline`, and this session's
+  server connected in 373 ms. Its SessionStart, UserPromptSubmit and Bash hooks, and its heartbeat, landed in
+  `~/.claude/io-guard`, and a live context there read `commit_policy.forbid` as the lead set it.
