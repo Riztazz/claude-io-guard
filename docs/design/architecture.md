@@ -519,7 +519,8 @@ class Encoding:
 @dataclass(frozen=True)
 class Indent:
     kind: IndentKind
-    width: Optional[int]
+    width: Optional[int]      # task 56: the commonest rise of 8, 4, 3 or 2 spaces between non-blank lines,
+                              # else the step 80% of indented lines sit on a multiple of
     tab_lines: int
     space_lines: int
 

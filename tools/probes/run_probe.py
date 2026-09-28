@@ -174,6 +174,8 @@ PIPE_TWICE = ("Do these in order, one tool call each, and never retry. 1. Run th
               "reply DONE.")
 PIPE_WARNED = "PIPE_HIDES_EXIT: This command pipes python -m unittest into tail"
 INSTALLED = "io-guard@claude-io-guard"
+ALIGNED_PY = (b"PROBES = {\n    \"a\": Probe(0, allowed=(\"Read\",),\n                 check=(\"a\",),\n"
+              b"                 max_turns=8,\n                 setup={}),\n    \"b\": Probe(1),\n}\n")
 DELETE_JOIN = ("Read f.txt. Then call the Edit tool once with exactly these arguments, changing none of "
                "them: {\"file_path\": \"f.txt\", \"old_string\": \"\\nb\", \"new_string\": \"\"} Then reply "
                "DONE.")
@@ -465,6 +467,8 @@ PROBES = {
     "live-touched": Probe(0, "", guard="", allowed=("Read", "Bash"), git=True, prompt=TOUCHED,
                           check=("a.cpp", "conv.txt"), setup=TOUCHED_FILES),
     "live-pipe-once": Probe(0, "", guard="", allowed=("Bash",), prompt=PIPE_TWICE, max_turns=6),
+    "live-read-width": Probe(0, "", guard="", allowed=("Read",), prompt="Read p.py with the Read tool. Then "
+                             "reply DONE.", setup={"p.py": ALIGNED_PY}),
     "edit-delete-join": Probe(0, "record", allowed=("Read", "Edit"), permission="acceptEdits",
                               prompt=DELETE_JOIN, check=("f.txt",), setup={"f.txt": b"a\nb\nc\n"}),
     "live-lines-joined": Probe(0, "", guard="", allowed=("Read", "Edit"), permission="acceptEdits",
@@ -1222,6 +1226,7 @@ VERDICTS = {
         "EOL_MISMATCH: This command changed conv.txt from CRLF to LF line endings.")),
     "live-results": results_shown,
     "live-pipe-once": piped_twice_warned_once,
+    "live-read-width": lambda s, n: context_reached(n, "io-guard: LF, UTF-8, 4 spaces, 7 lines"),
     "edit-delete-join": lambda s, n: s["files"]["f.txt"] == "ac\n",
     "live-lines-joined": lambda s, n: s["files"]["f.txt"] == "a\nc\n" and "LINES_JOINED: " in seen(s),
     "live-script-write": lambda s, n: s["files"]["a.txt"].replace("\r\n", "\n") == "two\n"

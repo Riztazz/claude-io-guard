@@ -3,7 +3,8 @@ title: Find a file's indent step past its aligned continuation lines
 stage: I
 area: bytes
 created: 2026-09-28
-status: open
+status: done
+claimed-by: Pala Elektroniczna, session 7eeb509f
 depends-on: [15]
 findings: []
 platforms: [windows, macos]
@@ -37,3 +38,25 @@ by it (`lib/indent.py`, `fitted`), and `io.edit` passes it to `edits.apply`. A t
 ## Done when
 
 - A Read of `tools/probes/run_probe.py` says `4 spaces`, and so does one of `tests/checks/test_diagnose.py`.
+
+## What changed
+
+- `lib/profile.py`: `rise_step`, the commonest rise among 8, 4, 3 and 2 spaces from one non-blank line to the
+  next, the smaller step winning a tie. `indent_of` takes it, and falls back on the 80% rule when no line rises
+  by one of those steps.
+- Tests: `tests/lib/test_profile.py`, two shapes the old rule gave no width, a Python dict aligned under a
+  bracket and an assertion message under a call, now 4, and a 2-space YAML file still 2.
+- `tools/probes/run_probe.py`: `live-read-width`.
+- Docs: `docs/design/architecture.md` (`Indent.width`), `docs/live-checks.md`, `docs/compat.md`.
+
+Evidence:
+
+- `python tests/run_all.py` ran 844 tests, all passing, up from 843.
+- `live-read-width` passed on 2.1.281 and 2.1.283: the Read's profile line said `4 spaces, 7 lines`.
+- The profile now gives `run_probe.py`, `test_diagnose.py` and `test_context.py` 4, and `ci.yml` 2.
+- Over this repository's tracked files and `workbench/`, 293 files indent with spaces, and 52 change width.
+  Every Python file among them goes to 4, 17 from a wrong 2 and the rest from none. The Markdown files go from
+  none to 2, their list continuations. `workbench/SmartTablesHost/.../SmartTable.h` goes from none to 4, which
+  its 980 lines at 4 spaces and its doc comments at 5 bear out, checked by eye.
+- No corpus replay: the corpus holds calls, not the files they touched.
+- Checked on Windows on 2026-09-28.

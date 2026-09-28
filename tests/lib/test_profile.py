@@ -53,6 +53,19 @@ class EveryFixtureProfilesAsWritten(unittest.TestCase):
                 self.assertEqual((indent.kind, indent.width, indent.tab_lines, indent.space_lines), expected,
                                  "tabs, spaces and their width come from the lines' leading whitespace")
 
+    def test_the_step_is_the_commonest_rise_past_aligned_continuation_lines(self):
+        cases = {
+            "aligned under a bracket": (b"PROBES = {\n    \"a\": Probe(0, allowed=(\"Read\",),\n"
+                                        b"                 check=(\"a\",),\n                 max_turns=8,\n"
+                                        b"                 setup={}),\n    \"b\": Probe(1),\n}\n", 4),
+            "a message under a call": (b"class T:\n    def t(self):\n        self.assertEqual(a, b,\n"
+                                       b"                         \"why\")\n        self.x(c)\n", 4),
+            "two-space yaml": (b"jobs:\n  test:\n    runs-on: x\n    steps:\n      - run: y\n", 2)}
+        for name, (data, width) in cases.items():
+            with self.subTest(name):
+                self.assertEqual(profile(data).indent.width, width,
+                                 "a block rises by the step, and an aligned line once per statement")
+
     def test_odd_bytes_and_the_binary_sniff(self):
         nul, private = of("nul-byte.txt"), of("private-use.txt")
         self.assertEqual((nul.counts.nul, nul.binary), (1, True), "a NUL in the first 8 KB marks it binary")

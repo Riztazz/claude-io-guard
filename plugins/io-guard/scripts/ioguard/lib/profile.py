@@ -201,8 +201,18 @@ def indent_of(layout: bytes) -> Indent:
         """Most space-indented lines sit on a multiple of step."""
         return sum(count for size, count in levels.items() if size % step == 0) >= 0.8 * len(widths)
 
-    width = next((step for step in WIDTHS if fits(step)), None) if widths else None
+    width = (rise_step(layout) or next((step for step in WIDTHS if fits(step)), None)) if widths else None
     return Indent(kind, width, tab_lines, len(widths))
+
+
+def rise_step(layout: bytes) -> int | None:
+    """The space step a file indents by: the commonest rise, among WIDTHS, from one non-blank line to the
+    next. A block rises by the step. A continuation line aligned under a bracket rises by whatever the bracket
+    leaves, once per statement, so it is outvoted. The smaller step wins a tie. None with no such rise."""
+    depths = [len(line) - len(line.lstrip(b" ")) for line in layout.split(b"\n")
+              if line.strip() and not line.startswith(b"\t")]
+    rises = Counter(after - before for before, after in zip(depths, depths[1:]) if after - before in WIDTHS)
+    return min(rises, key=lambda step: (-rises[step], step)) if rises else None
 
 
 def counts_of(layout: bytes, encoding: Encoding, bom: Bom) -> ByteCounts:
