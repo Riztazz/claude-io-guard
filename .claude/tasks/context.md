@@ -1,7 +1,7 @@
 # Context
 
 Everything the tasks rest on, gathered on 2026-09-27 from four Unreal Engine projects (CLICKER, OrbitalDrift,
-SmartTablesHost, UNREAL-SHARED), a friend's scan of five other projects, a design review, and the Claude Code docs.
+SmartTablesHost, UNREAL-SHARED), a design review, and the Claude Code docs.
 The full catalog with evidence is `baseline/io_traps.html`, published privately at
 https://claude.ai/artifact/NDhF5JoHcXy6mDDPSecZLu. The first design review and the checks on it are
 `baseline/fable_review.md`. The design a task builds from is `docs/design/architecture.md`, and Fable's second review,
@@ -30,7 +30,7 @@ which it answers, is `docs/design/review.md`. Both reviews use the task numbers 
 | D16 | Every policy value is a config key with its default in code. The time budget defaults to 300 ms, past which checks that run a subprocess are skipped, and a 2,000 ms cap, past which every remaining check is skipped | The lead: "configurable as everything else should be" |
 | D17 | Python lines stop at 110 characters, code and comments alike | The width the rules and skills already wrap at |
 | D18 | Until 1.0, `plugin.json` has no `version` and installs track commits. From 1.0 on, semantic version tags with release notes | Fast iteration now, a known-good version for users later |
-| D19 | Everything is published except the rows from the friend's scan: the publish scrub (task 34) removes them, the EXT test-helper rows included | The friend's findings are third-party content |
+| D19 | Everything is published except the rows that came from another person's scan of their own projects. The publish scrub (task 34) took them out of the tracked files on 2026-09-28, and they stay in the untracked `baseline/` folder | Those findings are third-party content |
 | D20 | The task files are numbered in build order, and every dependency points to a lower number. Hunk staging and the dashboard come after the measured result | The lead asked for one linear order |
 | D21 | The lead's Mac is down from 2026-09-27 for the foreseeable future. Live checks run on Windows only, CI still runs macOS on GitHub's runners, and the live macOS checks wait in task 36. Code assumes the Mac has Python 3.14 | Nothing can be checked live on a Mac until it is back |
 | D22 | Telemetry copied into a clone goes in `events/`, and a report page written into a clone goes in `reports/`. Both are gitignored at the root, beside `corpus/`. Chosen by the lead on 2026-09-27 | No task named an export path, and D8 keeps telemetry out of git. A bare `*.jsonl` would also hide the conformance scripts in `tests/mcp/requests/` |
@@ -516,7 +516,6 @@ MCP", row 28). PTH-3 went with the write-roots rule the lead dropped (D27).
 | INP-3 | File too big for one Read | noise | all | 20 |
 | INP-4 | Read refuses a text file as binary | time | all | 20, 24 |
 | INP-5 | Grep pattern rejected | time | all | 20 |
-| EXT-1 to EXT-7 | Test-helper rows from the friend's scan | - | all | - |
 
 macOS brings its own candidates, not measured yet: `/bin/bash` 3.2 against Git Bash 5 (`readarray`, `${x,,}`),
 BSD `sed -i ''`, `stat -f` and no `grep -P`, NFD file names on APFS, and case-insensitive paths. Task 36 covers them

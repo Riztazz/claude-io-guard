@@ -168,7 +168,7 @@ renumbered task 03, and its macOS items moved to task 36.
 | The time budget | 300 ms, a 2 s cap, configurable like every policy value | D16 |
 | Versioning | Commits until 1.0, then tags | D18 |
 | The kit's skills and rules | Linked and gitignored, with a snapshot copied in at each release | D11 |
-| Publishing the catalog | Everything except the rows from the friend's scan | D19 |
+| Publishing the catalog | Everything except the rows from a third-party scan | D19 |
 
 One change to this review follows from D11: the kit's guard hook reaches this repository through the `generic`
 profile's settings, written to `.claude/settings.local.json`, so nothing from the kit's tools is committed here.
