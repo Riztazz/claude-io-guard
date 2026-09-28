@@ -25,11 +25,14 @@ info code falls in none of them, so a code that fired reads as one that never di
 - The `Calls`, `Tools` and `Projects` lines go through `fitted`, or a helper both share, so no line ends in the
   middle of a name.
 - An `info` column, or the info codes counted under a name that says what they are.
+- `verify.command` declares no code (`checks/verify_command.py`, line 28), so a user's own check that fails after
+  a write reaches the model and never the telemetry. On 2026-09-28 its `py_compile` caught a SyntaxError an Edit
+  left in `tools/probes/run_probe.py`, and the report counted nothing. Give it a code, a warning, and count it.
 - Tests: a report with more names than fit, and one with an info code.
 
 ## Where
 
-`plugins/io-guard/scripts/ioguard/cli/report.py`, `tests/cli/`.
+`plugins/io-guard/scripts/ioguard/cli/report.py`, `checks/verify_command.py`, `lib/results.py`, `tests/`.
 
 ## Done when
 

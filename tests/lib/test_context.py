@@ -111,8 +111,8 @@ class LiveContexts(unittest.TestCase):
 
     def test_without_a_probe_file_the_probe_says_what_is_unknown(self):
         probe = Context.live(self.data, self.project).probe
-        measured = (probe.os, probe.halving, probe.transport_budget, probe.dirty_at_start, probe.taken_at)
-        self.assertEqual(measured, (detect().os, None, None, None, None),
+        measured = (probe.os, probe.halving, probe.transport_budget, probe.taken_at)
+        self.assertEqual(measured, (detect().os, None, None, None),
                          "before the session probe has run, unmeasured fields are None, never a guess")
 
     def test_a_live_context_carries_the_environment_and_the_data_folder(self):

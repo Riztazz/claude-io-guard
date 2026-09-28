@@ -9,7 +9,8 @@ from ioguard.checks import session_probe
 from ioguard.checks.registry import Registry
 from ioguard.checks.session_probe import SessionProbe
 from ioguard.lib.config import Config, Scope, all_keys, defaults, validate
-from ioguard.lib.context import Context, Probe, ToolVersion
+from ioguard.lib import bytesio
+from ioguard.lib.context import Context, Probe, SessionState, ToolVersion
 from ioguard.lib.events import Event, Surface
 from ioguard.lib.fakes import FakeGit
 from ioguard.lib.git import GitError, GitStatus, StatusEntry
@@ -22,6 +23,8 @@ ENV_FILE = ROOT / "session-env" / "sessionstart-hook-0.sh"
 WINDOWS = Platform("win32", True)
 MACOS = Platform("darwin", True)
 KEYS = {"session.probe": SessionProbe.meta.config}
+DIRTY = GitStatus((StatusEntry("src/a.py", " ", "M"), StatusEntry("new.txt", "?", "?")))
+KEPT = DATA / "sessions" / f"{events.SESSION_ID}.dirty"
 
 
 def version_of(path, pattern, previous=None, **kwargs):
@@ -34,9 +37,10 @@ def context(platform: Platform = WINDOWS, env: dict | None = None, **overrides) 
                         env={**base_env, **(env or {})}, data_dir=DATA, **overrides)
 
 
-def probed(ctx: Context) -> tuple[dict, bytes]:
+def probed(ctx: Context, session_id: str = events.SESSION_ID) -> tuple[dict, bytes]:
     """Run the probe with every tool found at a made-up path, and return probe.json and the env file."""
-    event = Event.from_hook_json(events.session_start(ROOT), Surface.COMMAND_HOOK, ctx.platform)
+    raw = {**events.session_start(ROOT), "session_id": session_id}
+    event = Event.from_hook_json(raw, Surface.COMMAND_HOOK, ctx.platform)
     registry = Registry()
     registry.register(SessionProbe)
     check = registry.instantiate(ctx.config)[0]
@@ -75,17 +79,52 @@ class TheProbeIsSaved(unittest.TestCase):
         self.assertEqual((probe["transport_budget"], probe["halving"]), (None, None),
                          "from the fixed release on, neither rule applies")
 
-    def test_the_dirty_files_are_absolute(self):
-        status = GitStatus((StatusEntry("src/a.py", " ", "M"), StatusEntry("new.txt", "?", "?")))
-        probe, _ = probed(context(git=FakeGit(root=ROOT, status=status)))
-        self.assertEqual(probe["dirty_at_start"], [str(ROOT / "src/a.py"), str(ROOT / "new.txt")],
-                         "task 19 reads the files dirty at session start, as full paths")
+    def test_probe_json_holds_nothing_of_one_session(self):
+        probe, _ = probed(context(git=FakeGit(root=ROOT, status=DIRTY)))
+        self.assertNotIn("dirty_at_start", probe, "every session on the machine shares probe.json")
 
-    def test_git_that_cannot_answer_leaves_the_dirty_files_unknown(self):
+
+class TheDirtyFilesAreTheSessionsOwn(unittest.TestCase):
+    def test_the_first_start_keeps_the_dirty_files_as_full_paths(self):
+        ctx = context(git=FakeGit(root=ROOT, status=DIRTY))
+        probed(ctx)
+        self.assertEqual(json.loads(ctx.fs.files[KEPT]), [str(ROOT / "src/a.py"), str(ROOT / "new.txt")],
+                         "write.location reads the files dirty at the session's start, as full paths")
+
+    def test_a_later_start_of_the_same_session_keeps_the_first_list(self):
+        git = FakeGit(root=ROOT, status=DIRTY)
+        ctx = context(git=git)
+        probed(ctx)
+        git.status = mock.Mock(return_value=GitStatus(DIRTY.entries + (StatusEntry("mine.txt", "?", "?"),)))
+        probed(ctx)
+        kept = ctx.fs.files[KEPT].decode("ascii")
+        self.assertEqual(("mine.txt" in kept, git.status.called), (False, False),
+                         "a resume or a compaction starts the session again, and its new file stays its own")
+
+    def test_another_session_keeps_its_own_list(self):
+        ctx = context(git=FakeGit(root=ROOT, status=DIRTY))
+        probed(ctx)
+        probed(ctx, "other")
+        other = DATA / "sessions" / "other.dirty"
+        self.assertEqual((KEPT in ctx.fs.files, other in ctx.fs.files), (True, True),
+                         "each session id gets a file of its own")
+
+    def test_git_that_cannot_answer_keeps_no_list(self):
         broken = FakeGit(root=ROOT)
         broken.status = mock.Mock(side_effect=GitError("git timed out"))
-        probe, _ = probed(context(git=broken))
-        self.assertIsNone(probe["dirty_at_start"], "unknown is None, never an empty list that means clean")
+        ctx = context(git=broken)
+        probed(ctx)
+        self.assertNotIn(KEPT, ctx.fs.files, "unknown is no file, never an empty list that means clean")
+
+    def test_the_session_reads_its_list_back_once_it_exists(self):
+        ctx = context(git=FakeGit(root=ROOT, status=DIRTY))
+        session = SessionState.shared(DATA, events.SESSION_ID)
+        with mock.patch.object(bytesio, "read_bytes", lambda path: ctx.fs.read_bytes(path)):
+            before = session.dirty_at_start()
+            probed(ctx)
+            after = session.dirty_at_start()
+        self.assertEqual((before, after), (None, (ROOT / "src/a.py", ROOT / "new.txt")),
+                         "None until the probe has written it, then the list")
 
 
 class TheShellDefaults(unittest.TestCase):
@@ -112,8 +151,8 @@ class TheShellDefaults(unittest.TestCase):
     def test_no_env_file_writes_only_the_probe(self):
         ctx = context(env={"CLAUDE_ENV_FILE": ""})
         probed(ctx)
-        self.assertEqual(ctx.fs.writes, [DATA / "probe.json"],
-                         "without CLAUDE_ENV_FILE only probe.json is written")
+        self.assertEqual(ctx.fs.writes, [DATA / "probe.json", KEPT],
+                         "without CLAUDE_ENV_FILE only probe.json and the session's dirty list are written")
 
     def test_a_name_a_shell_cannot_export_is_left_out_and_named(self):
         ctx = context(MACOS)

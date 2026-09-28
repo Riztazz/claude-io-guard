@@ -261,7 +261,6 @@ class Probe:
     transport_budget: Optional[int]  # bytes, None where no cut exists or none was measured
     halving: Optional[bool]          # the Bash tool halves backslashes, None when not probed
     claude_code_version: Optional[str]
-    dirty_at_start: Optional[tuple[Path, ...]]   # None when git could not answer, () outside a repository
     taken_at: Optional[datetime]
 
     @classmethod
@@ -1116,7 +1115,10 @@ tools (section 7).
 
 A session runs several processes: the server, and a command hook at SessionStart and at each UserPromptSubmit.
 Their `SessionState` shares its warned keys through `sessions/<session>.warned` in io-guard's folder, under
-`file_lock`, so a check that breaks on SessionStart and on tool events warns once in all of them.
+`file_lock`, so a check that breaks on SessionStart and on tool events warns once in all of them. The session
+probe writes `sessions/<session>.dirty` once, at the session's first start: the files its repository had
+changed then. A resume and a compaction keep the session id, so they keep that list, and `write.location` reads
+it through `SessionState.dirty_at_start()`. `probe.json` holds only what is true of the machine (task 51).
 
 Task 03 checked this path live on Windows with Claude Code 2.1.283 (`context.md`, "Hooks and MCP"):
 

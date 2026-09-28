@@ -91,7 +91,6 @@ class Probe:
     transport_budget: int | None     # bytes, None where no cut exists or none was measured
     halving: bool | None             # whether the Bash tool halves backslashes, None when not probed
     claude_code_version: str | None
-    dirty_at_start: tuple[Path, ...] | None   # None when git could not answer, () outside a repository
     taken_at: datetime | None
 
     @classmethod
@@ -100,32 +99,29 @@ class Probe:
         python = ToolVersion(sys.executable, ".".join(str(part) for part in sys.version_info[:3]))
         return cls(os=platform.os, bash=None, pwsh=None, python=python, git=None, console_encoding=None,
                    fs_case_insensitive=platform.case_insensitive, transport_budget=None, halving=None,
-                   claude_code_version=None, dirty_at_start=None, taken_at=None)
+                   claude_code_version=None, taken_at=None)
 
     @classmethod
     def from_json(cls, raw: Mapping[str, Any]) -> "Probe":
         def version(key: str) -> ToolVersion | None:
             value = raw.get(key)
             return None if value is None else ToolVersion(value["path"], value["version"], value.get("stamp"))
-        taken, dirty = raw.get("taken_at"), raw.get("dirty_at_start")
+        taken = raw.get("taken_at")
         return cls(os=raw["os"], bash=version("bash"), pwsh=version("pwsh"), python=version("python"),
                    git=version("git"), console_encoding=raw.get("console_encoding"),
                    fs_case_insensitive=raw["fs_case_insensitive"],
                    transport_budget=raw.get("transport_budget"),
                    halving=raw.get("halving"), claude_code_version=raw.get("claude_code_version"),
-                   dirty_at_start=None if dirty is None else tuple(Path(path) for path in dirty),
                    taken_at=None if taken is None else datetime.fromisoformat(taken))
 
     def to_json(self) -> dict:
         def version(tool: ToolVersion | None) -> dict | None:
             return None if tool is None else {"path": tool.path, "version": tool.version, "stamp": tool.stamp}
-        dirty = self.dirty_at_start
         return {"os": self.os, "bash": version(self.bash), "pwsh": version(self.pwsh),
                 "python": version(self.python), "git": version(self.git),
                 "console_encoding": self.console_encoding, "fs_case_insensitive": self.fs_case_insensitive,
                 "transport_budget": self.transport_budget, "halving": self.halving,
                 "claude_code_version": self.claude_code_version,
-                "dirty_at_start": None if dirty is None else [str(path) for path in dirty],
                 "taken_at": None if self.taken_at is None else self.taken_at.isoformat()}
 
 
@@ -164,6 +160,7 @@ class SessionState:
     asked_restores: set[str] = field(default_factory=set)         # io.restore calls the hook put to the user
     tag: str | None = None                                        # the task the last io.snapshot named
     read_logs: dict[Path, tuple[int, int]] = field(default_factory=dict)   # io.read_log's line and byte
+    dirty: tuple[Path, ...] | None = None                         # the files dirty at the first start
     lock: threading.RLock = field(default_factory=threading.RLock)
     data_dir: Path | None = None       # with a session id, the folder whose warned file the processes share
     session_id: str | None = None
@@ -190,6 +187,20 @@ class SessionState:
                 log.debug("io-guard could not share the warning %s with the session's other processes: %s",
                           key, error)
                 return True
+
+    def dirty_at_start(self) -> tuple[Path, ...] | None:
+        """The files that had changes when the session first started, from sessions/<session>.dirty, which
+        the session probe writes once per session id. A resume and a compaction keep the id, so they keep the
+        list. None until the file exists."""
+        with self.lock:
+            if self.dirty is not None or self.data_dir is None or self.session_id is None:
+                return self.dirty
+            try:
+                raw = json.loads(bytesio.read_bytes(session_file(self.data_dir, self.session_id, "dirty")))
+            except (OSError, ValueError):
+                return None
+            self.dirty = tuple(Path(path) for path in raw)
+            return self.dirty
 
     def keep_snapshot(self, tool_use_id: str, snapshot: Snapshot | ShellSnapshot) -> None:
         """Keep what a call looked like before it ran, for its PostToolUse, until the PostToolUse takes it."""

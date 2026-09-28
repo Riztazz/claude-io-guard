@@ -1,13 +1,12 @@
 """write.location refuses a device name and a read-only file, names the repository a linked path writes into,
 and points out a file dirty at session start. write.locks names the process that holds a locked file."""
 import unittest
-from dataclasses import replace
 from pathlib import Path
 
 from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import default_registry
 from ioguard.lib.config import defaults
-from ioguard.lib.context import Context, Probe
+from ioguard.lib.context import Context, SessionState
 from ioguard.lib.decisions import Verdict
 from ioguard.lib.events import Event, Surface
 from ioguard.lib.fakes import FakeFs, FakeGit
@@ -26,9 +25,8 @@ EPERM = "EPERM: operation not permitted, rename 'C:\\game\\a.cpp.tmp.1.0f' -> 'C
 
 def context(fs: FakeFs | None = None, git: FakeGit | None = None, platform: Platform = WINDOWS,
             dirty: tuple[Path, ...] | None = None) -> Context:
-    probe = replace(Probe.unprobed(platform), dirty_at_start=dirty)
-    return Context.fake(config=defaults(REGISTRY.keys()), platform=platform, probe=probe,
-                        fs=fs or FakeFs({}), git=git or FakeGit(root=CWD))
+    return Context.fake(config=defaults(REGISTRY.keys()), platform=platform,
+                        session=SessionState(dirty=dirty), fs=fs or FakeFs({}), git=git or FakeGit(root=CWD))
 
 
 def write(path: Path, ctx: Context):

@@ -112,7 +112,7 @@ class Location(Check):
     @staticmethod
     def dirty(path: Path, ctx: Context) -> tuple[str, ...]:
         """One line before the first write to a file that had changes when the session started."""
-        dirty = ctx.probe.dirty_at_start or ()
+        dirty = ctx.session.dirty_at_start() or ()
         if path not in dirty or not ctx.session.first_time(f"dirty:{path}"):
             return ()
         return (f"io-guard: {path.name} already had uncommitted changes when this session started. Keep "

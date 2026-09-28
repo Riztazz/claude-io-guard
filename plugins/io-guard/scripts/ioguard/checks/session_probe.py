@@ -4,6 +4,11 @@ It runs in the SessionStart command hook, because CLAUDE_ENV_FILE belongs to a h
 versions are measured in parallel, and a version whose file has not changed since the last probe is kept. The
 env file gets one export line per default, so every later Bash call starts with them. Only the user sets the
 defaults, never a project, because a variable such as PYTHONSTARTUP or BASH_ENV runs a program (D24).
+
+probe.json holds what is true of the machine, and every session on it shares the file. The files a session's
+repository had changed when the session first started are the session's own, so they go to
+sessions/<session>.dirty, written once. SessionStart fires again on a resume and a compaction, with the same
+session id, and the list taken then would hold the session's own earlier work.
 """
 import json
 import logging
@@ -16,7 +21,7 @@ from pathlib import Path
 from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.lib import probing
 from ioguard.lib.config import ConfigKey
-from ioguard.lib.context import Context, FsPort, GitPort, Probe
+from ioguard.lib.context import Context, FsPort, GitPort, Probe, session_file
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent
 from ioguard.lib.git import GitError
@@ -56,7 +61,8 @@ def cut_applies(windows: bool, version: str | None) -> bool:
     return probing.version_tuple(version) < probing.version_tuple(FIXED_IN)
 
 
-def measure(event: Event, ctx: Context) -> Probe:
+def measure(event: Event, ctx: Context, dirty_wanted: bool) -> tuple[Probe, tuple[Path, ...] | None]:
+    """The machine's facts, and the dirty files of the session's repository when dirty_wanted, else None."""
     env, previous = ctx.env, ctx.probe
     paths = {"bash": probing.find("bash", env, NOT_BASH if ctx.platform.windows else ()),
              "pwsh": probing.find("pwsh", env), "git": probing.find("git", env)}
@@ -65,11 +71,11 @@ def measure(event: Event, ctx: Context) -> Probe:
     with ThreadPoolExecutor(max_workers=4) as pool:
         versions = {name: pool.submit(probing.tool_version, path, VERSIONS[name], getattr(previous, name))
                     for name, path in paths.items() if path}
-        dirty = pool.submit(dirty_files, ctx.git, event.cwd)
+        dirty = pool.submit(dirty_files, ctx.git, event.cwd) if dirty_wanted else None
     version = probing.claude_version(env)
     cut = cut_applies(ctx.platform.windows, version)
     folder = ctx.data_dir or event.cwd
-    return Probe(
+    probe = Probe(
         os=ctx.platform.os,
         bash=versions["bash"].result() if "bash" in versions else None,
         pwsh=versions["pwsh"].result() if "pwsh" in versions else None,
@@ -80,9 +86,9 @@ def measure(event: Event, ctx: Context) -> Probe:
         transport_budget=WINDOWS_CUT if cut else None,
         halving=True if cut else None,
         claude_code_version=version,
-        dirty_at_start=dirty.result(),
         taken_at=ctx.clock.now(),
     )
+    return probe, None if dirty is None else dirty.result()
 
 
 def export_lines(values: Mapping[str, object]) -> tuple[list[bytes], list[str]]:
@@ -121,11 +127,15 @@ class SessionProbe(Check):
         description="Measures the machine at session start and gives every shell call UTF-8 defaults.")
 
     def run(self, event: Event, ctx: Context) -> Decision:
-        probe = measure(event, ctx)
+        kept = None if ctx.data_dir is None else session_file(ctx.data_dir, event.session_id, "dirty")
+        probe, dirty = measure(event, ctx, kept is not None and not ctx.fs.exists(kept))
         if ctx.data_dir is not None:
             data = (json.dumps(probe.to_json(), indent=1, ensure_ascii=True) + "\n").encode("ascii")
             ctx.fs.make_folders(ctx.data_dir)
             ctx.fs.write_atomic(ctx.data_dir / "probe.json", data)
+        if kept is not None and dirty is not None:
+            ctx.fs.make_folders(kept.parent)
+            ctx.fs.write_atomic(kept, json.dumps([str(path) for path in dirty]).encode("ascii"))
         target = ctx.env.get("CLAUDE_ENV_FILE")
         if not target:
             return Decision.observe(self.meta.id)
