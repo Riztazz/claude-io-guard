@@ -41,9 +41,9 @@ class Session:
     def run(self, raw: dict):
         return Pipeline(REGISTRY).run(Event.from_hook_json(raw, Surface.MCP_HOOK, WINDOWS), self.ctx)
 
-    def after(self, response: dict | None = None):
+    def after(self, response: dict | None = None, command: str = "make"):
         """The command's PostToolUse, and what shell.touched found."""
-        raw = events.post_tool_use("Bash", {"command": "make"}, response or events.bash_result(""), CWD)
+        raw = events.post_tool_use("Bash", {"command": command}, response or events.bash_result(""), CWD)
         outcome = self.run(raw)
         return [result for decision in outcome.decisions if decision.check_id == "shell.touched"
                 for result in decision.results]
@@ -89,6 +89,21 @@ class TheCommandsChangesAreNamed(unittest.TestCase):
         session.fs.write_atomic(CWD / "a.txt", b"y\n")
         session.git.current_status = GitStatus((entry("a.txt", "MM"),))
         self.assertIn("changed a.txt", session.after()[0].message, "a write to the file is a change")
+
+    def test_a_tracked_file_a_script_changed_is_a_shell_write(self):
+        found = {}
+        for command in ("python fmt.py b.cpp", "make"):
+            session = Session()
+            session.git.tracked = frozenset({CWD / "b.cpp"})
+            session.run(events.bash(command, CWD))
+            session.git.current_status = GitStatus((entry("b.cpp", " M"),))
+            found[command] = [(result.code, result.message) for result in session.after(command=command)]
+        self.assertEqual([code for code, _ in found["python fmt.py b.cpp"]],
+                         [Code.TOUCHED_BY_SHELL, Code.SHELL_WRITE], "a script's write skipped the checks")
+        self.assertIn("fmt.py changed b.cpp, which git tracks", found["python fmt.py b.cpp"][1][1],
+                      "the warning names the script and the file")
+        self.assertEqual([code for code, _ in found["make"]], [Code.TOUCHED_BY_SHELL],
+                         "a build that changes a file is no script run")
 
     def test_skip_trees_leave_changes_out(self):
         session = Session(skip=["Content/**"])

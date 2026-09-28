@@ -75,7 +75,7 @@ plugins/io-guard/
         location.py                write.location: RESERVED_NAME, READ_ONLY, LINKED_PATH, dirty files.
                                    write.locks: FILE_LOCKED after a failed write
         transport_body.py          BODY_MOVED_TO_FILE, TRANSPORT_BUDGET, BACKSLASH_TRANSPORT
-        shell_writes.py            SHELL_WRITE, scratch script warning
+        shell_writes.py            SHELL_WRITE, scratch script warning, a script file's writes read first
         lint.py                    shell.lint: quoting, escapes, dialect, Python bodies, PIPE_HIDES_EXIT once
         win_paths.py               win.paths: MSYS_PATH for slash arguments and cmd /c, RESERVED_NAME for nul
         conform_write.py           conform.write: EOL_CONVERTED, BOM_RESTORED, EOL_MISMATCH for a mixed file
@@ -790,6 +790,8 @@ def forward_slashed(command: str, spans: Sequence[tuple[int, int]]) -> str
 def piped(command: str, simple: SimpleCommand) -> bool      # its output goes into | or |&
 def python_reads_stdin(simple: SimpleCommand) -> bool       # python or python -, with no script, -c or -m
 def body_files(command: str) -> tuple[str, ...]             # the moved body files the command reads
+def script_run(simple: SimpleCommand) -> Optional[ScriptRun] # task 48: the script file an interpreter runs,
+                                                            # and the words after it
 # shell.py, task 22
 def matching(simple: SimpleCommand, entries: Sequence[str]) -> Optional[str]   # the words of the entry it runs
 def pipelines(command: str) -> Optional[tuple[Pipeline, ...]]   # with &&, || or ; before each, None when grouped

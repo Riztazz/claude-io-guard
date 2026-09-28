@@ -444,6 +444,28 @@ def moved(command: str, heredocs: dict[Heredoc, str], bodies: dict[InlineBody, s
 
 BODY_FILE = re.compile(r"[^\s'\"<>]*(?:io-guard|bodies)/body-[0-9a-f]{16}\.(?:txt|py)")
 PYTHON = re.compile(rf"^{PYTHON_NAME}$", re.I)
+INTERPRETERS = re.compile(r"^(?:python[\d.]*|py|node|perl|ruby)$")
+INLINE = {"-c", "-m", "-", "-e", "--eval", "-p", "--print"}   # the flags that run no script file
+TAKES_VALUE = {"-W", "-X"}
+
+
+@dataclass(frozen=True)
+class ScriptRun:
+    """An interpreter running a script file: the file as the command names it, and the words after it."""
+    script: str
+    arguments: tuple[str, ...]
+
+
+def script_run(simple: SimpleCommand) -> ScriptRun | None:
+    """The script file an interpreter runs, or None for an inline program, a module, stdin, or no script."""
+    if not INTERPRETERS.match(simple.name):
+        return None
+    words, at = simple.words[1:], 0
+    while at < len(words) and words[at].startswith("-"):
+        if words[at] in INLINE:
+            return None
+        at += 2 if words[at] in TAKES_VALUE else 1
+    return ScriptRun(words[at], tuple(words[at + 1:])) if at < len(words) else None
 QUOTED_PATH_BEFORE_QUOTE = re.compile(r'"[A-Za-z]:\\[^"\n]*\\"(?=[\s;&|)<>]|$)')
 
 

@@ -126,6 +126,7 @@ match `.claude/tasks/context.md`, "The hook entry point".
 | A shell command that changed a file the model had read names it with the step to read it again, and one that converted its endings names that too | `live-touched` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | An Edit of a read-only file that git marks lockable is refused with the `git lfs lock` step | `live-read-only` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
 | An Edit of a file another process holds, sharing reads only, fails with EPERM, and the model learns the holder's name and process id | `live-locked` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+| `python rewrite.py a.txt`, whose script writes its argument, gets `SHELL_WRITE` before it runs, and `SHELL_WRITE` beside `TOUCHED_BY_SHELL` after it changes the tracked a.txt | `live-script-write` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | A command that creates n.txt is named, and `git add n.txt` and `git reset -q n.txt` after it are not | `live-touched-index` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | Two piped `python -m unittest` runs in one session get the warning before a run once, for the first | `live-pipe-once` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | `io.format` with `dry_run` returns the diff of the edited lines and leaves the file as `io.edit` left it | `live-format-dry` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |

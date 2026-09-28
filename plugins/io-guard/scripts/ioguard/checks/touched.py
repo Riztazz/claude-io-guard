@@ -9,21 +9,24 @@ endings, BOM, encoding or indent. New untracked files are named (GIT-2), and so 
 changed or deleted. A bashEditDiff in the tool's response, which Claude Code sends only with
 bashEditDiffEnabled, adds its files. Changes under the skip_trees globs are left out. So is a change to git's
 index alone: a listed file whose status moved while its size and time did not, as git add, git commit and git
-reset leave one, and a file git removed from the index that is still on disk.
+reset leave one, and a file git removed from the index that is still on disk. A tracked file that changed
+while an interpreter ran a script file also gets SHELL_WRITE, because that write skipped the checks an Edit
+gets.
 """
 import fnmatch
 from pathlib import Path
 
 from ioguard.checks.base import Check, CheckMeta, Cost
+from ioguard.checks.shell_writes import tracked
 from ioguard.checks.verify_write import Written, compare
-from ioguard.lib import paths
+from ioguard.lib import paths, shell
 from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context, ShellSnapshot, repository_root
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.git import GitError
 from ioguard.lib.profile import profile
-from ioguard.lib.results import Code, Fix, Layer, Result, Severity
+from ioguard.lib.results import Code, Fix, Layer, Result, Severity, callable_name
 
 LISTED = 8                   # paths each part of the report names before it gives the rest as a count
 
@@ -59,7 +62,7 @@ class Touched(Check):
         after=frozenset(), config={"listed": ConfigKey(int, LISTED, "The paths each part of the report names "
                                                        "before it gives the rest as a count.")},
         codes=frozenset({Code.TOUCHED_BY_SHELL, Code.EOL_MISMATCH, Code.BOM_CHANGED, Code.ENCODING_INVALID,
-                         Code.CONTROL_BYTES_ADDED, Code.INDENT_MISMATCH}),
+                         Code.CONTROL_BYTES_ADDED, Code.INDENT_MISMATCH, Code.SHELL_WRITE}),
         description="Tells the agent which files a shell command changed, and what it did to their bytes.")
 
     def run(self, event: Event, ctx: Context) -> Decision:
@@ -123,7 +126,24 @@ class Touched(Check):
                                      "deleted": [path.as_posix() for path in deleted]})]
         for path in read:
             found.extend(self.drift(path, event, ctx))
-        return tuple(found)
+        return tuple(found) + self.scripted([*read, *changed], event, ctx)
+
+    @staticmethod
+    def scripted(touched: list[Path], event: Event, ctx: Context) -> tuple[Result, ...]:
+        """SHELL_WRITE for the tracked files a command changed while an interpreter ran a script file in it,
+        since those writes skipped the checks an Edit gets."""
+        runs = [] if event.tool is not Tool.BASH else \
+            [run for simple in shell.commands(event.command or "") if (run := shell.script_run(simple))]
+        written = [path for path in touched if runs and tracked(path, ctx)]
+        if not written:
+            return ()
+        batch, script = callable_name("io.edit"), runs[0].script
+        message = (f"{script} changed {named(written, event.cwd, LISTED)}, which git tracks, so those writes "
+                   f"skipped io-guard's byte checks and Claude Code's checkpoints.")
+        fix = Fix(batch, {}, f"Make the next change to them with {batch} or the Edit tool.")
+        return (Result.of(Code.SHELL_WRITE, message, event.tool_name, ctx.platform.os,
+                          severity=Severity.WARNING, fix=fix,
+                          evidence={"script": script, "files": [path.as_posix() for path in written]}),)
 
     @staticmethod
     def diffed(event: Event) -> list[Path]:

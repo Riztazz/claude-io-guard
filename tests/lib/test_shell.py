@@ -139,6 +139,19 @@ class SimpleCommandsAreSplitOut(unittest.TestCase):
                          "the substitution is one word, and the outer redirect is the command's")
 
 
+class AnInterpretersScriptFileIsNamed(unittest.TestCase):
+    def test_the_script_and_its_arguments_past_the_interpreters_flags(self):
+        cases = {"python -u -X utf8 fmt.py --apply a.cpp": ("fmt.py", ("--apply", "a.cpp")),
+                 "py -3 tools/x.py": ("tools/x.py", ()), "node build.js": ("build.js", ()),
+                 "python -m pytest": None, "python -c 'print(1)'": None, "python - < x.py": None,
+                 "perl -e 'print 1'": None, "python": None, "make x.py": None}
+        for command, expected in cases.items():
+            with self.subTest(command=command):
+                run = shell.script_run(shell.commands(command)[0])
+                self.assertEqual(None if run is None else (run.script, run.arguments), expected,
+                                 "a script file is the first word past the flags, and -c, -m or - run none")
+
+
 class TheBudgetLength(unittest.TestCase):
     def test_bytes_and_apostrophes(self):
         self.assertEqual(shell.budget_length("a'b"), 6, "each apostrophe counts as four")

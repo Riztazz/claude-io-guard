@@ -12,7 +12,7 @@ from ioguard.lib.events import Event, Surface
 from ioguard.lib.fakes import FakeGit
 from ioguard.lib.git import GitError
 from ioguard.lib.platform import Platform
-from ioguard.lib.results import Code, Severity
+from ioguard.lib.results import Code, Severity, callable_name
 from tests.support import events
 
 ROOT = Path("C:/project")
@@ -175,6 +175,38 @@ class TheRefusalAndTheWarning(unittest.TestCase):
             event = Event.from_hook_json(events.bash("echo x > notes.txt", ROOT), Surface.MCP_HOOK, WINDOWS)
             Pipeline(registry).run(event, ctx)
         self.assertEqual(len(git.asked), 1, "the answer is cached for the session")
+
+
+WRITES_ITS_ARGUMENT = b"import sys\nwith open(sys.argv[1], 'w') as out:\n    out.write('x')\n"
+
+
+class AScriptFileIsReadBeforeItRuns(unittest.TestCase):
+    def test_a_script_file_with_a_literal_tracked_target_is_refused(self):
+        files = {SCRATCH / "w.py": b"open('src/a.py', 'w').write('x')\n"}
+        outcome, _ = run(f"python {SCRATCH.as_posix()}/w.py", files=files)
+        self.assertEqual((outcome.verdict, "io_edit" in outcome.decisions[0].results[0].render()),
+                         (Verdict.DENY, True), "a script file is read as a heredoc body is")
+
+    def test_a_script_that_writes_its_argument_given_a_tracked_file_is_a_warning(self):
+        files = {SCRATCH / "w.py": WRITES_ITS_ARGUMENT}
+        outcome, _ = run(f"python {SCRATCH.as_posix()}/w.py src/a.py", files=files)
+        result = outcome.decisions[0].results[0]
+        self.assertEqual((outcome.verdict, result.code, result.severity, result.fix.tool),
+                         (Verdict.ALLOW, Code.SHELL_WRITE, Severity.WARNING, callable_name("io.edit")),
+                         "the script's target is its argument, so the argument names the tracked file")
+
+    def test_a_script_that_runs_a_formatter_names_io_format(self):
+        files = {SCRATCH / "fmt.py": WRITES_ITS_ARGUMENT + b"subprocess.run(['clang-format', '-i', x])\n"}
+        outcome, _ = run(f"python {SCRATCH.as_posix()}/fmt.py --apply src/a.py", files=files)
+        self.assertEqual(outcome.decisions[0].results[0].fix.tool, "mcp__plugin_io-guard_io__io_format",
+                         "a formatting script is io.format's job")
+
+    def test_a_script_given_only_the_scratchpad_or_an_untracked_file_passes(self):
+        files = {SCRATCH / "w.py": WRITES_ITS_ARGUMENT}
+        for target in (f"{SCRATCH.as_posix()}/out.txt", "notes.txt"):
+            with self.subTest(target=target):
+                outcome, _ = run(f"python {SCRATCH.as_posix()}/w.py {target}", files=files)
+                self.assertEqual(outcome.verdict, Verdict.OBSERVE, "nothing git tracks is given to it")
 
 
 if __name__ == "__main__":

@@ -173,6 +173,8 @@ PIPE_TWICE = ("Do these in order, one tool call each, and never retry. 1. Run th
               "python -m unittest discover -s . 2>&1 | tail -3 2. Run the same Bash command again. Then "
               "reply DONE.")
 PIPE_WARNED = "PIPE_HIDES_EXIT: This command pipes python -m unittest into tail"
+SCRIPT_GIVEN = "Run this exact Bash command and nothing else: python rewrite.py a.txt Then reply DONE."
+REWRITE_PY = b"import sys\nwith open(sys.argv[1], 'w') as out:\n    out.write('two\\n')\n"
 INDEX_ONLY = ("Do these in order, one tool call each, and never retry. 1. Run the Bash command: python -c "
               "\"open('n.txt', 'w').write('x')\" 2. Run the Bash command: git add n.txt 3. Run the Bash "
               "command: git reset -q n.txt Then reply DONE.")
@@ -459,6 +461,8 @@ PROBES = {
     "live-touched": Probe(0, "", guard="", allowed=("Read", "Bash"), git=True, prompt=TOUCHED,
                           check=("a.cpp", "conv.txt"), setup=TOUCHED_FILES),
     "live-pipe-once": Probe(0, "", guard="", allowed=("Bash",), prompt=PIPE_TWICE, max_turns=6),
+    "live-script-write": Probe(0, "", guard="", allowed=("Bash",), git=True, prompt=SCRIPT_GIVEN, max_turns=4,
+                               check=("a.txt",), setup={"a.txt": b"one\n", "rewrite.py": REWRITE_PY}),
     "live-touched-index": Probe(0, "", guard="", allowed=("Bash",), git=True, prompt=INDEX_ONLY, max_turns=8,
                                 setup={"a.txt": b"a\n"}),
     "live-results": Probe(0, "", guard="", allowed=("Bash", "PowerShell"), prompt=RESULTS, max_turns=10,
@@ -1199,6 +1203,9 @@ VERDICTS = {
         "EOL_MISMATCH: This command changed conv.txt from CRLF to LF line endings.")),
     "live-results": results_shown,
     "live-pipe-once": piped_twice_warned_once,
+    "live-script-write": lambda s, n: s["files"]["a.txt"].replace("\r\n", "\n") == "two\n"
+    and context_reached(n, "SHELL_WRITE: This command gives")
+    and context_reached(n, "SHELL_WRITE: rewrite.py changed a.txt"),
     "live-touched-index": index_left_alone,
     "live-server": lambda s, n: served(s, n, "legacy"),
     "live-server-modern": lambda s, n: served(s, n, "modern"),
