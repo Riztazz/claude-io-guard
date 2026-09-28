@@ -9,12 +9,13 @@ that failed open lets none through. The rules come from every settings file Clau
 says.
 """
 from collections.abc import Mapping
+from functools import partial
 from pathlib import Path
 from typing import Any
 
 from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.lib import rules, runs
-from ioguard.lib.context import Context
+from ioguard.lib.context import Context, read_or_none
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.results import Code, Layer, Result, Severity, callable_name
@@ -30,12 +31,7 @@ def project_of(ctx: Context, fallback: Path) -> Path:
 
 def judge(given: Mapping[str, Any], ctx: Context, project: Path) -> rules.RuleMatch:
     """The deny or ask rule that meets the command an io.run call runs, or a match whose decision is none."""
-    def read(path: Path) -> bytes | None:
-        try:
-            return ctx.fs.read_bytes(path)
-        except OSError:
-            return None
-    found = rules.load(rules.settings_files(ctx.env, project, ctx.platform), read)
+    found = rules.load(rules.settings_files(ctx.env, project, ctx.platform), partial(read_or_none, ctx.fs))
     argv = runs.argv_of(given, ctx.probe, ctx.platform)
     return rules.RuleMatch("none", None, "") if argv is None else rules.match_argv(found, argv)
 

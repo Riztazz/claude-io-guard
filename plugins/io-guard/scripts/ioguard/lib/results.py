@@ -196,6 +196,13 @@ CODES: tuple[CodeSpec, ...] = (
     CodeSpec("STALE_BINARY", Layer.OUTPUT, Severity.WARNING,
              "The last build in this session failed, so this run used what an earlier build made.",
              "Fix the build and build again before trusting this result.", "0.1"),
+    CodeSpec("RESTORE_ASKED", Layer.LOCATION, Severity.WARNING,
+             "The restore would replace files that changed since the snapshot, so the user decides whether "
+             "io.restore runs.", "Wait for the user's answer, and write nothing to those files meanwhile.",
+             "0.1"),
+    CodeSpec("SNAPSHOT_TOO_LARGE", Layer.LOCATION, Severity.REFUSED,
+             "The paths hold more files or bytes than one snapshot keeps, so io.snapshot kept nothing.",
+             "Call io.snapshot on fewer paths, such as only the folders the task changes.", "0.1"),
 )
 Code = Enum("Code", {spec.code: spec.code for spec in CODES})
 SPECS: dict[Code, CodeSpec] = {Code[spec.code]: spec for spec in CODES}

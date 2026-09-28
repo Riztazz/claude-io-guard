@@ -226,6 +226,11 @@ both, the server connecting in 395 to 411 ms by `py -3`, against 231 to 248 ms w
 2.1.283, where it had timed 1.2 ms on 2026-09-27, which task 43 looks into. The renaming is upstream's
 anthropics/claude-code#92427, open since the desktop's 2.1.260 on macOS, and task 42 adds this evidence to it.
 
+Task 32's `live-restore` passed on both releases: after `io.snapshot` of a CRLF file and an `io.edit` of it,
+the PreToolUse hook on `io.restore` answered `ask` with `RESTORE_ASKED`, the permission prompt tool received
+the call, and the approved restore put the file's bytes back, CRLF included. Ten files of every kind on disk,
+a deleted one, a BOM, cp1250, binary and 70,000 bytes among them, came back with every hash as before.
+
 Rules through a junction, checked on 2026-09-27 with Claude Code 2.1.281 and 2.1.283:
 
 - **Claude Code loads a rule, or an `@` import, only when its real path is inside the project.** A junction's real

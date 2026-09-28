@@ -81,6 +81,11 @@ class FakeFs:
         return tuple(sorted(file for file in self.files
                             if file.name.casefold() == name.casefold() and root in file.parents))[:limit]
 
+    def files_under(self, root: Path, limit: int) -> tuple[Path, ...]:
+        under = sorted(file for file in self.files
+                       if root in file.parents and ".git" not in file.relative_to(root).parts)
+        return tuple(under[:limit + 1])
+
     def link_target(self, path: Path) -> Path | None:
         return next((target / path.relative_to(link) for link, target in self.links.items()
                      if path == link or link in path.parents), None)

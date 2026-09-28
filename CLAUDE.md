@@ -7,14 +7,14 @@ plugin's marketplace: github.com/Riztazz/claude-io-guard.
 ## Layout
 
 The tasks build most of this. Today the marketplace, the plugin's manifest, hooks, launcher, skill, the
-`ioguard` package's runtime core (`lib/` and the pipeline in `checks/`, with nineteen checks: the session
+`ioguard` package's runtime core (`lib/` and the pipeline in `checks/`, with twenty checks: the session
 probe, `write.location`, `write.locks`, `shell.writes`, `transport.body`, `shell.lint`, `win.paths`, `conform.write`,
 `conform.edit`, `verify.write`, `verify.command`, `shell.touched`, `read.profile`, `diagnose.failure`,
-`diagnose.refused`, `shell.results`, `server.heartbeat`, `run.rules` and `commit.policy`), the hook entry point
-and bridge in `hooks/`, the io MCP server in `mcp/` with `io.read`, `io.edit`, `io.splice`, `io.append`,
-`io.run`, `io.status`, `io.read_log`, `io.format` and the hook tools, the corpus, replay, precommit and report
-commands in `cli/` with their scripts, `tests/` with its fixtures and helpers, `tools/probes/`,
-`.github/workflows/ci.yml`, `.claude/`, `docs/`, `workbench/` and this file exist.
+`diagnose.refused`, `shell.results`, `server.heartbeat`, `run.rules`, `commit.policy` and `restore.ask`), the hook
+entry point and bridge in `hooks/`, the io MCP server in `mcp/` with `io.read`, `io.edit`, `io.splice`,
+`io.append`, `io.run`, `io.status`, `io.read_log`, `io.format`, `io.snapshot`, `io.restore` and the hook tools,
+the corpus, replay, precommit and report commands in `cli/` with their scripts, `tests/` with its fixtures and
+helpers, `tools/probes/`, `.github/workflows/ci.yml`, `.claude/`, `docs/`, `workbench/` and this file exist.
 
 ```
 .claude-plugin/marketplace.json   the catalog

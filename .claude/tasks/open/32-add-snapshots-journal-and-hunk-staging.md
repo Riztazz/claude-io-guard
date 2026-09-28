@@ -4,6 +4,7 @@ stage: H
 area: mcp
 created: 2026-09-27
 status: open
+claimed-by: Pala Elektroniczna, 2026-09-28
 depends-on: [18, 23, 31]
 findings: [GIT-4, GIT-6, VFY-6, BYT-9, BYT-10]
 platforms: [windows, macos]
@@ -42,3 +43,15 @@ It comes after the measurement (D20), so task 31's numbers can reshape it.
 
 - A batch across 10 files restores exactly: every file's hash matches its before-copy.
 - Staging 2 of 3 hunks leaves the third unstaged, and `git diff --cached` shows exactly those 2.
+
+## What changed so far
+
+- **Part 1, snapshot and restore, 2026-09-28.** `lib.snapshots` keeps a snapshot as
+  `snapshots/<id>/snapshot.json` in io-guard's folder, beside a blob per file, found by its id or by the newest
+  tag in the project, and deleted after seven days. `io.snapshot` takes files, folders and globs, up to
+  `io.snapshot.max_files` of 5,000 and `io.snapshot.max_bytes` of 512 MB, past which it answers
+  `SNAPSHOT_TOO_LARGE`. The new check `restore.ask` answers the PreToolUse hook on `io.restore` with `ask` and
+  `RESTORE_ASKED` when the restore would replace changed files, and `io.restore` writes only a restore the hook
+  recorded, once. Elicitation stays out, since no surface shows its form. `FsPort` gained `files_under`, and
+  `lib.context.read_or_none` replaced three copies of the same read. `live-restore` passed on 2.1.281 and
+  2.1.283. Tests: 746 before, 767 after.

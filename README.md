@@ -125,6 +125,8 @@ A few jobs have no safe built-in tool, so the io server adds them:
 | `io.status` | Whether a background `io.run` still runs, from the process itself, and how it ended |
 | `io.read_log` | The whole lines a log gained since the last read, less your noise patterns |
 | `io.format` | Run your formatter, clang-format by default, over the lines changed since the last commit and no others |
+| `io.snapshot` | Keep the bytes of files, folders or globs under a tag for seven days, before a pass over many files |
+| `io.restore` | Put back the files a snapshot kept, only those that changed, after your yes |
 
 The three that change a file write it once, only when every place they name matched once, and a failed one
 writes nothing and names the lines it nearly matched. Two subagents editing one file take turns. After one of
@@ -138,6 +140,11 @@ end of the file, stays out. When the formatter fails on one file, no file is wri
 `io.run` meets your deny and ask rules for Bash and PowerShell, from every settings file Claude Code reads. A
 deny rule refuses the run, and an ask rule brings up Claude Code's own permission prompt. A background run's
 handle lasts an hour past the program's end.
+
+`io.snapshot` keeps its copies in io-guard's folder, up to 5,000 files and 512 MB each, and deletes them after
+seven days. `io.restore` undoes a task file by file, where `git checkout` would throw away every other edit
+of the file too. It writes back only the files that changed since the snapshot, and Claude Code's own
+permission prompt asks you first, naming the files whose edits you'd lose.
 
 ## What it never does
 

@@ -66,6 +66,8 @@ class FsPort(Protocol):
     def link_target(self, path: Path) -> Path | None: ...      # where a path through a link really is
     def find_named(self, root: Path, name: str, limit: int) -> tuple[Path, ...]: ...
                                                                # files named name under root, in limit entries
+    def files_under(self, root: Path, limit: int) -> tuple[Path, ...]: ...
+                                                               # sorted, outside .git, at most limit + 1
 
 
 class Clock(Protocol):
@@ -157,6 +159,8 @@ class SessionState:
     tracked: dict[Path, bool] = field(default_factory=dict)       # git's answer per path, asked once
     last_failed_build: str | None = None                          # the words of the build that last failed
     asked_runs: set[str] = field(default_factory=set)             # io.run calls the hook put to the user
+    asked_restores: set[str] = field(default_factory=set)         # io.restore calls the hook put to the user
+    tag: str | None = None                                        # the task the last io.snapshot named
     read_logs: dict[Path, tuple[int, int]] = field(default_factory=dict)   # io.read_log's line and byte
     lock: threading.RLock = field(default_factory=threading.RLock)
     data_dir: Path | None = None       # with a session id, the folder whose warned file the processes share
@@ -257,6 +261,25 @@ class LiveFs:
             if seen >= limit:
                 break
         return tuple(found)
+
+    def files_under(self, root: Path, limit: int) -> tuple[Path, ...]:
+        """Every file under root, outside .git folders, sorted. A walk stops once it holds more than limit,
+        so a caller sees that the folder holds more."""
+        found: list[Path] = []
+        for folder, folders, files in os.walk(root):
+            folders[:] = sorted(child for child in folders if child != ".git")
+            found += [Path(folder) / file for file in files]
+            if len(found) > limit:
+                break
+        return tuple(sorted(found)[:limit + 1])
+
+
+def read_or_none(fs: FsPort, path: Path) -> bytes | None:
+    """path's bytes, or None when it is gone or cannot be read."""
+    try:
+        return fs.read_bytes(path)
+    except OSError:
+        return None
 
 
 def session_file(data_dir: Path, session_id: str, kind: str) -> Path:

@@ -63,6 +63,7 @@ plugins/io-guard/
         portable.py                bash4, gnu_only: what bash 3.2 and macOS's BSD tools lack or read otherwise
         commit_message.py          subcommand, sources, problems: where a git commit's message comes from, and
                                    what in it a policy forbids
+        snapshots.py               take, find, pending, sweep: files' bytes kept under a tag for seven days
       checks/                      policy, one module per check
         base.py                    Check, CheckMeta, Cost
         registry.py                Registry, default_registry
@@ -86,6 +87,7 @@ plugins/io-guard/
         heartbeat.py               server.heartbeat: SERVER_DOWN at the start of a turn
         run_rules.py               run.rules: RULE_DENIED and RULE_ASKED at the PreToolUse hook on io.run
         commit_policy.py           commit.policy: COMMIT_POLICY for a commit message the user's policy forbids
+        restore_ask.py             restore.ask: RESTORE_ASKED at the PreToolUse hook on io.restore
       hooks/
         entry.py                   run_event: an event in, the answer dict out, never raising
         answer.py                  Outcome -> hook JSON, per event and rewrite mode
@@ -437,6 +439,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Internal | `GUARD_ERROR`, `REWRITE_CONFLICT`, `BUDGET_EXCEEDED` | 07, in `CODES` |
 | Internal | `SERVER_DOWN`, `CANCELLED` | 23, in `CODES` |
 | Internal | `HANDLE_EXPIRED`, with the first tool that makes a handle | 25, in `CODES` |
+| Location | `RESTORE_ASKED`, a warning, and `SNAPSHOT_TOO_LARGE` | 32, in `CODES` |
 | Transport | `RULE_DENIED`, `RULE_ASKED`, from `run.rules` and `io.run` itself | 25, in `CODES` |
 | Transport | `COMMIT_POLICY`, a git commit whose message holds what `commit_policy` forbids | 29, in `CODES` |
 | Bytes | `FORMAT_FAILED`, when `io.format`'s command cannot start, fails or prints nothing | 26, in `CODES` |
@@ -946,7 +949,8 @@ Task 24 added `io.edit.max_bytes` of 16 MB and `io.edit.wait_ms` of 5,000, which
 `io.read_log.max_lines` of 500 and `noise_patterns`. Task 26 added `format`, the command `io.format` runs per
 extension, clang-format for C and C++ by default, and `io.format.timeout_s` of 30. Task 29 added
 `commit_policy.forbid`, empty and the user's alone, and `commit_policy.ascii_only`, false, which a project file
-may only turn on. Task 39 added `invisible_allowed`, the characters, as `U+00A0`, a write may add without an
+may only turn on. Task 32 added `io.snapshot.max_files` of 5,000 and `io.snapshot.max_bytes` of 512 MB, which a
+project may lower. Task 39 added `invisible_allowed`, the characters, as `U+00A0`, a write may add without an
 `INVISIBLE_ADDED` warning. A key marked `project_regex`, `noise_patterns` and `checks.shell.results.error_patterns`,
 holds regexes io-guard runs on every line of output, and Python's `re` has no timeout. So a project file's
 pattern that does not compile, is over 200 characters, or repeats a group that repeats inside, such as
@@ -1368,6 +1372,29 @@ Over 12 C++ files copied from one of the lead's projects, 8 CRLF and 4 LF, each 
 line and one line with doubled spaces, `io.format` wrote the same bytes as the script agents there ran 128
 times to format changed hunks, with the same clang-format (`context.md`, task 26).
 
+### Keep files, and put them back
+
+`mcp/tools_history.py` holds `io.snapshot` and `io.restore` (task 32).
+
+```python
+io.snapshot(paths, tag) -> SnapshotOutput(snapshot, tag, files, bytes, expires)
+io.restore(tag, paths = []) -> RestoreOutput(snapshot, restored, unchanged, note)
+```
+
+- **Keep.** `paths` names files, folders and globs from the project folder, and a folder takes every file
+  under it outside `.git`. Past `io.snapshot.max_files` or `io.snapshot.max_bytes` the call keeps nothing and
+  answers `SNAPSHOT_TOO_LARGE`. `lib.snapshots.take` writes each file's bytes as a blob, then the manifest,
+  so a snapshot cut short has none and is never found. The tag becomes the session's, for the journal.
+- **Find.** `io.restore` and `io.compare` take the id, or a tag, which names the newest live snapshot with
+  it in the project. None is `HANDLE_EXPIRED`, whose fix is `io.snapshot` before the next task.
+- **Ask.** A restore replaces every edit made since the snapshot, so `restore.ask`, at the PreToolUse hook
+  on the call, answers `ask` with `RESTORE_ASKED` naming the files, and Claude Code shows its own permission
+  prompt, as section 7's elicitation paragraph says. The check records the restore by the snapshot and
+  the files it would replace, and `io.restore` writes only a restore the hook recorded, once. A restore
+  whose files all match the snapshot asks nothing and writes nothing.
+- **Put back.** Each changed file, a deleted one included, is written back whole through `write_atomic`,
+  held as the edit tools hold one. Unlike `git checkout`, the other files stay as they are (GIT-6).
+
 ### Handles
 
 ```python
@@ -1390,9 +1417,10 @@ class HandleStore:
 Task 25 built the store with `io.run`, the first tool that hands out a handle, as `handles.STORE`, one per
 server. A run handle lives in memory, so it ends with the server while its log stays on disk, and it
 expires `io.run.handle_ttl_s`, one hour, after its program ends: the run's `Pump` calls `settle` when it sees
-the end. Task 32 adds `handles/<id>.json` in io-guard's folder for a snapshot handle, which survives a server
-restart and expires after seven days. Each tool description states the lifetime. `HandleExpired` becomes a
-tool execution error `HANDLE_EXPIRED` whose fix names the creating tool.
+the end. A snapshot handle, from task 32, is a folder in io-guard's folder, which survives a server
+restart and expires after seven days: `lib.snapshots` keeps it as `snapshots/<id>/snapshot.json` beside a
+blob per file, and `io.snapshot` deletes the expired ones. Each tool description states the lifetime.
+`HandleExpired` becomes a tool execution error `HANDLE_EXPIRED` whose fix names the creating tool.
 
 ### Elicitation in both eras
 

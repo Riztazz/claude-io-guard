@@ -202,6 +202,14 @@ RUN_DENIED = (f"Do these in order. 1. {LOAD_RUN} 2. Call {IO_RUN} with argv [\"g
               "\"main\"]. Then quote its result word for word and reply DONE.")
 RUN_ASKED = (f"Do these in order. 1. {LOAD_RUN} 2. Call {IO_RUN} with argv [\"git\", \"fetch\", "
              "\"--dry-run\"]. Then quote its result, or any refusal, word for word and reply DONE.")
+IO_SNAPSHOT = "mcp__plugin_io-guard_io__io_snapshot"
+IO_RESTORE = "mcp__plugin_io-guard_io__io_restore"
+RESTORE_STEPS = (
+    f"Do these in order. 1. Load {IO_SNAPSHOT}, {IO_EDIT} and {IO_RESTORE} with the ToolSearch tool, with "
+    f"the query select:{IO_SNAPSHOT},{IO_EDIT},{IO_RESTORE} 2. Call {IO_SNAPSHOT} with paths "
+    f"[\"notes.txt\"] and tag \"probe\". 3. Call {IO_EDIT} with path notes.txt and one edit, old_string "
+    f"\"one\" and new_string \"changed\". 4. Call {IO_RESTORE} with tag \"probe\". Then quote each result, "
+    "or any refusal, word for word and reply DONE.")
 GIT_RULES = {"permissions": {
     "ask": ["Bash(git commit *)", "Bash(git push *)", "PowerShell(git commit *)", "PowerShell(git push *)"],
     "deny": ["Bash(git reset --hard *)", "PowerShell(git reset --hard *)"]}}
@@ -450,6 +458,9 @@ PROBES = {
     "live-run-asked": Probe(0, "record", guard="", server=True, extra_args=PERMIT,
                             allowed=("ToolSearch", IO_RUN, IO_STATUS), prompt=RUN_ASKED,
                             setup={".claude/settings.json": json.dumps(RUN_RULES).encode("ascii")}),
+    "live-restore": Probe(0, "record", guard="", server=True, extra_args=PERMIT,
+                          allowed=("ToolSearch", IO_SNAPSHOT, IO_EDIT, IO_RESTORE), prompt=RESTORE_STEPS,
+                          check=("notes.txt",), setup={"notes.txt": b"one\r\ntwo\r\n"}),
     "live-format": Probe(0, "", guard="", allowed=("ToolSearch", IO_EDIT, IO_FORMAT), prompt=FORMAT_STEPS,
                          git=True, check=("a.cpp",),
                          setup={".clang-format": FORMAT_STYLE, "a.cpp": FORMAT_CPP}),
@@ -942,6 +953,17 @@ def run_asked(summary: dict, name: str) -> bool:
     return prompted and asked
 
 
+def restore_asked(summary: dict, name: str) -> bool:
+    """The hook answered ask with RESTORE_ASKED, the permission prompt tool received the io.restore call, and
+    notes.txt holds its bytes from before the edit again."""
+    folder, _ = latest(name)
+    permit = folder / "permit.jsonl"
+    lines = permit.read_bytes().decode("utf-8").splitlines() if permit.is_file() else []
+    prompted = any("probe_permit" in line and IO_RESTORE in line for line in lines)
+    asked = any("RESTORE_ASKED" in json.dumps(event) for event in summary["hook_events"])
+    return prompted and asked and summary["files"].get("notes.txt") == "one\r\ntwo\r\n"
+
+
 def formatted_changed_lines(summary: dict, name: str) -> bool:
     """io.format formatted the edited line, left the committed line 1 as badly formatted as it was, and kept
     the BOM and every CRLF although the style names LF. Its own result names the lines it changed, so the
@@ -1107,6 +1129,7 @@ VERDICTS = {
     "live-run-background": ran_in_background,
     "live-run-denied": lambda s, n: "RULE_DENIED: io.run would run git push origin main" in seen(s),
     "live-run-asked": run_asked,
+    "live-restore": restore_asked,
     "live-format": formatted_changed_lines,
     "live-skill": recovered_once,
     "live-commit-asked": commit_asked,

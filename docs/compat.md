@@ -31,7 +31,8 @@ ran on 2.1.283 only. Task 17 added `write-quiet`, `edit-trailing` and `live-conf
 `live-results`, task 23 `live-server`, `live-server-modern` and `live-server-down`, task 24
 `live-edit-parallel`, task 25 `live-run-body`, `live-run-background`, `live-run-denied` and
 `live-run-asked`, task 26 `live-format`, task 27 `live-skill` and `live-skill-doctor`, and task 29
-`live-commit-asked` and `live-commit-policy`, and task 39 `live-invisible`, all of which passed on both.
+`live-commit-asked` and `live-commit-policy`, task 39 `live-invisible`, and task 32 `live-restore`,
+all of which passed on both.
 
 The design review named 2.1.281 as the first release whose `mcp_tool` hooks wait for their server. Today's hooks
 reference names no version for that, so the floor rests on the probes instead. Older releases aren't tested.
@@ -48,7 +49,7 @@ reference names no version for that, so the floor rests on the probes instead. O
 | A plugin's stdio server that fails to start is written to `~/.claude/mcp-needs-auth-cache.json`, and every session skips it for 15 minutes | 2.1.281 | `live-server-down` | io-guard's UserPromptSubmit hook reads that file and names the skip. If the file moves, the skip goes unnamed |
 | An MCP server's environment carries `CLAUDE_CODE_SESSION_ID`, its own session's id | 2.1.281 | `era-legacy`, `live-server` | The server writes no heartbeat, and a server that died goes unnamed |
 | A session's subagents call the plugin's one stdio server, each call as it comes, so their calls on one file overlap | 2.1.281 | `live-edit-parallel` | Nothing breaks: the lock table and `file_lock` serialise the calls whatever process or thread makes them (task 24) |
-| A PreToolUse hook fires on the plugin's own MCP tool, and its `ask` brings up the permission prompt for a tool `--allowedTools` allowed | 2.1.281 | `live-run-asked`, `live-run-denied` | `io.run` still refuses a command a deny rule meets, and refuses one an ask rule meets with `RULE_ASKED`, since no prompt put it to the user (task 25) |
+| A PreToolUse hook fires on the plugin's own MCP tool, and its `ask` brings up the permission prompt for a tool `--allowedTools` allowed | 2.1.281 | `live-run-asked`, `live-run-denied`, `live-restore` | `io.run` still refuses a command a deny rule meets, and refuses one an ask rule meets with `RULE_ASKED`, since no prompt put it to the user (task 25). `io.restore` writes nothing and answers `RESTORE_ASKED` (task 32) |
 | A `UserPromptSubmit` command hook's `additionalContext` and `systemMessage` arrive at the start of the turn | 2.1.281 | `live-server-down` | A stopped server goes unnamed |
 | A settings `ask` rule for `Bash(git commit *)` brings up the permission prompt in auto mode, and a `deny` rule refuses with none | 2.1.281 | `live-commit-asked` | The README's git snippet asks nothing in auto mode, and `commit.policy` still refuses a message the policy forbids (task 29) |
 | PreToolUse `updatedInput` with `allow` runs the new input, byte-exact for Write | 2.1.281 | `rewrite-allow`, `write-bytes`, `edit-extend` | Refuse, with the fixed call in the reason |

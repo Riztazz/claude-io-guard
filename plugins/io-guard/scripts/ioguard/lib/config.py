@@ -119,6 +119,10 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
                                      "ends."),
     "io.read_log.max_lines": ConfigKey(int, 500, "The most log lines one io.read_log returns. The result "
                                        "names the call for the rest."),
+    "io.snapshot.max_files": ConfigKey(int, 5000, "The most files one io.snapshot keeps.",
+                                       project_narrows=True),
+    "io.snapshot.max_bytes": ConfigKey(int, 512 * 1024 * 1024, "The most bytes one io.snapshot keeps, "
+                                       "counting every file.", project_narrows=True),
     "noise_patterns": ConfigKey(list, [], "Regular expressions for log lines io.read_log leaves out, such as "
                                 "^LogTemp: Display:. A line counts when one matches anywhere in it.",
                                 shape=patterns.list_problem, project_regex=True),

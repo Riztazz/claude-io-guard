@@ -35,6 +35,8 @@ at all:
 | Check a background run | `io.status` | `mcp__plugin_io-guard_io__io_status` |
 | Read the new lines of a log | `io.read_log` | `mcp__plugin_io-guard_io__io_read_log` |
 | Format the changed lines of files | `io.format` | `mcp__plugin_io-guard_io__io_format` |
+| Keep files before a task | `io.snapshot` | `mcp__plugin_io-guard_io__io_snapshot` |
+| Put files back as a snapshot kept them | `io.restore` | `mcp__plugin_io-guard_io__io_restore` |
 <!-- The generated tools table ends here. -->
 
 ## What io-guard fixes on its own
@@ -106,6 +108,7 @@ A refused call did not run. A warning, or a note that io-guard fixed something, 
 | `READ_ONLY` | The file is read-only, so the write would fail or stop the session at a prompt. | Ask the user to make it writable, such as by checking it out in their version control. |
 | `READ_TOO_LARGE` | The file is larger than one Read returns. | Read it in the parts the message names, with offset and limit. |
 | `RESERVED_NAME` | The path is a Windows device name, such as nul or con, which Windows tools cannot open or delete as a file. | Use /dev/null in Bash, or another name for a file. |
+| `RESTORE_ASKED` | The restore would replace files that changed since the snapshot, so the user decides whether io.restore runs. | Wait for the user's answer, and write nothing to those files meanwhile. |
 | `REWRITE_CONFLICT` | Two io-guard fixes changed the same part of this call, so io-guard kept the first and dropped the second. | Nothing to do, because the first fix applied. |
 | `RULE_ASKED` | One of the user's permission rules asks about this command, so the user decides whether io.run runs it. | Wait for the user's answer, and run nothing else in its place. |
 | `RULE_DENIED` | One of the user's permission rules denies this command, so io.run did not run it. | Leave the command out, or ask the user whether the rule should change. |
@@ -113,6 +116,7 @@ A refused call did not run. A warning, or a note that io-guard fixed something, 
 | `SERVER_DOWN` | io-guard's io server stopped, so tool calls ran without its checks. | Claude Code starts it again at the next tool call, and /mcp shows why when it cannot. |
 | `SHELL_WRITE` | The command writes a file git tracks through the shell, around io-guard's checks. | Use the Edit tool to change the file, or the Write tool to replace it whole. |
 | `SIZE_COLLAPSED` | The file holds far fewer bytes than the call should have left in it. | Read the file, and write the missing text back. |
+| `SNAPSHOT_TOO_LARGE` | The paths hold more files or bytes than one snapshot keeps, so io.snapshot kept nothing. | Call io.snapshot on fewer paths, such as only the folders the task changes. |
 | `STALE_BINARY` | The last build in this session failed, so this run used what an earlier build made. | Fix the build and build again before trusting this result. |
 | `STALE_VIEW` | The file holds something other than what the call expected. | Read the file again, then change only what differs. |
 | `TOUCHED_BY_SHELL` | A shell command changed files the agent had read, or made new ones. | Read the changed files again before the next Edit. |
