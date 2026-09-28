@@ -17,12 +17,12 @@ from pathlib import Path
 from unittest import mock
 
 from tests import PLUGIN_SCRIPTS
-from tests.support import events
+from tests.support import events, shells
 
 PYRUN = PLUGIN_SCRIPTS / "pyrun"
 PYRUN_CMD = PLUGIN_SCRIPTS / "pyrun.cmd"
 HOOK_PY = PLUGIN_SCRIPTS / "hook.py"
-SHELL = shutil.which("sh") or shutil.which("bash")
+SHELL = shells.sh()
 PYTHON_DIR = str(Path(sys.executable).parent)
 WINDOWS = os.name == "nt"
 

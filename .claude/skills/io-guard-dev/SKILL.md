@@ -72,7 +72,8 @@ live checks.
 
 - **`python -m unittest discover -s tests -t .` runs everything.** CI fails when a run reports zero tests.
 - **`tests/` mirrors the package.** `tests/lib/test_profile.py` tests `ioguard/lib/profile.py`, and shared helpers
-  live in `tests/support/`: event builders, `Context.fake`, a fake git and a temporary project root.
+  live in `tests/support/`: event builders, `Context.fake`, a fake git, a temporary project root, and
+  `shells`, which finds Git Bash on Windows from any terminal, never WSL's `bash.exe`.
 - **Fixtures are bytes.** `tests/fixtures/` is `-text` in `.gitattributes`, and `MANIFEST.sha256` holds each
   fixture's hash for the self-check test.
 - **`tests/test_meta.py` keeps the suite honest:** no duplicate test names, a test for every code and every check,

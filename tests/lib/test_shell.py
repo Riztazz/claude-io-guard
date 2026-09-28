@@ -1,15 +1,15 @@
 """lib.shell reads a Bash command as bash does: heredocs, python -c bodies, and the backslash pairs whose
 halving changes what bash reads. A moved command runs the same as the original."""
-import shutil
 import subprocess
 import sys
 import unittest
 from pathlib import Path
 
 from ioguard.lib import shell
+from tests.support import shells
 from tests.support.project import TemporaryProject
 
-BASH = shutil.which("bash")
+BASH = shells.bash()
 PYTHON = Path(sys.executable).as_posix()
 
 
@@ -166,6 +166,7 @@ class AMovedCommandRunsTheSame(unittest.TestCase):
         script = cwd / "command.sh"
         script.write_bytes(command.encode("utf-8"))
         done = subprocess.run([BASH, str(script)], cwd=cwd, capture_output=True, timeout=60)
+        self.assertEqual(done.returncode, 0, f"{BASH} ran the command: {done.stderr[-300:]!r}")
         return done.stdout + done.stderr
 
     def moved(self, command: str, folder: Path) -> str:

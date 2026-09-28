@@ -3,7 +3,8 @@ title: Run the shell tests in Git Bash on Windows, never in WSL's bash
 stage: I
 area: tests
 created: 2026-09-28
-status: open
+status: done
+claimed-by: Pala Elektroniczna, session 7eeb509f
 depends-on: []
 findings: []
 platforms: [windows]
@@ -41,3 +42,25 @@ WSL's bash is never the shell these tests stand for. Claude Code's Bash tool run
 ## Done when
 
 - `python tests/run_all.py` passes the same count from PowerShell and from Git Bash on Windows.
+
+## What changed
+
+Why the class passed alone: WSL's `bash.exe` fails every call on this machine, with
+`<3>WSL (13 - Relay) ERROR: CreateProcessCommon:818: execvpe(/bin/bash) failed`. The test compares the
+moved command's output with the original's. Run alone, both printed that error with the same WSL process number,
+so the two matched and the test passed having run nothing. In the full run the numbers differed.
+
+- `tests/support/shells.py`, new: `bash()` and `sh()`. On Windows, `CLAUDE_CODE_GIT_BASH_PATH`, then the PATH
+  with the session probe's `NOT_BASH` folders left out, then `bin/bash.exe` or `bin/sh.exe` in git's install
+  folder. Elsewhere, `shutil.which`.
+- `tests/lib/test_shell.py` and `tests/hooks/test_launcher.py` use them. `run_bash` asserts the command exited 0,
+  so a shell that runs nothing fails and names itself.
+- Docs: the `io-guard-dev` skill's list of `tests/support/` helpers.
+
+Evidence:
+
+- From PowerShell, `shells.bash()` is `C:\Program Files\Git\bin\bash.exe`, and `python tests/run_all.py` ran
+  864 tests, all passing, with 9 skips. From Git Bash, it is `C:\Program Files\Git\usr\bin\bash.EXE`, with the
+  same 864 and 9.
+- With `CLAUDE_CODE_GIT_BASH_PATH` set to `C:\Windows\System32\bash.exe`, both `AMovedCommandRunsTheSame`
+  comparisons fail on `run_bash`'s exit code, quoting WSL's error.
