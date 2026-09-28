@@ -48,7 +48,7 @@ reference names no version for that, so the floor rests on the probes instead. O
 
 | Feature | Needs | Probe | Without it |
 |---|---|---|---|
-| An `mcp_tool` hook calls a tool on the plugin's own server, and the tool's answer is the hook's decision | 2.1.281 | `time-mcp`, `mcp-gate`, `mcp-subst` | Command hooks: 52 ms per call in exec form on a small script, and 275 ms through `pyrun` running io-guard's hook ([`launcher.md`](launcher.md)) |
+| An `mcp_tool` hook calls a tool on the plugin's own server, and the tool's answer is the hook's decision | 2.1.281 | `time-mcp`, `mcp-gate`, `mcp-subst` | Command hooks: 54 ms per call in exec form on a small script, and 300 ms through `pyrun` running io-guard's hook, against 1.2 ms for an `mcp_tool` hook ([`launcher.md`](launcher.md)) |
 | An `mcp_tool` hook's server restarts on the next call, and a server that can't start fails open | 2.1.281 | `dead-server`, `dead-for-good`, `live-server-down` | The heartbeat hook warns once at the next turn (task 23) |
 | A plugin's stdio server that fails to start is written to `~/.claude/mcp-needs-auth-cache.json`, and every session skips it for 15 minutes | 2.1.281 | `live-server-down` | io-guard's UserPromptSubmit hook reads that file and names the skip. If the file moves, the skip goes unnamed |
 | An MCP server's environment carries `CLAUDE_CODE_SESSION_ID`, its own session's id | 2.1.281 | `era-legacy`, `live-server` | The server writes no heartbeat, and a server that died goes unnamed |

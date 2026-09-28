@@ -1590,7 +1590,7 @@ the server's environment, with its process, era and time (`context.md`, "Hooks a
 cannot start leaves every hook failing open and tells the model nothing (row 18). Worse, Claude Code then
 records the failure in `~/.claude/mcp-needs-auth-cache.json` and skips the server in every session for 15
 minutes (row 33). With no heartbeat for its session, the check reads that cache and names the skip and its
-end. That hook is the only Python spawn per turn, and costs about 250 ms.
+end. That hook is the only Python spawn per turn, and costs about 300 ms (`docs/launcher.md`).
 
 Shutdown is one ordered list: stop accepting, drain the workers with a 2 second cap, close the heartbeat. A
 background run keeps running past the server's end, and its log stays in io-guard's folder. Telemetry

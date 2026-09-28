@@ -222,9 +222,11 @@ let the installed copy load in place of a `--plugin-dir` one. An MCP `command` n
 in the `env` block of `--settings` reached the server on both, and a wrong value stopped it with the value named
 in the MCP log. Through `pyrun`, `live-empty`, `live-server`, `live-server-down` and `live-answers` passed on
 both, the server connecting in 395 to 411 ms by `py -3`, against 231 to 248 ms with `IOGUARD_PYTHON` naming
-`python.exe`, and no server process outlived its session. `launch-pyrun` timed 275.0 ms at p50, of which
-`hook.py` alone is 197 ms started directly, 156 ms of it imports. `launch-mcp` timed 37.9 ms at p50 twice on
-2.1.283, where it had timed 1.2 ms on 2026-09-27, which task 43 looks into. The renaming is upstream's
+`python.exe`, and no server process outlived its session. `launch-pyrun` timed 300.5 ms at p50, of which
+`hook.py` alone was 197 ms started directly, 156 ms of it imports. `launch-mcp` timed 1.2 ms at p50 on both
+releases. Its 37.9 ms earlier the same day came from the lead's installed io-guard, loaded into those probe
+sessions before `without_installed()`: each Bash call ran two PreToolUse hooks, the probe's gate at 1.3 ms and
+io-guard's whole pipeline at 39.5 ms, and the probe's 200 times mixed both (task 43). The renaming is upstream's
 anthropics/claude-code#92427, open since the desktop's 2.1.260 on macOS, and task 42 adds this evidence to it.
 
 Task 32's `live-restore` passed on both releases: after `io.snapshot` of a CRLF file and an `io.edit` of it,

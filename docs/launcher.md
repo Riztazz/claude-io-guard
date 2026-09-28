@@ -70,19 +70,24 @@ Code's own Bash tool needs Git Bash as well.
 Each row is one headless session making 100 Bash calls, timed from the hook's start to its answer in Claude
 Code's own event stream, with the `claude` CLI 2.1.283 on Windows 10 and Python 3.14.0, on 2026-09-28.
 `tools/probes/run_probe.py` runs them as `launch-mcp`, `launch-exec` and `launch-pyrun`. The first two answer
-from the probes' own small plugin, and the third runs io-guard's `hook.py`.
+from the probes' own small plugin, and the third runs io-guard's `hook.py`. No other plugin's hook runs on the
+call: the probes turn off an installed io-guard.
 
 | Path | p50 | p95 | Max |
 |---|---|---|---|
-| An `mcp_tool` hook on a running server | 37.9 ms | 43.2 ms | 45.7 ms |
-| A command hook that starts Python on a small script, in exec form | 52.1 ms | 56.6 ms | 65.4 ms |
-| A command hook through `sh pyrun` and `py -3`, running `hook.py` | 275.0 ms | 285.8 ms | 302.8 ms |
+| An `mcp_tool` hook on a running server | 1.2 ms | 1.6 ms | 5.2 ms |
+| A command hook that starts Python on a small script, in exec form | 54.5 ms | 58.2 ms | 62.8 ms |
+| A command hook through `sh pyrun` and `py -3`, running `hook.py` | 300.5 ms | 307.9 ms | 313.3 ms |
+
+The desktop app's 2.1.281 timed the first path at 1.2 ms at p50 and 1.4 ms at p95. That's the hook's own
+cost, a server that answers at once. io-guard's checks come on top: its PreToolUse on a Bash call took 39.5 ms
+at p50 and 45.2 ms at p95 in the same kind of session. `python tools/report.py` shows the checks' time on your
+own sessions.
 
 io-guard uses the first path for every tool call, and the other two only at the start of a session and of each
-turn. On 2026-09-27 the first path measured 1.2 ms at p50 on the same release, and task 43 looks for what
-changed. Most of the third row is `hook.py` itself, which imports the whole check pipeline: 197 ms at p50 over
-20 starts outside Claude Code, 156 ms of it imports. `sh pyrun` adds 36 ms, of which `py -3` is about 14.
-Setting `IOGUARD_PYTHON` skips `py`.
+turn. Most of the third row is `hook.py` itself, which imports the whole check pipeline: 197 ms at p50 over 20
+starts outside Claude Code, 156 ms of it imports, measured on 2026-09-28. `sh pyrun` adds 36 ms, of which
+`py -3` is about 14. Setting `IOGUARD_PYTHON` skips `py`.
 
 The io server starts through `pyrun.cmd` and `py -3` in 395 to 411 ms on this machine, and in 231 to 248 ms
 with `IOGUARD_PYTHON` naming `python.exe`. That's once per session.

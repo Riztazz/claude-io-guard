@@ -60,7 +60,7 @@ Confirmed with the `claude` CLI at 2.1.283 and the desktop app on 2.1.281, durin
 | After an app restart, the desktop passes a plugin from a local-folder marketplace to each session as `<name>@inline`, and the options saved for its marketplace id don't reach it | the desktop's `main.log`, and io-guard's data folders | 2.1.281 | waits for the Mac | 2026-09-28 |
 | Passed as `io-guard@inline`, the desktop's io-guard starts its server through `pyrun` with nothing set, and its hooks, server and heartbeat all use `~/.claude/io-guard` | a Code tab session after the lead's restart | 2.1.281 | waits for the Mac | 2026-09-28 |
 | An unset `userConfig` option falls back to its default | io-guard installed with no `--config` | 2.1.283 | waits for the Mac | 2026-09-27 |
-| An `mcp_tool` hook answers in 37.9 ms at p50, against 52.1 ms in exec form on a small script and 275.0 ms through `pyrun` running io-guard's hook, over 100 calls. The first measured 1.2 ms on 2026-09-27, on the same release (task 43) | `launch-mcp`, `launch-exec`, `launch-pyrun` | 2.1.283 | waits for the Mac | 2026-09-28 |
+| An `mcp_tool` hook answers in 1.2 ms at p50, against 54.5 ms in exec form on a small script and 300.5 ms through `pyrun` running io-guard's hook, over 100 calls with no other plugin's hook on the call | `launch-mcp`, `launch-exec`, `launch-pyrun` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 
 ## Hooks and MCP
 
