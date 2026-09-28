@@ -103,11 +103,13 @@ plugins/io-guard/
         tools_hook.py              hook.pre_tool_use, hook.post_tool_use, hook.post_tool_use_failure, hook.ping
         skill.py                   the skill page's tool and code tables, which tools/skill.py writes
       cli/
-        main.py                    corpus and replay today, then probe, check, profile, codes, report, serve, doctor
+        main.py                    corpus, replay, precommit and report today, then probe, check, profile, codes,
+                                   serve, doctor
         labels.py                  the baseline's labels for a recorded call's result and command shape
         corpus.py                  Record, build, load: transcripts -> corpus/<project>.jsonl
         replay.py                  Replay, replay, render: the corpus through the pipeline, offline
         precommit.py               staged_results, run: each staged file against HEAD, for the git hook
+        report.py                  files, summarise, render: the week's telemetry by code, tool and time
 tests/                             mirrors ioguard, plus fixtures/, support/, mcp/, replay/
 tools/                             ioguard.py, corpus.py, replay.py, measure.py, report.py, probes/
 ```
@@ -1481,6 +1483,14 @@ Trace context follows W3C Trace Context. An MCP call takes `traceparent` from `_
 event derives `trace_id` from `tool_use_id`, so the PreToolUse decision, the io tool call and the PostToolUse
 verification of one tool use share a trace, and `prompt_id` joins them to Claude Code's own OpenTelemetry
 events. `tools/report.py` groups by `trace_id` to show what one tool use cost end to end.
+
+`python tools/report.py [--data FOLDER ...] [--days 7]` (task 28) merges every session file of the days asked,
+from each installed io-guard's data folder unless `--data` names one, and leaves out `io-guard-inline`, the
+probes' folder. It prints one screen: the calls by event, tool, project and platform, the codes split into
+fixed, warned and refused, the time of a hook call, an io tool call and one tool use across its trace as p50,
+p90, p99 and max, the command shapes behind refusals, and each kind of `GUARD_ERROR` with its count. It holds
+command shapes and error hashes, so it prints to a terminal. `Report.counts()` is what a tool result, such as
+the dashboard's, may carry: counts and percentiles, and no command, path, project or error text.
 
 ## 10. Abstract the platform
 

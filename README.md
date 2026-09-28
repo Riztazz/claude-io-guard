@@ -306,6 +306,8 @@ docs/                 the architecture drawing, the design and its review, and t
 - Run the tests with `python -m unittest discover -s tests -t .`.
 - After adding a code or an io tool, run `python tools/skill.py` to write the skill's tables. A test fails until
   you do.
+- See what io-guard fixed, warned about and refused this week with `python tools/report.py`. It reads the
+  telemetry of every installed io-guard on the machine, and `--data` names another folder.
 - After a Claude Code update, run `python tools/probes/run_probe.py run all`, then `verdicts`, to recheck every
   harness fact io-guard relies on. [`docs/compat.md`](docs/compat.md) lists the features, and
   [`docs/live-checks.md`](docs/live-checks.md) says when each was last confirmed.
