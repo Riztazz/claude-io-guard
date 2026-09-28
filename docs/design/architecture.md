@@ -1598,8 +1598,12 @@ needs no flush, because each line is on disk before `record` returns.
 
 ## 9. Record telemetry
 
-One JSONL line per decision or tool call, in `events/<YYYY-MM>/<session>.jsonl` in io-guard's folder, one
-file per session as section 8 says.
+One JSONL line per result a check gives, per hook call and per io tool call, in
+`events/<YYYY-MM>/<session>.jsonl` in io-guard's folder, one file per session as section 8 says. A decision with
+two results writes two lines under its `check`. Only the first carries the check's `latency_ms` and its rewrite's
+code in `fixed`. A decision with a rewrite and no result writes one line whose `code` is null. The hook call's own
+line has `check` null, the whole run's `latency_ms`, and in `fixed` every rewrite the run applied. The report
+counts a fix from that line alone, so each fix counts once.
 
 ```json
 {"schema": 1, "ts": "2026-09-27T14:03:11.412Z", "session": "abc123", "project": "myproject",
@@ -1837,7 +1841,7 @@ Arrows:
 - `Hook runner` to `Permission layer`: rules and the classifier judge the updated input.
 - `Permission layer` to `Bash tool`: the approved command runs.
 - `Checks` to `Scratchpad`: a moved body or a run log.
-- `Checks` to `Telemetry`: one line per decision.
+- `Checks` to `Telemetry`: one line per result, and one per hook call.
 - `Model` to `MCP client`: an io.* call after ToolSearch.
 - `MCP client` to `io server`: initialize, tools/list, tools/call, elicitation reply.
 - `io server` to `Protocol`: parse, validate _meta, pick the era.

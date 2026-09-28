@@ -93,6 +93,8 @@ def add(report: Report, line: Mapping, when: datetime) -> None:
         report.shapes[shape(line["cmd_head"])] += 1
     if check is not None or (code and event != TOOL_CALL):
         return
+    for fix in line.get("fixed") or ():
+        report.codes[fix]["fixed"] += 1
     report.events[event] += 1
     if line.get("tool"):
         report.tools[line["tool"]] += 1

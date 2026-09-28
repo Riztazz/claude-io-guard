@@ -148,12 +148,18 @@ class Run:
         decision = replace(decision, latency_ms=(self.ctx.clock.monotonic() - before) * 1000)
         self.decisions.append(decision)
         if decision.verdict > Verdict.OBSERVE:
-            first = decision.results[0] if decision.results else None
-            self.record(check=check.meta.id, latency_ms=decision.latency_ms,
-                        code=None if first is None else first.code.value,
-                        severity=None if first is None else first.severity.value,
-                        fixed=() if decision.rewrite is None else (decision.rewrite.code.value,))
+            self.record_decision(check, decision)
         return decision.verdict is not Verdict.DENY
+
+    def record_decision(self, check: Check, decision: Decision) -> None:
+        """One line per result, so a code given second is counted too. The first line alone carries the
+        check's time and its fix, so neither counts twice."""
+        fixed = () if decision.rewrite is None else (decision.rewrite.code.value,)
+        for at, result in enumerate(decision.results or (None,)):
+            self.record(check=check.meta.id, latency_ms=decision.latency_ms if at == 0 else None,
+                        code=None if result is None else result.code.value,
+                        severity=None if result is None else result.severity.value,
+                        fixed=fixed if at == 0 else ())
 
     def outcome(self) -> Outcome:
         decisions = self.decisions

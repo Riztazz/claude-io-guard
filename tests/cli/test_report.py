@@ -9,7 +9,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ioguard.cli import report
+from ioguard.lib.context import Context
+from ioguard.lib.decisions import Verdict
+from ioguard.lib.fakes import FakeClock
+from ioguard.lib.results import Code, Layer, Result
 from ioguard.lib.telemetry import Telemetry, TelemetryEvent, TraceContext
+from tests.checks.test_pipeline import bash_event, pipeline_of, rewriting, saying
 
 NOW = datetime(2026, 10, 3, 12, tzinfo=timezone.utc)     # a week that starts in September
 TOOLS = ("Bash", "Edit", "Read", "Write", "PowerShell")
@@ -119,6 +124,23 @@ class ALineIsReadAsWritten(unittest.TestCase):
         found = report.summarise([path], NOW - timedelta(days=1))
         self.assertEqual((found.lines, found.unreadable, found.platforms["darwin"]), (1, 1, 1),
                          "a torn last line from a crash is counted, and the rest still reads")
+
+    def test_every_code_a_run_gave_is_counted_once_and_so_is_each_fix(self):
+        folder = Path(tempfile.mkdtemp(prefix="ioguard-report-"))
+        self.addCleanup(shutil.rmtree, folder, True)
+        results = (Result.of(Code.TOUCHED_BY_SHELL, "a.", "Bash", "win32"),
+                   Result.of(Code.SHELL_WRITE, "b.", "Bash", "win32"))
+        upper = rewriting("a.upper", "command", str.upper)
+        says = saying("b.says", Verdict.ALLOW, results=results, layer=Layer.BYTES)
+        pipeline_of(upper, says).run(bash_event("ls"), Context.fake(clock=FakeClock(NOW),
+                                                                    telemetry=Telemetry(folder)))
+        found = report.summarise(report.files([folder], NOW - timedelta(days=1)), NOW - timedelta(days=1))
+        counted = {code: dict(severities) for code, severities in found.codes.items()}
+        self.assertEqual(counted, {Code.TOUCHED_BY_SHELL.value: {"warning": 1},
+                                   Code.SHELL_WRITE.value: {"refused": 1},
+                                   Code.REWRITE_CONFLICT.value: {"fixed": 1}},
+                         "both results count, and the rewrite counts once as fixed")
+        self.assertEqual(len(found.hook_ms), 1, "the run's time is one hook call")
 
     def test_a_command_shape_is_its_program_and_its_option_or_subcommand(self):
         for command, expected in (("sed -i 's/a/b/' x", "sed -i"), ("git status --short", "git status"),

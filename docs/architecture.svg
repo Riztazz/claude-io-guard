@@ -229,7 +229,7 @@
       'The bridge rebuilds the Event from the substituted fields.',
       "hooks.entry runs the pipeline in this session's Context.",
       'The pipeline selects the checks for this event, orders them and runs them, within 300 ms, or 2 s at most.',
-      'Checks call lib: values in, values out. Each decision is also one telemetry line.',
+      'Checks call lib: values in, values out. Each code a check gives is also one telemetry line.',
       'Checks read the config, the probe, git and the session state from the Context, and the end of the transcript, for a call Claude Code refused before any hook ran.',
       "The answer returns as the tool result, and Claude Code reads it as the hook's decision: deny, ask or allow with a rewritten command, a fixed Write or Edit input that leaves the decision to Claude Code, or context only.",
       'The permission rules and the auto-mode classifier judge the rewritten input.',
@@ -254,7 +254,7 @@
       'lib writes the probe and the heartbeat into io-guard's folder. A heartbeat older than 30 seconds, or a server Claude Code skipped after a failed start, gives one warning.'
     ] },
     D: { name: 'D. Telemetry and the dashboard', steps: [
-      'Every check decision is one telemetry line, with no file content.',
+      'Every code a check gives is one telemetry line, with no file content.',
       'Every io tool call is one telemetry line.',
       'lib appends them to one file per session.',
       'The dashboard and report.py show counts and percentiles.'

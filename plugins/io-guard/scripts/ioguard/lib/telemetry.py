@@ -1,4 +1,5 @@
-"""One JSONL line per decision, in events/<YYYY-MM>/<session>.jsonl in io-guard's folder.
+"""One JSONL line per check result, hook call and io tool call, in events/<YYYY-MM>/<session>.jsonl in
+io-guard's folder.
 
 A line holds codes, timings and names, never file content: no old_string, no new_string, and at most 200
 characters of a command. The trace context joins the PreToolUse decision, an io tool call and the PostToolUse

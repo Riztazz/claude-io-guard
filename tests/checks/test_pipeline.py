@@ -203,6 +203,18 @@ class PipelineMerges(unittest.TestCase):
         self.assertEqual(outcome.decisions[0].results, (result,), "a decision's results reach the outcome")
 
 
+class PipelineRecordsEveryCode(unittest.TestCase):
+    def test_each_result_of_a_decision_is_its_own_line_and_only_the_first_is_timed(self):
+        ctx = Context.fake()
+        results = (Result.of(Code.TOUCHED_BY_SHELL, "a.", "Bash", "win32"),
+                   Result.of(Code.SHELL_WRITE, "b.", "Bash", "win32"))
+        pipeline_of(saying("a.says", Verdict.ALLOW, results=results)).run(bash_event(), ctx)
+        lines = [(item.code, item.latency_ms is not None) for item in ctx.telemetry.events
+                 if item.check == "a.says"]
+        self.assertEqual(lines, [(Code.TOUCHED_BY_SHELL.value, True), (Code.SHELL_WRITE.value, False)],
+                         "a code given second is recorded, and the check's time is counted once")
+
+
 class PipelineReachesAFixedPoint(unittest.TestCase):
     def test_running_on_its_own_output_changes_nothing(self):
         strip = rewriting("a.strip", "command", lambda value: value.rstrip())
