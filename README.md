@@ -128,6 +128,7 @@ A few jobs have no safe built-in tool, so the io server adds them:
 | `io.snapshot` | Keep the bytes of files, folders or globs under a tag for seven days, before a pass over many files |
 | `io.restore` | Put back the files a snapshot kept, only those that changed, after your yes |
 | `io.compare` | Show whether a pass changed code since a snapshot, ignoring comments or include lines, and where |
+| `io.stage` | Stage the hunks of a file that meet the lines you name, or that one task wrote, and never commit |
 
 The three that change a file write it once, only when every place they name matched once, and a failed one
 writes nothing and names the lines it nearly matched. Two subagents editing one file take turns. After one of
@@ -146,6 +147,10 @@ handle lasts an hour past the program's end.
 seven days. `io.restore` undoes a task file by file, where `git checkout` would throw away every other edit
 of the file too. It writes back only the files that changed since the snapshot, and Claude Code's own
 permission prompt asks you first, naming the files whose edits you'd lose.
+
+`io.stage` splits a session's work into commits without `git add -p`. Give it lines, or the tag you gave
+`io.snapshot` before a task, and it stages the hunks the journal says that task wrote. A hunk holding
+two tasks' lines is left for you, and named.
 
 ## What it never does
 

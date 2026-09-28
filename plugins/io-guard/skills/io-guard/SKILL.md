@@ -38,6 +38,7 @@ at all:
 | Keep files before a task | `io.snapshot` | `mcp__plugin_io-guard_io__io_snapshot` |
 | Put files back as a snapshot kept them | `io.restore` | `mcp__plugin_io-guard_io__io_restore` |
 | Show whether a pass changed code | `io.compare` | `mcp__plugin_io-guard_io__io_compare` |
+| Stage chosen hunks of a file | `io.stage` | `mcp__plugin_io-guard_io__io_stage` |
 <!-- The generated tools table ends here. -->
 
 ## What io-guard fixes on its own
@@ -93,6 +94,7 @@ A refused call did not run. A warning, or a note that io-guard fixed something, 
 | `FORMAT_FAILED` | The format command could not start, failed, or gave no text back, so io.format wrote nothing. | Fix what the message names, such as a line of the project's formatter config, then call io.format again. |
 | `GUARD_ERROR` | An io-guard check failed on this call, so io-guard skipped that check and let the call go on. | Nothing to do, because the debug log holds the details. |
 | `HANDLE_EXPIRED` | The handle names work io-guard no longer holds, because it ended over an hour ago or the server restarted. | Start the work again with the tool that made the handle. |
+| `HUNK_NOT_FOUND` | No unstaged hunk of the file meets the lines or the task asked for, so io.stage staged nothing. | Call io.stage with lines from the hunks the message lists, or with the task's tag. |
 | `INDENT_MISMATCH` | The new text's indent differs from the lines around it, tabs against spaces. | Indent the new text as the lines around it are. |
 | `INLINE_SCRIPT_INVALID` | The Python program in this command does not compile. | Fix the line the message names, then run the command again. |
 | `INVISIBLE_ADDED` | The write added a character the Read tool shows as nothing, such as U+FEFF or a zero-width space. | If the file should hold an escape rather than the character, write the escape again with its backslash doubled in the tool call. |
@@ -118,6 +120,7 @@ A refused call did not run. A warning, or a note that io-guard fixed something, 
 | `SHELL_WRITE` | The command writes a file git tracks through the shell, around io-guard's checks. | Use the Edit tool to change the file, or the Write tool to replace it whole. |
 | `SIZE_COLLAPSED` | The file holds far fewer bytes than the call should have left in it. | Read the file, and write the missing text back. |
 | `SNAPSHOT_TOO_LARGE` | The paths hold more files or bytes than one snapshot keeps, so io.snapshot kept nothing. | Call io.snapshot on fewer paths, such as only the folders the task changes. |
+| `STAGE_FAILED` | git could not stage the hunks, so the index is as it was. | Fix what git's message names, such as a file git does not track yet, then call io.stage again. |
 | `STALE_BINARY` | The last build in this session failed, so this run used what an earlier build made. | Fix the build and build again before trusting this result. |
 | `STALE_VIEW` | The file holds something other than what the call expected. | Read the file again, then change only what differs. |
 | `TOUCHED_BY_SHELL` | A shell command changed files the agent had read, or made new ones. | Read the changed files again before the next Edit. |

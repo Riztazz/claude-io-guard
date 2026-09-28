@@ -1,5 +1,5 @@
-"""Git through its porcelain, read-only: repository root, tracked files, status, attributes, changed lines,
-staged paths and stored bytes.
+"""Git through its porcelain: repository root, tracked files, status, attributes, changed lines, staged paths,
+stored bytes and one file's unstaged diff, all read-only, and one write, a patch applied to the index.
 
 Every call passes -c core.quotepath=false, so a non-ASCII path comes back as UTF-8, uses -z wherever it
 parses paths, and has a timeout. A call that fails raises GitError, so a caller never mistakes a failure for
@@ -139,6 +139,20 @@ class Git:
         """The paths the next commit adds, changes or renames to, from root, with forward slashes."""
         raw = self.checked(root, "diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR")
         return tuple(name for name in raw.decode("utf-8").split("\0") if name)
+
+    def unstaged(self, path: Path) -> bytes:
+        """path's changes the index does not hold yet, as git diff -U0 bytes, with no textconv, no external
+        diff and no colour. Empty when there are none."""
+        return self.checked(path.parent, "diff", "-U0", "--no-color", "--no-ext-diff", "--no-textconv", "--",
+                            path.name)
+
+    def stage_patch(self, root: Path, patch: bytes) -> None:
+        """Apply patch to the index only, as git apply --cached, which a -U0 patch needs --unidiff-zero for.
+        GitError carries git's own reason when it refuses."""
+        result = proc.run(["git", "-c", "core.quotepath=false", "apply", "--cached", "--unidiff-zero",
+                           "--recount", "-"], cwd=root, timeout_s=self.timeout_s, stdin=patch)
+        if not result.ok:
+            raise GitError(f"git apply --cached in {root} failed: {reason(result)}")
 
     def blob(self, root: Path, spec: str) -> bytes | None:
         """The bytes git stores for spec, such as HEAD:src/a.py, or :src/a.py for the staged file. None when

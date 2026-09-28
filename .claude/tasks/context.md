@@ -229,7 +229,10 @@ anthropics/claude-code#92427, open since the desktop's 2.1.260 on macOS, and tas
 Task 32's `live-restore` passed on both releases: after `io.snapshot` of a CRLF file and an `io.edit` of it,
 the PreToolUse hook on `io.restore` answered `ask` with `RESTORE_ASKED`, the permission prompt tool received
 the call, and the approved restore put the file's bytes back, CRLF included. Ten files of every kind on disk,
-a deleted one, a BOM, cp1250, binary and 70,000 bytes among them, came back with every hash as before.
+a deleted one, a BOM, cp1250, binary and 70,000 bytes among them, came back with every hash as before. The
+journal recorded `live-restore`'s `io.edit` under the tag `probe`, and `live-verify`'s Write and Edit, on
+2.1.283. `live-stage` passed on both releases: after an `io.edit` of lines 3 and 20, `io.stage` of line 3 left
+the index holding line 3's change alone and line 20's in the working tree, with no commit.
 
 Rules through a junction, checked on 2026-09-27 with Claude Code 2.1.281 and 2.1.283:
 

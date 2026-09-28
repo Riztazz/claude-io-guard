@@ -3,7 +3,7 @@ title: Add snapshots, an edit journal and hunk staging
 stage: H
 area: mcp
 created: 2026-09-27
-status: open
+status: done
 claimed-by: Pala Elektroniczna, 2026-09-28
 depends-on: [18, 23, 31]
 findings: [GIT-4, GIT-6, VFY-6, BYT-9, BYT-10]
@@ -44,7 +44,11 @@ It comes after the measurement (D20), so task 31's numbers can reshape it.
 - A batch across 10 files restores exactly: every file's hash matches its before-copy.
 - Staging 2 of 3 hunks leaves the third unstaged, and `git diff --cached` shows exactly those 2.
 
-## What changed so far
+## What changed
+
+Four commits, one per part, each with its tests and docs. Both done-when checks hold: ten files of every kind
+restore to their before-copies' hashes, and staging 2 of 3 hunks leaves the third unstaged with
+`git diff --cached` showing exactly those 2.
 
 - **Part 1, snapshot and restore, 2026-09-28.** `lib.snapshots` keeps a snapshot as
   `snapshots/<id>/snapshot.json` in io-guard's folder, beside a blob per file, found by its id or by the newest
@@ -68,3 +72,17 @@ It comes after the measurement (D20), so task 31's numbers can reshape it.
   snapshot holds in `code`, `includes` or `exact` mode, and names the first line that differs on each side.
   It uses no harness feature the other io tools do not, so it has no probe of its own. Tests: 782 before,
   797 after.
+- **Part 4, staging, 2026-09-28.** `lib.hunks` reads one file's `git diff -U0` into hunks and writes a patch
+  of the chosen ones byte for byte. `io.stage(path, lines | tag)` stages the hunks that meet the lines, or the
+  hunks whose lines that say anything the journal gives the task, through the new `GitPort.stage_patch`, `git
+  apply --cached --unidiff-zero --recount`, and never commits. A hunk mixing the task's lines with another's
+  is left and named. New codes `HUNK_NOT_FOUND` and `STAGE_FAILED`. In a real repository, 2 of 3 hunks
+  staged and the third stayed, every hunk of a CRLF `-text` file staged to the blob `git hash-object
+  --no-filters` gives (BYT-10), and a tag staged its own `io.edit` and left another task's. `live-stage`
+  passed on 2.1.281 and 2.1.283. Tests: 797 before, 810 after.
+- **Docs.** `README.md` (the four tools, the folder's snapshots and journal), `docs/design/architecture.md`
+  (layout, `GitPort`, codes, config keys, the section on keeping and putting back files, the journal,
+  handles), `docs/architecture.svg` (the io tools box, the folder box), `docs/compat.md`,
+  `docs/live-checks.md`, `CLAUDE.md` (the checks and tools), `context.md`, and the skill's generated tables.
+- **Not built.** `io.restore` writes are not journaled, since a restore undoes. Elicitation stays out, since
+  no surface shows its form, and the permission prompt carries the restore's question instead.

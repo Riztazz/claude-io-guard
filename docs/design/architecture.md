@@ -66,6 +66,7 @@ plugins/io-guard/
         snapshots.py               take, find, pending, sweep: files' bytes kept under a tag for seven days
         journal.py                 changed, record, entries: each write's lines and task tag, as line keys
         code_tokens.py             code_tokens, split_includes, compare: a file's code without comments
+        hunks.py                   parse, patch, owned: one file's git diff -U0 hunks, and whose they are
       checks/                      policy, one module per check
         base.py                    Check, CheckMeta, Cost
         registry.py                Registry, default_registry
@@ -228,6 +229,8 @@ class GitPort(Protocol):
     def attributes(self, path: Path) -> Mapping[str, str]: ...
     def staged(self, root: Path) -> tuple[str, ...]: ...           # added, changed or renamed, from root
     def blob(self, root: Path, spec: str) -> Optional[bytes]: ...  # "HEAD:a.py", or ":a.py" for the staged one
+    def unstaged(self, path: Path) -> bytes: ...                   # git diff -U0 against the index
+    def stage_patch(self, root: Path, patch: bytes) -> None: ...   # git apply --cached, the one write
 
 class FsPort(Protocol):
     def read_bytes(self, path: Path, limit: Optional[int] = None) -> bytes: ...
@@ -443,6 +446,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Internal | `SERVER_DOWN`, `CANCELLED` | 23, in `CODES` |
 | Internal | `HANDLE_EXPIRED`, with the first tool that makes a handle | 25, in `CODES` |
 | Location | `RESTORE_ASKED`, a warning, and `SNAPSHOT_TOO_LARGE` | 32, in `CODES` |
+| Stale | `HUNK_NOT_FOUND`, `STAGE_FAILED` | 32, in `CODES` |
 | Transport | `RULE_DENIED`, `RULE_ASKED`, from `run.rules` and `io.run` itself | 25, in `CODES` |
 | Transport | `COMMIT_POLICY`, a git commit whose message holds what `commit_policy` forbids | 29, in `CODES` |
 | Bytes | `FORMAT_FAILED`, when `io.format`'s command cannot start, fails or prints nothing | 26, in `CODES` |
@@ -1377,7 +1381,7 @@ times to format changed hunks, with the same clang-format (`context.md`, task 26
 
 ### Keep files, and put them back
 
-`mcp/tools_history.py` holds `io.snapshot`, `io.restore` and `io.compare` (task 32).
+`mcp/tools_history.py` holds `io.snapshot`, `io.restore`, `io.compare` and `io.stage` (task 32).
 
 ```python
 io.snapshot(paths, tag) -> SnapshotOutput(snapshot, tag, files, bytes, expires)
@@ -1385,6 +1389,7 @@ io.restore(tag, paths = []) -> RestoreOutput(snapshot, restored, unchanged, note
 io.compare(tag, mode = "code", paths = [])
 -> CompareOutput(snapshot, mode, same, differ: [Difference(path, how, before_line, after_line, before, after,
                                                            includes_added, includes_removed)])
+io.stage(path, lines = [], tag = "") -> StageOutput(path, staged, left, mixed)
 ```
 
 - **Keep.** `paths` names files, folders and globs from the project folder, and a folder takes every file
@@ -1408,6 +1413,15 @@ io.compare(tag, mode = "code", paths = [])
   does a kind of file with no rules for the mode, which the result says. A file whose bytes are unchanged is
   the same without being read, and each file that differs comes back with the first line that differs on
   each side. The call only reads.
+- **Stage.** `io.stage` reads the file's unstaged changes as `git diff -U0`, where every change is its
+  own hunk and no context joins two, through `lib.hunks`. It picks the hunks that meet `lines`, or, with
+  a `tag`, the hunks the journal gives that task: a hunk is the task's when every line it adds or removes
+  that says anything is one the task's writes added or removed, and a brace or a blank line counts only
+  in a hunk of nothing else. A hunk with some of the task's lines and some of another's is left and named
+  as mixed. The chosen hunks go to `GitPort.stage_patch`, `git apply --cached --unidiff-zero --recount`,
+  byte for byte as the diff gave them, so the index takes what `git add` of those lines would store
+  (BYT-10). It never commits. A file git does not track is `STAGE_FAILED`, whose fix is `git add -N`, and
+  lines that meet no hunk are `HUNK_NOT_FOUND`, naming where the hunks are.
 
 ### The edit journal
 

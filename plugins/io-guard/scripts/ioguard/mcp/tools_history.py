@@ -14,11 +14,12 @@ from dataclasses import dataclass
 from functools import partial
 from pathlib import Path, PurePosixPath
 
-from ioguard.lib import code_tokens, paths, snapshots
+from ioguard.lib import code_tokens, hunks, journal, paths, snapshots
 from ioguard.lib.context import Context, read_or_none
+from ioguard.lib.git import GitError
 from ioguard.lib.journal import text_of
 from ioguard.lib.results import Code, Fix, callable_name
-from ioguard.mcp.in_place import NOTE, held, refused
+from ioguard.mcp.in_place import NOTE, Place, held, places_shown, refused
 from ioguard.mcp.toolspec import InvalidArguments, ToolCall, ToolSpec, doc
 
 GLOB = frozenset("*?[")
@@ -210,6 +211,75 @@ def restore(given: RestoreInput, call: ToolCall) -> RestoreOutput:
     return RestoreOutput(found.id, restored, [kept.path.as_posix() for kept in plan.same], NOTE)
 
 
+@dataclass(frozen=True)
+class StageInput:
+    path: str = doc("The file, absolute or from the project folder.")
+    lines: list[Place] = doc("Stage every unstaged hunk that meets one of these line ranges of the file as "
+                             "it is now.", default_factory=list)
+    tag: str = doc("Or stage every hunk the journal says the task with this tag wrote, the tag io.snapshot "
+                   "was given.", default="")
+
+
+@dataclass(frozen=True)
+class StageOutput:
+    path: str = doc("The file, as a path with forward slashes.")
+    staged: list[Place] = doc("The hunks now staged, as lines of the file now.")
+    left: list[Place] = doc("The hunks left unstaged.")
+    mixed: list[Place] = doc("Hunks that hold the task's lines and other lines, left unstaged. Stage one by "
+                             "its lines if it belongs to the task.", default_factory=list)
+
+    def render(self) -> str:
+        head = (f"Staged {places_shown(self.staged)} of {self.path}, and left "
+                + (places_shown(self.left) if self.left else "nothing") + " unstaged. Nothing was committed.")
+        if not self.mixed:
+            return head
+        return f"{head}\nLeft {places_shown(self.mixed)}, which mix the task's lines with others."
+
+
+def stage(given: StageInput, call: ToolCall) -> StageOutput:
+    ctx, tool = call.context, "io.stage"
+    if bool(given.lines) == bool(given.tag.strip()):
+        raise InvalidArguments("io.stage takes lines or a tag, and not both.")
+    path = paths.normalise(given.path, call.cwd, ctx.platform)
+    try:
+        root = ctx.git.root(path)
+        if root is None or not ctx.git.is_tracked(path):
+            track = Fix("Bash", {"command": f'git add -N "{path.as_posix()}"'},
+                        "Run git add -N on it, so its lines become hunks, then call io.stage.")
+            raise refused(Code.STAGE_FAILED, f"git does not track {path.name}, so {tool} staged nothing.",
+                          tool, path, ctx, track)
+        diff = hunks.parse(ctx.git.unstaged(path))
+    except GitError as error:
+        raise refused(Code.STAGE_FAILED, f"{tool} staged nothing: {error}", tool, path, ctx) from None
+    if diff is not None and diff.binary:
+        raise refused(Code.STAGE_FAILED, f"{path.name} is binary, so it has no hunks to stage.", tool, path,
+                      ctx)
+    if diff is None or not diff.hunks:
+        raise refused(Code.HUNK_NOT_FOUND, f"{path.name} has no unstaged change, so {tool} staged nothing.",
+                      tool, path, ctx)
+    mixed: list[hunks.Hunk] = []
+    if given.lines:
+        chosen = [hunk for hunk in diff.hunks
+                  if any(hunk.meets(span.first_line, span.last_line) for span in given.lines)]
+    else:
+        added, removed = journal.keys_for(home_of(ctx), given.tag, path, ctx.platform.case_insensitive)
+        found = [hunks.owned(hunk, added, removed) for hunk in diff.hunks]
+        chosen = [each.hunk for each in found if each.mine]
+        mixed = [each.hunk for each in found if each.mixed]
+    if not chosen:
+        listed = places_shown([Place(*hunk.lines()) for hunk in diff.hunks])
+        asked = f"the tag {given.tag}" if given.tag else "the lines asked for"
+        raise refused(Code.HUNK_NOT_FOUND, f"No unstaged hunk of {path.name} belongs to {asked}, so {tool} "
+                      f"staged nothing. Its hunks are at {listed}.", tool, path, ctx)
+    try:
+        ctx.git.stage_patch(root, hunks.patch(diff, chosen))
+    except GitError as error:
+        raise refused(Code.STAGE_FAILED, f"{tool} staged nothing: {error}", tool, path, ctx) from None
+    left = [hunk for hunk in diff.hunks if hunk not in chosen and hunk not in mixed]
+    return StageOutput(path.as_posix(), *([Place(*hunk.lines()) for hunk in group]
+                                         for group in (chosen, left, mixed)))
+
+
 def line_of(text: str, number: int) -> str:
     """Line number of text, from 1, cut at 200 characters, or empty where the text has none."""
     lines = text.splitlines()
@@ -259,4 +329,9 @@ SPECS = (
              "to prove a comment or include pass changed no code.",
              CompareInput, CompareOutput, read_only=True, destructive=False, idempotent=True,
              handler=compare),
+    ToolSpec("io.stage", "Stage chosen hunks of a file",
+             "Stages the unstaged hunks of one file that meet the lines given, or that the journal says one "
+             "task wrote, through git apply --cached, and never commits. Use it to split a session's work "
+             "into commits without git add -p.",
+             StageInput, StageOutput, read_only=False, destructive=False, idempotent=False, handler=stage),
 )

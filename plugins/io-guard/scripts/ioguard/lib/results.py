@@ -203,6 +203,14 @@ CODES: tuple[CodeSpec, ...] = (
     CodeSpec("SNAPSHOT_TOO_LARGE", Layer.LOCATION, Severity.REFUSED,
              "The paths hold more files or bytes than one snapshot keeps, so io.snapshot kept nothing.",
              "Call io.snapshot on fewer paths, such as only the folders the task changes.", "0.1"),
+    CodeSpec("HUNK_NOT_FOUND", Layer.STALE, Severity.REFUSED,
+             "No unstaged hunk of the file meets the lines or the task asked for, so io.stage staged "
+             "nothing.",
+             "Call io.stage with lines from the hunks the message lists, or with the task's tag.", "0.1"),
+    CodeSpec("STAGE_FAILED", Layer.STALE, Severity.REFUSED,
+             "git could not stage the hunks, so the index is as it was.",
+             "Fix what git's message names, such as a file git does not track yet, then call io.stage again.",
+             "0.1"),
 )
 Code = Enum("Code", {spec.code: spec.code for spec in CODES})
 SPECS: dict[Code, CodeSpec] = {Code[spec.code]: spec for spec in CODES}

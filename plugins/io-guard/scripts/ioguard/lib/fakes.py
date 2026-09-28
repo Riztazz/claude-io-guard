@@ -97,8 +97,10 @@ class FakeGit:
                  ranges: Mapping[Path, tuple[LineRange, ...]] | None = None,
                  attributes: Mapping[Path, Mapping[str, str]] | None = None,
                  staged_paths: tuple[str, ...] = (), blobs: Mapping[str, bytes] | None = None,
-                 other_roots: tuple[Path, ...] = ()) -> None:
+                 other_roots: tuple[Path, ...] = (), diffs: Mapping[Path, bytes] | None = None) -> None:
         self.repo_root = root
+        self.diffs = dict(diffs or {})             # each path's unstaged diff
+        self.patches: list[bytes] = []             # every patch staged, in order
         self.other_roots = other_roots             # more repositories, each the root of the paths under it
         self.staged_paths = staged_paths
         self.blobs = dict(blobs or {})             # by spec, such as HEAD:a.py or :a.py
@@ -131,3 +133,9 @@ class FakeGit:
 
     def blob(self, root: Path, spec: str) -> bytes | None:
         return self.blobs.get(spec)
+
+    def unstaged(self, path: Path) -> bytes:
+        return self.diffs.get(path, b"")
+
+    def stage_patch(self, root: Path, patch: bytes) -> None:
+        self.patches.append(patch)

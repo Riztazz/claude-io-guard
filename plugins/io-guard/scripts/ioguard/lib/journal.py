@@ -104,6 +104,18 @@ def record(home: Path, entry: Entry) -> None:
             out.write(json.dumps(line) + "\n")
 
 
+def keys_for(home: Path, tag: str, path: Path, case_insensitive: bool) -> tuple[set[str], set[str]]:
+    """The keys of every line writes tagged tag added to path, and of every line they removed."""
+    def name(of: str) -> str:
+        return of.casefold() if case_insensitive else of
+    wanted, added, removed = name(path.as_posix()), set(), set()
+    for entry in entries(home):
+        if entry.tag == tag and name(entry.path) == wanted:
+            added.update(entry.changed.added)
+            removed.update(entry.changed.removed)
+    return added, removed
+
+
 def entries(home: Path) -> Iterator[Entry]:
     """Every journal line in io-guard's folder, file by file, skipping a line that cannot be read."""
     for path in sorted((home / "journal").glob("*/*.jsonl")):

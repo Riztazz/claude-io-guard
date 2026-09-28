@@ -204,6 +204,14 @@ RUN_ASKED = (f"Do these in order. 1. {LOAD_RUN} 2. Call {IO_RUN} with argv [\"gi
              "\"--dry-run\"]. Then quote its result, or any refusal, word for word and reply DONE.")
 IO_SNAPSHOT = "mcp__plugin_io-guard_io__io_snapshot"
 IO_RESTORE = "mcp__plugin_io-guard_io__io_restore"
+IO_STAGE = "mcp__plugin_io-guard_io__io_stage"
+STAGE_LINES = b"".join(f"line {number}\n".encode() for number in range(1, 31))
+STAGE_STEPS = (
+    f"Do these in order. 1. Load {IO_EDIT} and {IO_STAGE} with the ToolSearch tool, with the query "
+    f"select:{IO_EDIT},{IO_STAGE} 2. Call {IO_EDIT} with path a.txt and two edits, old_string \"line 3\\n\" "
+    "to new_string \"LINE 3\\n\", and old_string \"line 20\\n\" to new_string \"LINE 20\\n\". 3. Call "
+    f"{IO_STAGE} with path a.txt and lines [{{\"first_line\": 3, \"last_line\": 3}}]. Then quote each "
+    "result, or any refusal, word for word and reply DONE.")
 RESTORE_STEPS = (
     f"Do these in order. 1. Load {IO_SNAPSHOT}, {IO_EDIT} and {IO_RESTORE} with the ToolSearch tool, with "
     f"the query select:{IO_SNAPSHOT},{IO_EDIT},{IO_RESTORE} 2. Call {IO_SNAPSHOT} with paths "
@@ -461,6 +469,8 @@ PROBES = {
     "live-restore": Probe(0, "record", guard="", server=True, extra_args=PERMIT,
                           allowed=("ToolSearch", IO_SNAPSHOT, IO_EDIT, IO_RESTORE), prompt=RESTORE_STEPS,
                           check=("notes.txt",), setup={"notes.txt": b"one\r\ntwo\r\n"}),
+    "live-stage": Probe(0, "", guard="", allowed=("ToolSearch", IO_EDIT, IO_STAGE), prompt=STAGE_STEPS,
+                        git=True, setup={"a.txt": STAGE_LINES}),
     "live-format": Probe(0, "", guard="", allowed=("ToolSearch", IO_EDIT, IO_FORMAT), prompt=FORMAT_STEPS,
                          git=True, check=("a.cpp",),
                          setup={".clang-format": FORMAT_STYLE, "a.cpp": FORMAT_CPP}),
@@ -964,6 +974,19 @@ def restore_asked(summary: dict, name: str) -> bool:
     return prompted and asked and summary["files"].get("notes.txt") == "one\r\ntwo\r\n"
 
 
+def staged_one_hunk(summary: dict, name: str) -> bool:
+    """After io.edit changed lines 3 and 20, io.stage staged line 3 alone: the index holds LINE 3, the working
+    tree's diff still holds LINE 20, and nothing was committed."""
+    folder, _ = latest(name)
+    work = folder / "work"
+    cached, left = (subprocess.run(["git", *args, "--", "a.txt"], cwd=work, capture_output=True,
+                                   timeout=60).stdout for args in (("diff", "--cached"), ("diff",)))
+    commits = subprocess.run(["git", "rev-list", "--count", "HEAD"], cwd=work, capture_output=True,
+                             timeout=60).stdout.strip()
+    return (b"+LINE 3" in cached and b"LINE 20" not in cached and b"+LINE 20" in left
+            and b"LINE 3" not in left and commits == b"1")
+
+
 def formatted_changed_lines(summary: dict, name: str) -> bool:
     """io.format formatted the edited line, left the committed line 1 as badly formatted as it was, and kept
     the BOM and every CRLF although the style names LF. Its own result names the lines it changed, so the
@@ -1130,6 +1153,7 @@ VERDICTS = {
     "live-run-denied": lambda s, n: "RULE_DENIED: io.run would run git push origin main" in seen(s),
     "live-run-asked": run_asked,
     "live-restore": restore_asked,
+    "live-stage": staged_one_hunk,
     "live-format": formatted_changed_lines,
     "live-skill": recovered_once,
     "live-commit-asked": commit_asked,
