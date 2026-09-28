@@ -332,6 +332,8 @@ docs/                 the architecture drawing, the design and its review, and t
   you do.
 - See what io-guard fixed, warned about and refused this week with `python tools/report.py`. It reads the
   telemetry of every installed io-guard on the machine, and `--data` names another folder.
+- Compare the failure classes before and after io-guard with `python tools/measure.py NAME=FOLDER ...`, one
+  pair per transcript folder under `~/.claude/projects/`, and `--since` the day io-guard went on.
 - After a Claude Code update, run `python tools/probes/run_probe.py run all`, then `verdicts`, to recheck every
   harness fact io-guard relies on. [`docs/compat.md`](docs/compat.md) lists the features, and
   [`docs/live-checks.md`](docs/live-checks.md) says when each was last confirmed.

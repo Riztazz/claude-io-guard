@@ -125,25 +125,41 @@ def record(project: str, agent: bool, use: dict, entry: dict, mode: str, result:
         labels=labels(use["name"], str(tool_input.get("command") or ""), text, failed))
 
 
-def build(sources: Sequence[tuple[str, Path]], out: Path) -> dict:
-    """Write the corpus for the sources into out, and return its index."""
-    out.mkdir(parents=True, exist_ok=True)
+def grouped(sources: Sequence[tuple[str, Path]]) -> dict[str, list[Path]]:
     folders: dict[str, list[Path]] = defaultdict(list)
     for name, folder in sources:
         folders[name].append(folder)
-    tally = Tally(Counter(), Counter())
+    return folders
+
+
+def records(sources: Sequence[tuple[str, Path]], tally: Tally) -> Iterator[Record]:
+    """Every guarded call in the sources' transcripts, project by project, each tool use id once: a resumed
+    session copies its history into a new transcript, and tally counts those copies."""
     seen: set[str] = set()
-    for name, named in folders.items():
-        with (out / f"{name}.jsonl").open("wb") as corpus:
-            for path in sorted(path for folder in named for path in folder.rglob("*.jsonl")):
-                for found in read_transcript(path, name, tally):
-                    if found.id in seen:
-                        tally.copies += 1
-                        continue
-                    seen.add(found.id)
-                    corpus.write(json.dumps(found.to_json(), ensure_ascii=True).encode("ascii") + b"\n")
-                    tally.records[(name, found.tool)] += 1
-                    tally.labels.update(found.labels)
+    for name, named in grouped(sources).items():
+        for path in sorted(path for folder in named for path in folder.rglob("*.jsonl")):
+            for found in read_transcript(path, name, tally):
+                if found.id in seen:
+                    tally.copies += 1
+                    continue
+                seen.add(found.id)
+                yield found
+
+
+def build(sources: Sequence[tuple[str, Path]], out: Path) -> dict:
+    """Write the corpus for the sources into out, and return its index."""
+    out.mkdir(parents=True, exist_ok=True)
+    folders = grouped(sources)
+    tally = Tally(Counter(), Counter())
+    files = {name: (out / f"{name}.jsonl").open("wb") for name in folders}
+    try:
+        for found in records(sources, tally):
+            files[found.project].write(json.dumps(found.to_json(), ensure_ascii=True).encode("ascii") + b"\n")
+            tally.records[(found.project, found.tool)] += 1
+            tally.labels.update(found.labels)
+    finally:
+        for handle in files.values():
+            handle.close()
     index = {
         "schema": CORPUS_SCHEMA,
         "built": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

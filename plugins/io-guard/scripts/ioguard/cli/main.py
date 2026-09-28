@@ -4,18 +4,20 @@
     replay [--corpus corpus] [--project NAME ...] [--out FILE]
     precommit
     report [--data FOLDER ...] [--days 7]
+    measure NAME=FOLDER [NAME=FOLDER ...] [--since YYYY-MM-DD] [--data FOLDER ...]
 """
 import argparse
 import json
 import os
 import sys
 import time
+from collections import Counter
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
 from ioguard.checks.registry import default_registry
-from ioguard.cli import corpus, precommit, replay, report
+from ioguard.cli import corpus, measure, precommit, replay, report
 
 
 def source(text: str) -> tuple[str, Path]:
@@ -45,6 +47,12 @@ def parser() -> argparse.ArgumentParser:
     week.add_argument("--data", type=Path, action="append", default=[],
                       help="a plugin data folder, repeatable, every installed io-guard's by default")
     week.add_argument("--days", type=int, default=7, help="the days to report, counting back from now")
+    rate = commands.add_parser("measure", help="the baseline's failure classes before and after io-guard")
+    rate.add_argument("sources", nargs="+", type=source, metavar="NAME=FOLDER")
+    rate.add_argument("--since", type=measure.since_date, default=measure.ADOPTED,
+                      help="the first day with io-guard on, YYYY-MM-DD")
+    rate.add_argument("--data", type=Path, action="append", default=[],
+                      help="a plugin data folder for the guard's own time, every installed io-guard's by default")
     return top
 
 
@@ -81,4 +89,11 @@ def main(argv: Sequence[str]) -> int:
                       "~/.claude/plugins/data/io-guard-claude-io-guard.")
                 return 1
             print(report.run(folders, args.days, datetime.now(timezone.utc)))
+        case "measure":
+            before, after = measure.measure(corpus.records(args.sources, corpus.Tally(Counter(), Counter())),
+                                            args.since)
+            since = datetime.strptime(args.since, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            folders = args.data or report.data_folders(os.environ, Path.home())
+            telemetry = report.summarise(report.files(folders, since), since)
+            print(measure.render(before, after, report.spread(telemetry.hook_ms).get("p95")))
     return 0

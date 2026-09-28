@@ -87,6 +87,8 @@ Each line works once the task that builds it has landed.
   out of date
 - The week's telemetry on one screen: `python tools/report.py`, or `--data <folder>` for another data folder,
   such as `~/.claude/plugins/data/io-guard-inline`, where the probes' sessions write
+- Task 31's measurement: `python tools/measure.py CLICKER=<folder> ...`, the same `NAME=FOLDER` pairs as the
+  corpus, split at `--since`, 2026-09-28 by default
 - The plugin in the desktop app, which is the lead's main surface: run
   `claude plugin marketplace add <path to this clone>`, then `claude plugin install io-guard@claude-io-guard`
 

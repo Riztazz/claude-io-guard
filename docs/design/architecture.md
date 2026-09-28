@@ -105,13 +105,14 @@ plugins/io-guard/
         tools_hook.py              hook.pre_tool_use, hook.post_tool_use, hook.post_tool_use_failure, hook.ping
         skill.py                   the skill page's tool and code tables, which tools/skill.py writes
       cli/
-        main.py                    corpus, replay, precommit and report today, then probe, check, profile, codes,
-                                   serve, doctor
+        main.py                    corpus, replay, precommit, report and measure today, then probe, check,
+                                   profile, codes, serve, doctor
         labels.py                  the baseline's labels for a recorded call's result and command shape
         corpus.py                  Record, build, load: transcripts -> corpus/<project>.jsonl
         replay.py                  Replay, replay, render: the corpus through the pipeline, offline
         precommit.py               staged_results, run: each staged file against HEAD, for the git hook
         report.py                  files, summarise, render: the week's telemetry by code, tool and time
+        measure.py                 measure, render: task 31's classes per 1,000 calls before and after io-guard
 tests/                             mirrors ioguard, plus fixtures/, support/, mcp/, replay/
 tools/                             ioguard.py, corpus.py, replay.py, measure.py, report.py, probes/
 ```

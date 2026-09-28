@@ -127,8 +127,8 @@ def spread(values: Sequence[float]) -> dict:
 
     def at(share: float) -> float:
         return round(ordered[min(len(ordered) - 1, int(share * len(ordered)))], 1)
-    return {"n": len(ordered), "p50": round(statistics.median(ordered), 1), "p90": at(0.9), "p99": at(0.99),
-            "max": round(ordered[-1], 1)}
+    return {"n": len(ordered), "p50": round(statistics.median(ordered), 1), "p90": at(0.9), "p95": at(0.95),
+            "p99": at(0.99), "max": round(ordered[-1], 1)}
 
 
 def shown(values: Sequence[float]) -> str:
