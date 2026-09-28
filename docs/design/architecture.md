@@ -947,6 +947,11 @@ Four layers merge in this order, and a later layer overrides an earlier one key 
 | Project | `<project>/.claude/io-guard.json` | no |
 | Project local | `<project>/.claude/io-guard.local.json`, gitignored | no |
 
+`<project>` is `lib.context.project_root` of the hook's `cwd`: the nearest folder at or above it that holds one
+of the two project files, else the nearest that holds `.git`, else `cwd` itself. The hooks keep one Context per
+session and project root, and telemetry names the project by the root. A call on a file outside the root runs
+with `Context.for_file`, whose config holds the defaults and the user layer alone (task 57).
+
 **Every policy value is a key here, with its default in code (D16).** A number that decides behaviour and has no
 key is a defect. The values above are the defaults the lead set on 2026-09-27. A key enters `lib.config` with
 the code that reads it, because a key nothing reads is a validation error in waiting. Task 07 defined

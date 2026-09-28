@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from ioguard.lib.context import (SNAPSHOTS_KEPT, Context, LiveFs, Probe, SessionState, Snapshot,
-                                 claude_folder, home_folder, memory_file)
+                                 claude_folder, home_folder, memory_file, project_root)
 from ioguard.lib.fakes import FakeClock, FakeFs
 from ioguard.lib.git import Git
 from ioguard.lib.platform import detect
@@ -73,6 +73,19 @@ class IoGuardsFolderIsOnePerUser(unittest.TestCase):
     def test_the_suite_never_uses_the_users_own_folder(self):
         self.assertTrue(home_folder(os.environ).is_relative_to(tempfile.gettempdir()),
                         "tests/__init__ points IOGUARD_HOME at a temporary folder for every test")
+
+
+class AProjectIsTheNearestFolderThatNamesOne(unittest.TestCase):
+    def test_the_nearest_config_or_repository_above_the_working_folder(self):
+        root = Path(tempfile.mkdtemp(prefix="ioguard-root-"))
+        self.addCleanup(shutil.rmtree, root, True)
+        for folder in ("app/.claude", "app/src/deep", "app/lib/.git", "app/lib/pkg", "loose/sub"):
+            (root / folder).mkdir(parents=True)
+        (root / "app" / ".claude" / "io-guard.json").write_bytes(b"{}")
+        found = [project_root(root / name) for name in ("app/src/deep", "app/lib/pkg", "loose/sub")]
+        self.assertEqual(found, [root / "app", root / "app" / "lib", root / "loose" / "sub"],
+                         "a config file or a repository ends the walk, whichever is nearer, and a folder "
+                         "under neither is its own project")
 
 
 class AMemoryNoteLivesInClaudeCodesFolder(unittest.TestCase):

@@ -84,9 +84,10 @@ class Run:
     def record(self, **fields: Any) -> None:
         event, ctx = self.event, self.ctx
         suffix = None if event.file_path is None else event.file_path.suffix or None
+        project = (ctx.project or event.cwd).name or None
         ctx.telemetry.record(TelemetryEvent(
             ts=ctx.clock.now(), session=event.session_id, event=event.kind.value,
-            surface=event.surface.value, platform=ctx.platform.os, project=event.cwd.name or None,
+            surface=event.surface.value, platform=ctx.platform.os, project=project,
             tool=event.tool_name or None, tool_use_id=event.tool_use_id, agent_id=event.agent_id,
             prompt_id=event.prompt_id, trace=self.trace, cmd_head=event.command, file_ext=suffix, **fields))
 

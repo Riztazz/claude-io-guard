@@ -8,7 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
-from ioguard.checks.registry import Registry
+from ioguard.checks.registry import Registry, default_registry
 from ioguard.hooks import entry
 from ioguard.lib.config import Config, ConfigError, LoadReport, defaults
 from ioguard.lib.context import Context
@@ -92,6 +92,16 @@ class LiveContextsKeepOneSessionState(unittest.TestCase):
         self.assertIs(one, again, "the config loads once per session and project")
         self.assertIsNot(one, other, "another project loads its own config")
         self.assertIs(one.session, other.session, "the session's state is shared across its projects")
+
+    def test_a_subfolder_gets_its_projects_config_and_a_file_outside_takes_the_users_alone(self):
+        config = json.dumps({"checks": {"verify.write": {"ascii_only": [".py"]}}}).encode("ascii")
+        with TemporaryProject({".claude/io-guard.json": config, "src/deep/a.py": b"x\n"}) as project, \
+                TemporaryProject() as data, mock.patch.dict(os.environ, {"IOGUARD_HOME": str(data)}):
+            ctx = entry.LiveContexts().get("s1", project / "src" / "deep", default_registry())
+            inside = ctx.for_file(project / "src" / "a.py").config.get("checks.verify.write.ascii_only")
+            outside = ctx.for_file(data / "notes.md").config.get("checks.verify.write.ascii_only")
+        self.assertEqual((ctx.project, inside, outside), (project, [".py"], []),
+                         "the project's layers govern its own files from any subfolder, and no other files")
 
     def test_the_user_config_comes_from_io_guards_folder(self):
         config = {"transport": {"rewrite_mode": {"default": "refuse"}}}

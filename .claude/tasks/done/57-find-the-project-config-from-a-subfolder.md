@@ -3,7 +3,8 @@ title: Find the project's config when the session works in a subfolder
 stage: I
 area: runtime
 created: 2026-09-28
-status: open
+status: done
+claimed-by: Pala Elektroniczna, session 7eeb509f
 depends-on: [07, 08]
 findings: []
 platforms: [windows, macos]
@@ -43,3 +44,29 @@ loaded. The telemetry names each of those events after the subfolder, as project
 
 - A Write of a non-ASCII `.py` line from `plugins/io-guard/scripts/ioguard` as the working folder gets
   `NON_ASCII_ADDED`, as it does from the repository root.
+
+## What changed
+
+- `lib/context.py`: `project_root(cwd)`, and `Context.project` and `Context.outside`, the config with the
+  project's layers left out. `Context.for_file(path)` gives a call on a file outside the root that config.
+- `hooks/entry.py`: `LiveContexts` keys each Context by session and project root, and loads the root's
+  layers. `run_event` runs each call with `ctx.for_file(event.file_path)`, and names the config message's
+  project by the root. The io tools reach the same Contexts through `hooks.bridge`, so they get the root too.
+- `checks/pipeline.py`: telemetry's `project` is the root's name.
+- Decision D31 in `context.md`: the walk up from `cwd`, not `CLAUDE_PROJECT_DIR`, with the reason.
+- Tests: `tests/hooks/test_entry.py` (a subfolder gets the project's `ascii_only`, a file outside gets none)
+  and `tests/lib/test_context.py` (the nearest config or repository ends the walk).
+- `tools/probes/run_probe.py`: `live-subfolder-config`.
+- Docs: `docs/design/architecture.md` (the config layers), `README.md` (Configure it), `docs/live-checks.md`,
+  `docs/compat.md`, `.claude/tasks/context.md`.
+
+Evidence:
+
+- `python tests/run_all.py` ran 849 tests, all passing, up from 847.
+- `live-subfolder-config` passed on 2.1.281 and 2.1.283, and again on 2.1.283 after its prompt source went
+  ASCII: after `cd sub`, a Write of `name = "café"` to `sub/x.py` got `NON_ASCII_ADDED` from the root's
+  `.claude/io-guard.json`. Before the change the config was looked for in `sub/.claude/` and not found.
+- Not built: an io tool's call on a file outside the project still runs with the project's config. Only the
+  hooks take `for_file`.
+- The done-when above runs in this repository's desktop session once the plugin is updated.
+- Checked on Windows on 2026-09-28.

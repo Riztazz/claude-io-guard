@@ -248,6 +248,10 @@ COMMIT_ASKED = (GRANTED + "Do these in order, one Bash call each. 1. Run: git co
                 "or needed approval, and reply DONE.")
 COMMIT_POLICY = {"commit_policy": {"forbid": ["Co-Authored-By"]}}
 VERIFY_PY = {"verify": {".py": ["python", "-m", "py_compile", "{file}"]}}
+ASCII_PY = json.dumps({"checks": {"verify.write": {"ascii_only": [".py"]}}}).encode("ascii")
+SUBFOLDER_WRITE = ("Do these in order, one tool call each, and never retry. 1. Run the Bash command: cd sub "
+                   "2. Use the Write tool to create x.py in the sub folder with exactly this one line: "
+                   "name = \"caf" + chr(0xE9) + "\" Then reply DONE.")
 BROKEN_PY = ("Use the Write tool once to create bad.py with exactly this one line: def f(: Then reply DONE, "
              "without fixing anything.")
 COMMIT_WITH_CO_AUTHOR = (GRANTED + "The co-author line is the test: the guard should refuse it. Run "
@@ -529,6 +533,9 @@ PROBES = {
     "live-commit-policy": Probe(0, "", guard="", permission="dontAsk", allowed=("Bash",), git=True,
                                 prompt=COMMIT_WITH_CO_AUTHOR, user_config=COMMIT_POLICY,
                                 setup={"notes.txt": b"one\n"}),
+    "live-subfolder-config": Probe(0, "", guard="", permission="acceptEdits", allowed=("Bash", "Write"),
+                                   git=True, prompt=SUBFOLDER_WRITE, max_turns=6,
+                                   setup={".claude/io-guard.json": ASCII_PY, "sub/keep.txt": b"k\n"}),
     "live-verify-output": Probe(0, "", guard="", permission="acceptEdits", allowed=("Write",),
                                 prompt=BROKEN_PY, user_config=VERIFY_PY, max_turns=4),
 }
@@ -1231,6 +1238,7 @@ VERDICTS = {
         "EOL_MISMATCH: This command changed conv.txt from CRLF to LF line endings.")),
     "live-results": results_shown,
     "live-pipe-once": piped_twice_warned_once,
+    "live-subfolder-config": lambda s, n: context_reached(n, "NON_ASCII_ADDED: This Write added 1 non-ASCII"),
     "live-verify-output": lambda s, n: context_reached(n, "VERIFY_OUTPUT: io-guard ran python -m py_compile"),
     "live-read-width": lambda s, n: context_reached(n, "io-guard: LF, UTF-8, 4 spaces, 7 lines"),
     "edit-delete-join": lambda s, n: s["files"]["f.txt"] == "ac\n",

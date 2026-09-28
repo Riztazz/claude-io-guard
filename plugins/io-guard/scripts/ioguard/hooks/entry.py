@@ -14,7 +14,7 @@ from typing import Any
 from ioguard.checks.pipeline import Outcome, Pipeline
 from ioguard.checks.registry import Registry, default_registry
 from ioguard.hooks.answer import answer
-from ioguard.lib.context import Context, SessionState, home_folder
+from ioguard.lib.context import Context, SessionState, home_folder, project_root
 from ioguard.lib.events import Event, Surface
 from ioguard.lib.results import Code, Result, render
 from ioguard.lib.telemetry import debug_log
@@ -37,12 +37,14 @@ class LiveContexts:
         self.failed: set[str] = set()           # sessions already told that run_event failed
 
     def get(self, session_id: str, cwd: Path, registry: Registry) -> Context:
-        data = home_folder(os.environ)
+        """The context for the project cwd belongs to, so a session working in a subfolder keeps the
+        project's config."""
+        data, root = home_folder(os.environ), project_root(cwd)
         with self.lock:
-            key = (data, session_id, cwd)
+            key = (data, session_id, root)
             if key not in self.contexts:
                 session = self.sessions.setdefault((data, session_id), SessionState.shared(data, session_id))
-                built = Context.live(data, cwd, registry.keys())
+                built = Context.live(data, root, registry.keys())
                 if built.config.get("telemetry.debug"):
                     debug_log(data / "debug.log")
                 self.contexts[key] = replace(built, session=session)
@@ -78,8 +80,8 @@ def run_event(raw: Mapping[str, Any], surface: Surface, ctx: Context | None = No
         return {}
     try:
         registry = registry or default_registry()
-        ctx = ctx or CONTEXTS.get(event.session_id, event.cwd, registry)
-        outcome = with_config_message(Pipeline(registry).run(event, ctx), ctx, event.cwd)
+        ctx = (ctx or CONTEXTS.get(event.session_id, event.cwd, registry)).for_file(event.file_path)
+        outcome = with_config_message(Pipeline(registry).run(event, ctx), ctx, ctx.project or event.cwd)
         mode = ctx.config.get(f"transport.rewrite_mode.{event.permission_mode.value}")
         return answer(event, outcome, mode)
     except Exception:

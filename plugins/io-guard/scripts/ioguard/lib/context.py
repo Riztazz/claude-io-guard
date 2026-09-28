@@ -11,7 +11,7 @@ import sys
 import threading
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from types import MappingProxyType
@@ -349,6 +349,18 @@ def memory_file(path: Path, env: Mapping[str, str]) -> bool:
     return len(parts) == 3 and parts[1] == "memory" and path.suffix.lower() == ".md"
 
 
+def project_root(cwd: Path) -> Path:
+    """The project a working folder belongs to: the nearest folder at or above it that holds io-guard's
+    project config, else the nearest that holds .git, else the folder itself."""
+    for folder in (cwd, *cwd.parents):
+        claude = folder / ".claude"
+        if (claude / "io-guard.json").is_file() or (claude / "io-guard.local.json").is_file():
+            return folder
+        if (folder / ".git").exists():
+            return folder
+    return cwd
+
+
 def load_probe(data_dir: Path | None, platform: Platform) -> Probe:
     path = None if data_dir is None else data_dir / "probe.json"
     if path is None or not path.is_file():
@@ -369,6 +381,8 @@ class Context:
     config_report: LoadReport | None = None
     env: Mapping[str, str] = field(default_factory=dict)   # the environment, so no check reads os.environ
     data_dir: Path | None = None                           # io-guard's folder, None in a fake or a replay
+    project: Path | None = None                            # the root whose layers config holds
+    outside: Config | None = None                          # the config without the project's layers
 
     @classmethod
     def live(cls, data_dir: Path | None, project: Path,
@@ -383,7 +397,15 @@ class Context:
         return cls(config=report.config, probe=load_probe(data_dir, platform), platform=platform, git=Git(),
                    fs=LiveFs(), clock=SystemClock(), session=SessionState(),
                    telemetry=Telemetry(data_dir, enabled=report.config.get("telemetry.enabled")),
-                   config_report=report, env=MappingProxyType(dict(os.environ)), data_dir=data_dir)
+                   config_report=report, env=MappingProxyType(dict(os.environ)), data_dir=data_dir,
+                   project=project, outside=load(user, check_keys or {}).config)
+
+    def for_file(self, path: Path | None) -> "Context":
+        """This context for a call on path: a file outside the project takes the config without the
+        project's layers, so one project's rules never govern another's files."""
+        if path is None or self.project is None or self.outside is None or path.is_relative_to(self.project):
+            return self
+        return replace(self, config=self.outside)
 
     @classmethod
     def fake(cls, files: Mapping[Path, bytes] | None = None, **overrides: Any) -> "Context":

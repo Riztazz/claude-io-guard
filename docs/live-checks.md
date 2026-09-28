@@ -103,6 +103,7 @@ Confirmed with `tools/probes/run_probe.py`, whose `verdicts` command rechecks ev
 | 33. A plugin's stdio server that fails to start is cached in `~/.claude/mcp-needs-auth-cache.json`, and every session in the next 15 minutes skips it, CLI and desktop alike | `live-server-down` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | 34. An MCP server's environment names its own session in `CLAUDE_CODE_SESSION_ID` | `era-legacy` | 2.1.283 | waits for the Mac | 2026-09-28 |
 | 39. The desktop app rewrites a memory note's frontmatter after a Write or an Edit, before PostToolUse reads it. `claude -p` leaves the note as written | the lead's desktop sessions, a one-off `claude -p` run | desktop 2.1.281, CLI 2.1.283 | waits for the Mac | 2026-09-28 |
+| After `cd sub`, a Write of a non-ASCII `.py` in the subfolder gets `NON_ASCII_ADDED` from the project root's `.claude/io-guard.json` | `live-subfolder-config` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | A Write of a broken `.py` with a `py_compile` verify command gets `VERIFY_OUTPUT`, and the telemetry counts it | `live-verify-output` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | A Read of a 4-space Python file whose continuation lines align under a bracket says `4 spaces` | `live-read-width` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | 41. An Edit with an empty `new_string` also removes the line break after its match, so `\nb` deleted from `a\nb\nc\n` leaves `ac\n` | `edit-delete-join` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
