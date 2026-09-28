@@ -54,7 +54,7 @@ tightens.
 - **A subprocess is `lib.proc.run` with an argument list and a timeout.** Never `shell=True`. Git runs as
   `git -c core.quotepath=false` with `-z` wherever paths are parsed.
 - **A check reads `ctx.platform` and `ctx.probe`, never `sys.platform`.** Every platform difference lives behind a
-  `lib` function that takes the `Platform`. The environment is `ctx.env` and the data folder `ctx.data_dir`, never
+  `lib` function that takes the `Platform`. The environment is `ctx.env` and io-guard's folder `ctx.data_dir`, never
   `os.environ`, so a test sets both.
 - **A setting that names a variable, a command or a path to run is the user's alone** (D24):
   `project_may_set=False`. A variable such as `PYTHONSTARTUP` or `BASH_ENV` runs a program.
@@ -115,8 +115,8 @@ live checks.
 |---|---|
 | What would the checks do to this command? | `python tools/ioguard.py check "<command>"`, offline |
 | What profile does this file have? | `python tools/ioguard.py profile <file>` |
-| What did the guard decide in a session? | `${CLAUDE_PLUGIN_DATA}/events/<YYYY-MM>/<session>.jsonl` |
-| Is the io server alive? | `${CLAUDE_PLUGIN_DATA}/sessions/<session>.alive`, written every 5 seconds |
+| What did the guard decide in a session? | `~/.claude/io-guard/events/<YYYY-MM>/<session>.jsonl`, or `workbench/io-guard-home` for a probe |
+| Is the io server alive? | `~/.claude/io-guard/sessions/<session>.alive`, written every 5 seconds |
 | What did Claude Code itself do? | `claude --debug`, then `~/.claude/debug/` |
 
 ## Related

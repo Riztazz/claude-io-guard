@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ioguard.lib.context import SNAPSHOTS_KEPT, Context, LiveFs, Probe, SessionState, Snapshot
+from ioguard.lib.context import SNAPSHOTS_KEPT, Context, LiveFs, Probe, SessionState, Snapshot, home_folder
 from ioguard.lib.fakes import FakeClock, FakeFs
 from ioguard.lib.git import Git
 from ioguard.lib.platform import detect
@@ -54,6 +54,24 @@ class SessionStateOnce(unittest.TestCase):
         self.assertEqual((session.take_snapshot("call0"), session.take_snapshot("call1").path,
                           session.take_snapshot("call1")), (None, Path("C:/p/1"), None),
                          "the oldest snapshot past the limit is gone, and a snapshot is handed out once")
+
+
+class IoGuardsFolderIsOnePerUser(unittest.TestCase):
+    def test_ioguard_home_names_the_folder(self):
+        env = {"IOGUARD_HOME": "C:/somewhere/else", "CLAUDE_CONFIG_DIR": "C:/config"}
+        self.assertEqual(home_folder(env), Path("C:/somewhere/else"), "IOGUARD_HOME wins over everything")
+
+    def test_without_ioguard_home_the_folder_follows_claude_config_dir(self):
+        self.assertEqual(home_folder({"CLAUDE_CONFIG_DIR": "C:/config"}), Path("C:/config") / "io-guard",
+                         "a user who moved ~/.claude gets io-guard's folder inside the moved one")
+
+    def test_with_neither_the_folder_is_io_guard_in_dot_claude(self):
+        self.assertEqual(home_folder({}), Path.home() / ".claude" / "io-guard",
+                         "the default is ~/.claude/io-guard, whatever id Claude Code gives the plugin")
+
+    def test_the_suite_never_uses_the_users_own_folder(self):
+        self.assertTrue(home_folder(os.environ).is_relative_to(tempfile.gettempdir()),
+                        "tests/__init__ points IOGUARD_HOME at a temporary folder for every test")
 
 
 class LiveContexts(unittest.TestCase):

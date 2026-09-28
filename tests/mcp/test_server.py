@@ -29,7 +29,7 @@ SESSION = "s1"
 
 def exchange(lines: list[bytes], data: Path, checks: str = "") -> dict:
     """Send each line, close stdin, and return every answer the server wrote, by its id as text."""
-    env = {**os.environ, "IOGUARD_DATA": str(data), "PYTHONPATH": str(INJECT), "IOGUARD_TEST_CHECKS": checks,
+    env = {**os.environ, "IOGUARD_HOME": str(data), "PYTHONPATH": str(INJECT), "IOGUARD_TEST_CHECKS": checks,
            "CLAUDE_CODE_SESSION_ID": SESSION, "CLAUDE_PROJECT_DIR": str(REPO)}
     done = subprocess.run([sys.executable, str(SERVER)], input=b"".join(line + b"\n" for line in lines),
                           capture_output=True, env=env, cwd=REPO, timeout=60)

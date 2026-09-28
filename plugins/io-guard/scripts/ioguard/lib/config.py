@@ -104,7 +104,7 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
     "transport.budget_bytes": ConfigKey(int, 6000, "Bytes of Bash command, each apostrophe counted as four, "
                                         "past which a body moves to a file or the call is refused.",
                                         project_narrows=True),
-    "telemetry.enabled": ConfigKey(bool, True, "Record each decision in the plugin data folder.",
+    "telemetry.enabled": ConfigKey(bool, True, "Record each decision in io-guard's folder.",
                                    project_forbids=(False,)),
     "io.read.max_bytes": ConfigKey(int, 16 * 1024 * 1024, "The largest file io.read reads, in bytes."),
     "io.read.max_chars": ConfigKey(int, 60_000, "The most characters of a file one io.read returns. The "
@@ -147,7 +147,7 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
         choices=REWRITE_MODES, project_forbids=("allow",)) for mode, default in REWRITE_DEFAULTS.items()},
 }
 ENABLED = ConfigKey(bool, True, "Run this check.")
-USER_FILE = "Set it in your own config.json in the plugin data folder."
+USER_FILE = "Set it in your own config.json in io-guard's folder, ~/.claude/io-guard."
 
 
 def all_keys(check_keys: Mapping[str, Mapping[str, ConfigKey]]) -> dict[str, ConfigKey]:

@@ -31,7 +31,7 @@ def budget_for(ctx: Context) -> int | None:
 
 
 def body_folder(event: Event, ctx: Context) -> Path | None:
-    """The session scratchpad's io-guard folder, or the plugin data folder's, or None with neither."""
+    """The session scratchpad's io-guard folder, or bodies in io-guard's own, or None with neither."""
     if event.scratchpad is not None:
         return event.scratchpad / "io-guard"
     return None if ctx.data_dir is None else ctx.data_dir / "bodies"

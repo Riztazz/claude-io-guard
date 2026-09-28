@@ -6,7 +6,7 @@ Manager is the Windows API for that question, reached through ctypes. macOS asks
 gives a process id line and a command line per holder.
 
 file_lock serialises io-guard's processes, two sessions' servers or a server and a command hook, on one path.
-It locks a file named for the path in the plugin data folder, never the path itself, so no editor or build
+It locks a file named for the path in io-guard's folder, never the path itself, so no editor or build
 ever waits on it.
 """
 import hashlib

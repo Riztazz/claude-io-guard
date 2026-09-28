@@ -18,6 +18,7 @@ from pathlib import Path
 
 from ioguard.checks.registry import default_registry
 from ioguard.cli import corpus, measure, precommit, replay, report
+from ioguard.lib.context import home_folder
 
 
 def source(text: str) -> tuple[str, Path]:
@@ -45,15 +46,15 @@ def parser() -> argparse.ArgumentParser:
                                           "on a finding")
     week = commands.add_parser("report", help="what io-guard fixed, warned about and refused, from telemetry")
     week.add_argument("--data", type=Path, action="append", default=[],
-                      help="a plugin data folder, repeatable, every installed io-guard's by default")
+                      help="a folder io-guard wrote telemetry to, repeatable, io-guard's own by default")
     week.add_argument("--days", type=int, default=7, help="the days to report, counting back from now")
     rate = commands.add_parser("measure", help="the baseline's failure classes before and after io-guard")
     rate.add_argument("sources", nargs="+", type=source, metavar="NAME=FOLDER")
     rate.add_argument("--since", type=measure.since_date, default=measure.ADOPTED,
                       help="the first day with io-guard on, YYYY-MM-DD")
     rate.add_argument("--data", type=Path, action="append", default=[],
-                      help="a plugin data folder for the guard's own time, every installed io-guard's by "
-                           "default")
+                      help="a folder io-guard wrote telemetry to, for the guard's own time, io-guard's "
+                           "own by default")
     return top
 
 
@@ -84,17 +85,17 @@ def main(argv: Sequence[str]) -> int:
                 print(text)
             return code
         case "report":
-            folders = args.data or report.data_folders(os.environ, Path.home())
-            if not folders:
-                print("No io-guard data folder found. Name one with --data, such as "
-                      "~/.claude/plugins/data/io-guard-claude-io-guard.")
+            folders = args.data or [home_folder(os.environ)]
+            missing = [folder for folder in folders if not folder.is_dir()]
+            if missing:
+                print(f"io-guard has no folder at {missing[0]}. Name the folder with --data.")
                 return 1
             print(report.run(folders, args.days, datetime.now(timezone.utc)))
         case "measure":
             before, after = measure.measure(corpus.records(args.sources, corpus.Tally(Counter(), Counter())),
                                             args.since)
             since = datetime.strptime(args.since, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-            folders = args.data or report.data_folders(os.environ, Path.home())
+            folders = args.data or [home_folder(os.environ)]
             telemetry = report.summarise(report.files(folders, since), since)
             print(measure.render(before, after, report.spread(telemetry.hook_ms).get("p95")))
     return 0

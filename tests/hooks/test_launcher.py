@@ -45,7 +45,7 @@ class LauncherTest(unittest.TestCase):
         self.data = self.temp / "data"
         self.env = {key: value for key, value in os.environ.items()
                     if not key.startswith("CLAUDE_PLUGIN_") and key not in ("IOGUARD_PYTHON", "OS")}
-        self.env["CLAUDE_PLUGIN_DATA"] = str(self.data)
+        self.env["IOGUARD_HOME"] = str(self.data)
 
     def tearDown(self):
         shutil.rmtree(self.temp, ignore_errors=True)
@@ -115,7 +115,7 @@ class PyrunUnderSh(LauncherTest):
         self.assertEqual((done.returncode, done.stdout), (0, b"{}"),
                          "session_start on a working Python answers an empty object and exits 0")
         self.assertEqual([line["event"] for line in data_lines(self.data)], ["SessionStart"],
-                         "the pipeline recorded the SessionStart event in the plugin data folder")
+                         "the pipeline recorded the SessionStart event in IOGUARD_HOME")
 
 
 @unittest.skipUnless(WINDOWS, "pyrun.cmd is for cmd.exe, on Windows")
@@ -218,11 +218,13 @@ class HookPyAnswers(LauncherTest):
                          "hook.py survives a broken event and answers {}")
         self.assertIn(b"GUARD_ERROR", done.stderr, "the crash before the answer is logged as GUARD_ERROR")
 
-    def test_no_plugin_data_folder_records_nothing_and_exits_zero(self):
-        del self.env["CLAUDE_PLUGIN_DATA"]
+    def test_without_ioguard_home_the_folder_is_io_guard_in_the_claude_config_folder(self):
+        del self.env["IOGUARD_HOME"]
+        self.env["CLAUDE_CONFIG_DIR"] = str(self.temp / "config")
         done = self.run_hook_py("pre_tool_use", self.bash_event())
-        self.assertEqual((done.returncode, done.stdout), (0, b"{}"),
-                         "without CLAUDE_PLUGIN_DATA hook.py keeps telemetry in memory and still answers")
+        self.assertEqual((done.returncode, done.stdout), (0, b"{}"), "hook.py answers {} and exits 0")
+        self.assertEqual([line["event"] for line in data_lines(self.temp / "config" / "io-guard")],
+                         ["PreToolUse"], "the event is recorded in CLAUDE_CONFIG_DIR/io-guard")
 
 
 if __name__ == "__main__":

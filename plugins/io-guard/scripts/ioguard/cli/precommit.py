@@ -5,15 +5,15 @@ working tree. It reports what the staged change did to a file that no commit sho
 a changed ending style or BOM, bytes that stop being UTF-8 or gain U+FFFD, new control bytes, non-ASCII in a
 file the project keeps ASCII, a new character the Read tool shows as nothing, and a new indent style. A file
 new to the commit is checked for its odd bytes only, and a binary file is skipped. verify.write's ascii_only
-and invisible_allowed come from the project's io-guard.json, and from the user's config.json when
-IOGUARD_DATA names the plugin data folder.
+and invisible_allowed come from the project's io-guard.json and from the user's config.json in
+io-guard's folder.
 """
 from collections.abc import Mapping
 from pathlib import Path
 
 from ioguard.checks.registry import default_registry
 from ioguard.checks.verify_write import Written, compare
-from ioguard.lib.context import Context, GitPort, plugin_data
+from ioguard.lib.context import Context, GitPort, home_folder
 from ioguard.lib.drift import text_of
 from ioguard.lib.git import Git, GitError
 from ioguard.lib.platform import Platform
@@ -57,7 +57,7 @@ def run(cwd: Path, env: Mapping[str, str]) -> tuple[int, str]:
         root = Git().root(cwd)
         if root is None:
             return 1, "io-guard's pre-commit check runs inside a git repository."
-        ctx = Context.live(plugin_data(env), root, default_registry().keys())
+        ctx = Context.live(home_folder(env), root, default_registry().keys())
         results = staged_results(root, ctx.git, ctx.config.check_options("verify.write")["ascii_only"],
                                  ctx.platform, frozenset(ctx.config.get("invisible_allowed")))
     except GitError as error:

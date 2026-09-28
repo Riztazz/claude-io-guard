@@ -85,8 +85,8 @@ Each line works once the task that builds it has landed.
   finding, or the same script as a repository's `.git/hooks/pre-commit`
 - The skill page's tool and code tables: `python tools/skill.py` writes them, and `--check` exits 1 when they are
   out of date
-- The week's telemetry on one screen: `python tools/report.py`, or `--data <folder>` for another data folder,
-  such as `~/.claude/plugins/data/io-guard-inline`, where the probes' sessions write
+- The week's telemetry on one screen: `python tools/report.py`, from `~/.claude/io-guard`, or `--data
+  <folder>` for another folder, such as `workbench/io-guard-home`, where the probes' sessions write
 - Task 31's measurement: `python tools/measure.py CLICKER=<folder> ...`, the same `NAME=FOLDER` pairs as the
   corpus, split at `--since`, 2026-09-28 by default
 - The plugin in the desktop app, which is the lead's main surface: run

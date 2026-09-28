@@ -105,14 +105,6 @@ class ALineIsReadAsWritten(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertEqual(report.shape(command), expected, "the shape names the program, never a path")
 
-    def test_no_data_folder_is_named_without_one(self):
-        home = Path(tempfile.mkdtemp(prefix="ioguard-home-"))
-        self.addCleanup(shutil.rmtree, home, True)
-        (home / ".claude" / "plugins" / "data" / "io-guard-inline").mkdir(parents=True)
-        (home / ".claude" / "plugins" / "data" / "io-guard-claude-io-guard").mkdir(parents=True)
-        self.assertEqual([path.name for path in report.data_folders({}, home)], ["io-guard-claude-io-guard"],
-                         "an installed io-guard's folder counts, and the probes' --plugin-dir one does not")
-
 
 if __name__ == "__main__":
     unittest.main()

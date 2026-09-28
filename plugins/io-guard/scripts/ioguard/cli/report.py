@@ -1,6 +1,6 @@
 """The report of what io-guard fixed, warned about and refused, merged from every session's telemetry file.
 
-Each session writes events/<YYYY-MM>/<session>.jsonl in the plugin data folder (D13). A line is one check's
+Each session writes events/<YYYY-MM>/<session>.jsonl in io-guard's folder (D13, D30). A line is one check's
 decision, which names the check and its code, or the run of a whole hook call, which names neither and
 carries the call's time, or an io tool call, event tools/call. The printed report holds command shapes and
 error hashes, so it goes to a terminal only. A tool result built from it takes the counts and percentiles and
@@ -183,16 +183,6 @@ def fitted(head: str, names: Sequence[str]) -> str:
         if len(line) <= WIDTH:
             return line
     return head
-
-
-def data_folders(env: Mapping[str, str], home: Path) -> list[Path]:
-    """The plugin data folder the environment names, or else every installed io-guard's on this machine.
-    The folder of a --plugin-dir run, io-guard-inline, is the probes', and stays out."""
-    named = env.get("IOGUARD_DATA") or env.get("CLAUDE_PLUGIN_DATA")
-    if named:
-        return [Path(named)]
-    return sorted(path for path in (home / ".claude" / "plugins" / "data").glob("io-guard-*")
-                  if path.name != "io-guard-inline")
 
 
 def run(folders: Sequence[Path], days: int, now: datetime) -> str:

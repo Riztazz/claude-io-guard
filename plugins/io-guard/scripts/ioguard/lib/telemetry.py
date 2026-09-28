@@ -1,8 +1,8 @@
-"""One JSONL line per decision, in ${CLAUDE_PLUGIN_DATA}/events/<YYYY-MM>/<session>.jsonl.
+"""One JSONL line per decision, in events/<YYYY-MM>/<session>.jsonl in io-guard's folder.
 
 A line holds codes, timings and names, never file content: no old_string, no new_string, and at most 200
 characters of a command. The trace context joins the PreToolUse decision, an io tool call and the PostToolUse
-check of one tool use. Tracebacks go to the debug log instead, ${CLAUDE_PLUGIN_DATA}/debug.log, and only when
+check of one tool use. Tracebacks go to the debug log instead, debug.log in the same folder, and only when
 telemetry.debug is true.
 """
 import hashlib
@@ -83,7 +83,7 @@ class TelemetryEvent:
 
 
 class Telemetry:
-    """Appends each event to its session's file, or keeps it in memory when there is no data folder. One lock
+    """Appends each event to its session's file, or keeps it in memory when there is no folder. One lock
     serialises the appends, so the io server's workers never interleave two lines, and a line is on disk
     before record returns, so a crash loses none."""
 

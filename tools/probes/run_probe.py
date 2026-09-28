@@ -61,7 +61,7 @@ HUNDRED_ECHOES = "Run the Bash command echo n1, then echo n2, and so on up to ec
                  "commands, one at a time, each in its own Bash tool call, never two in one message. Then " \
                  "reply DONE."
 GUARD = REPO / "plugins" / "io-guard"
-GUARD_DATA = Path.home() / ".claude" / "plugins" / "data" / "io-guard-inline"
+GUARD_HOME = REPO / "workbench" / "io-guard-home"
 NEEDS_AUTH = Path.home() / ".claude" / "mcp-needs-auth-cache.json"
 GUARD_INPUTS = {event: groups[0]["hooks"][0].get("input") for event, groups in
                 json.loads((GUARD / "hooks" / "hooks.json").read_bytes())["hooks"].items()}
@@ -284,7 +284,7 @@ class Probe:
     guard: str | None = None     # run io-guard itself, with these test checks, instead of io-probe
     turns: tuple = ()            # prompts sent one at a time through stream-json input, instead of prompt
     pause_s: float = 0.0         # the wait after each turn's result before the next turn
-    user_config: dict | None = None   # io-guard's config.json in the probes' data folder, for this run only
+    user_config: dict | None = None   # io-guard's config.json in the probes' folder, for this run only
 
 
 PROBES = {
@@ -605,7 +605,8 @@ def summarise(stream: Path, log: Path, work: Path, probe: Probe) -> dict:
 def guarded(probe: Probe) -> tuple[dict, dict]:
     """The settings and environment that run io-guard from this checkout with the probe's test checks: this
     Python as IOGUARD_PYTHON, and tests/support/inject on PYTHONPATH."""
-    env = {"IOGUARD_PYTHON": str(PYTHON), "PYTHONPATH": str(INJECT), "IOGUARD_TEST_CHECKS": probe.guard}
+    env = {"IOGUARD_PYTHON": str(PYTHON), "IOGUARD_HOME": str(GUARD_HOME), "PYTHONPATH": str(INJECT),
+           "IOGUARD_TEST_CHECKS": probe.guard}
     return probe.settings, env
 
 
@@ -614,7 +615,7 @@ def copy_telemetry(lines: list[bytes], log: Path) -> None:
     for line in lines:
         message = json.loads(line) if line.startswith(b"{") else {}
         if message.get("type") == "system" and message.get("subtype") == "init":
-            found = sorted(GUARD_DATA.glob(f"events/*/{message.get('session_id')}.jsonl"))
+            found = sorted(GUARD_HOME.glob(f"events/*/{message.get('session_id')}.jsonl"))
             if found:
                 shutil.copyfile(found[-1], log)
             return
@@ -648,12 +649,12 @@ def feed(session: subprocess.Popen, probe: Probe, answered: threading.Semaphore)
 
 @contextlib.contextmanager
 def user_config(values: dict | None):
-    """values as io-guard's user config.json in the probes' data folder for the with block, then the file as
-    it was before, or none."""
+    """values as io-guard's user config.json in the probes' io-guard folder for the with block, then the
+    file as it was before, or none."""
     if values is None:
         yield
         return
-    path = GUARD_DATA / "config.json"
+    path = GUARD_HOME / "config.json"
     before = path.read_bytes() if path.is_file() else None
     write_json(path, values)
     try:
@@ -716,8 +717,8 @@ def run(name: str) -> Path:
     (out / "stream.jsonl").write_bytes(b"".join(lines))
     if probe.guard is not None:
         copy_telemetry(lines, log)
-        if (GUARD_DATA / "probe.json").is_file():
-            shutil.copyfile(GUARD_DATA / "probe.json", out / "guard-probe.json")
+        if (GUARD_HOME / "probe.json").is_file():
+            shutil.copyfile(GUARD_HOME / "probe.json", out / "guard-probe.json")
     details = summarise(out / "stream.jsonl", log, work, probe)
     versions = [note["version"] for note in details["notes"] if isinstance(note, dict) and "version" in note]
     summary = {"probe": name, "item": probe.item, "claude": versions[0] if versions else None,
@@ -867,7 +868,7 @@ def served(summary: dict, name: str, era: str) -> bool:
     connected = any(server.get("name") == "plugin:io-guard:io" and server.get("status") == "connected"
                     for server in init.get("mcp_servers") or ())
     read = any("CRLF, BOM" in str(result["content"]) for result in summary["results"])
-    beat = GUARD_DATA / "sessions" / f"{init['session_id']}.alive"
+    beat = GUARD_HOME / "sessions" / f"{init['session_id']}.alive"
     recorded = beat.is_file() and json.loads(beat.read_bytes()).get("era") == era
     return connected and read and recorded
 
@@ -918,7 +919,7 @@ def body_ran(summary: dict, name: str) -> bool:
     """A body of 20,000 bytes or more reached its file byte for byte, and Python printed each pair of
     backslashes whole."""
     sent = next((tool["input"].get("code") for tool in summary["tools"] if tool["name"] == IO_RUN), None)
-    bodies = sorted(GUARD_DATA.glob("runs/*/body.py"), key=lambda path: path.stat().st_mtime)
+    bodies = sorted(GUARD_HOME.glob("runs/*/body.py"), key=lambda path: path.stat().st_mtime)
     exact = sent is not None and bodies != [] and bodies[-1].read_bytes() == sent.encode("utf-8")
     printed = any(RUN_PRINTED in value.get("tail", []) for value in structured(summary))
     return exact and len(sent.encode("utf-8")) >= 20_000 and printed

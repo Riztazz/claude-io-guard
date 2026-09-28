@@ -1,6 +1,6 @@
 """The io server's heartbeat: a small JSON file the server rewrites every few seconds while it runs.
 
-The file is sessions/<session>.alive in the plugin data folder. It names the server's process, its MCP era,
+The file is sessions/<session>.alive in io-guard's folder. It names the server's process, its MCP era,
 when it started, when it last wrote, and when it stopped, if it stopped cleanly. A beat that has gone old with
 no stop is a server that died, which a command hook can see even though the server cannot say so itself.
 

@@ -21,7 +21,7 @@ from typing import Any, BinaryIO
 
 from ioguard import PLUGIN_VERSION
 from ioguard.lib import bytesio
-from ioguard.lib.context import plugin_data, session_file
+from ioguard.lib.context import home_folder, session_file
 from ioguard.lib.heartbeat import Heartbeat
 from ioguard.mcp import tools_edit, tools_format, tools_hook, tools_read, tools_run
 from ioguard.mcp.progress import CancelToken
@@ -155,16 +155,16 @@ class Server:
 def main() -> int:
     out = sys.stdout.buffer
     sys.stdout = sys.stderr
-    data = plugin_data(os.environ)
+    data = home_folder(os.environ)
     session = os.environ.get("CLAUDE_CODE_SESSION_ID") or ""
     cwd = Path(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
-    spill = None if data is None else data / "results"
+    spill = data / "results"
     named = session or "io-server"
     protocol = Protocol(registry(), SERVER_INFO,
                         lambda cancel: ToolCall(lambda: tools_hook.context_for(named, cwd), cancel, cwd,
                                                 spill, session=named))
     watchdog = None
-    if data is not None and session:
+    if session:
         watchdog = Watchdog(session_file(data, session, "alive"), session, protocol.era)
         watchdog.start()
     try:

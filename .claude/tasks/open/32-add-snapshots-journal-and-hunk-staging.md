@@ -24,9 +24,9 @@ It comes after the measurement (D20), so task 31's numbers can reshape it.
 
 ## What to build
 
-- **Journal.** The hooks record every write through Edit, Write or an io tool in `${CLAUDE_PLUGIN_DATA}`: the file,
+- **Journal.** The hooks record every write through Edit, Write or an io tool in io-guard's folder: the file,
   the hunk ranges, the tool, the time, and an optional task tag.
-- **`io.snapshot(paths[], tag)` and `io.restore(tag, paths?)`.** The before-copies live in the plugin data folder,
+- **`io.snapshot(paths[], tag)` and `io.restore(tag, paths?)`.** The before-copies live in io-guard's folder,
   under a handle that expires after seven days (`docs/design/architecture.md`, section 7). A restore over newer
   edits elicits the user's yes first.
 - **`io.compare(tag, mode)`.** Shows whether the code is unchanged, ignoring comments or ignoring include lines

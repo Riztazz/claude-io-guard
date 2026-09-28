@@ -306,7 +306,7 @@ class Context:
     telemetry: Telemetry
     config_report: Optional[LoadReport] = None   # what loading the config found, for the one user message
     env: Mapping[str, str] = {}                  # the environment, so no check reads os.environ
-    data_dir: Optional[Path] = None              # the plugin data folder
+    data_dir: Optional[Path] = None              # io-guard's folder, None in a fake or a replay
 
     @classmethod
     def live(cls, data_dir: Optional[Path], project: Path,
@@ -315,17 +315,26 @@ class Context:
     def fake(cls, files: Optional[Mapping[Path, bytes]] = None, **overrides: Any) -> "Context": ...
 
 def repository_root(git: GitPort, path: Path) -> Optional[Path]: ...   # None outside one or when git fails
+def home_folder(env: Mapping[str, str]) -> Path: ...  # IOGUARD_HOME, CLAUDE_CONFIG_DIR/io-guard, ~/.claude/io-guard
 def session_file(data_dir: Path, session_id: str, kind: str) -> Path: ...  # sessions/<session>.<kind>
 def first_in_file(path: Path, data_dir: Path, key: str) -> bool: ...   # add key under file_lock, True if new
 ```
 
-`Context.live` builds the real ports and loads the probe and the config from `${CLAUDE_PLUGIN_DATA}`. `lib`
+`Context.live` builds the real ports and loads the probe and the config from io-guard's folder. `lib`
 cannot import the registry, so the caller passes `check_keys`, the registry's `keys()`, for the config to
 validate. A probe field nobody has measured is `None`, never a guess. `Context.fake` builds in-memory ports
 for tests from `lib.fakes`: a file system that takes a mapping of path to bytes, a git that answers what it
 was given, and a clock that moves only when told. A check receives a `Context` and reads it. No check writes
 into it except `session`, and only through its typed fields. A check reads the environment from `ctx.env`,
-never from `os.environ`, and the plugin data folder from `ctx.data_dir`.
+never from `os.environ`, and io-guard's folder from `ctx.data_dir`.
+
+io-guard's folder is one per user, whatever id Claude Code gives the plugin (D30). The desktop app loads a
+plugin from a local-folder marketplace, or one synced from claude.ai, as `io-guard@inline`, and the terminal as
+`io-guard@synced` or `io-guard@<marketplace>`. `${CLAUDE_PLUGIN_DATA}` follows the id, so a folder per id would
+split the user's `config.json`, the telemetry and, worst, the lock table, and two sessions editing one file
+would each take a lock the other never sees. `home_folder` reads `IOGUARD_HOME`, then `io-guard` inside
+`CLAUDE_CONFIG_DIR`, then `~/.claude/io-guard`. Uninstalling the plugin leaves the folder, as any tool leaves
+its settings file, and the README says so.
 
 The session probe (`checks/session_probe.py`, task 10) writes `probe.json` at SessionStart, in the command hook
 because `CLAUDE_ENV_FILE` belongs to a hook process. It measures Git Bash, pwsh and git with `--version` in
@@ -909,7 +918,7 @@ Four layers merge in this order, and a later layer overrides an earlier one key 
 | Layer | File | May widen |
 |---|---|---|
 | Defaults | `config.defaults()` in code | |
-| User | `${CLAUDE_PLUGIN_DATA}/config.json` | yes |
+| User | `config.json` in io-guard's folder, `~/.claude/io-guard` by default (D30) | yes |
 | Project | `<project>/.claude/io-guard.json` | no |
 | Project local | `<project>/.claude/io-guard.local.json`, gitignored | no |
 
@@ -985,10 +994,10 @@ def run_event(raw: Mapping[str, Any], surface: Surface, ctx: Optional[Context] =
 `run_event` reads `raw` with `Event.from_fields` for `Surface.MCP_HOOK` and with `Event.from_hook_json` for the
 others. Without `ctx`, it takes the live context for the event's session and working directory from
 `hooks.entry.CONTEXTS`, which loads the config and the probe once per session and project and keeps one
-`SessionState` per session. The data folder is `IOGUARD_DATA` in the server and `CLAUDE_PLUGIN_DATA` in a
-command hook. Without `registry`, it runs `default_registry()`. An event it cannot read answers `{}`. A bug past
-the pipeline's own fail-open answers `{}`, logs `GUARD_ERROR`, and warns the session once. The config's one
-message, when a file was dropped, goes out with the session's first answer in that project.
+`SessionState` per session. io-guard's folder comes from `lib.context.home_folder`, the same in the server
+and in a command hook. Without `registry`, it runs `default_registry()`. An event it cannot read answers
+`{}`. A bug past the pipeline's own fail-open answers `{}`, logs `GUARD_ERROR`, and warns the session once.
+The config's one message, when a file was dropped, goes out with the session's first answer in that project.
 
 `hooks.answer` turns an `Outcome` into the event's JSON. For PreToolUse the verdict and the rewrite mode decide
 the shape, and a refusal outranks an ask, which outranks an allow.
@@ -1088,7 +1097,7 @@ error result produces a hook notice on every call. A `GUARD_ERROR` answers `{}` 
 tools (section 7).
 
 A session runs several processes: the server, and a command hook at SessionStart and at each UserPromptSubmit.
-Their `SessionState` shares its warned keys through `sessions/<session>.warned` in the plugin data folder, under
+Their `SessionState` shares its warned keys through `sessions/<session>.warned` in io-guard's folder, under
 `file_lock`, so a check that breaks on SessionStart and on tool events warns once in all of them.
 
 Task 03 checked this path live on Windows with Claude Code 2.1.283 (`context.md`, "Hooks and MCP"):
@@ -1127,7 +1136,7 @@ serves those two hooks and the CLI.
     "io": {
       "command": "${CLAUDE_PLUGIN_ROOT}/scripts/pyrun",
       "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/server.py"],
-      "env": {"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "IOGUARD_DATA": "${CLAUDE_PLUGIN_DATA}"}
+      "env": {"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
     }
   }
 }
@@ -1275,7 +1284,7 @@ io.read_log(path, since_line = None) -> LogOutput(path, first_line, last_line, t
   command runs only when the hook recorded it, once. Elicitation cannot carry the question, because no
   surface shows its form (section 7, "Elicitation in both eras").
 - **No shell.** `argv` runs as given. A `code` body is written byte for byte to `runs/<id>/body.<ext>` in the
-  plugin data folder, a PowerShell body with a UTF-8 BOM for Windows PowerShell, and runs with
+  io-guard's folder, a PowerShell body with a UTF-8 BOM for Windows PowerShell, and runs with
   `runs.interpreter` for its `lang`: the probe's Python, bash, pwsh or Windows PowerShell, or node. The
   program starts in `cwd` with the session's variables, `session.probe`'s UTF-8 ones over them and the call's
   `env` over both, an empty stdin, and stdout and stderr in `runs/<id>/output.log`.
@@ -1381,7 +1390,7 @@ class HandleStore:
 Task 25 built the store with `io.run`, the first tool that hands out a handle, as `handles.STORE`, one per
 server. A run handle lives in memory, so it ends with the server while its log stays on disk, and it
 expires `io.run.handle_ttl_s`, one hour, after its program ends: the run's `Pump` calls `settle` when it sees
-the end. Task 32 adds `${CLAUDE_PLUGIN_DATA}/handles/<id>.json` for a snapshot handle, which survives a server
+the end. Task 32 adds `handles/<id>.json` in io-guard's folder for a snapshot handle, which survives a server
 restart and expires after seven days. Each tool description states the lifetime. `HandleExpired` becomes a
 tool execution error `HANDLE_EXPIRED` whose fix names the creating tool.
 
@@ -1458,7 +1467,7 @@ Across processes, three rules keep two servers from corrupting each other's work
 
 | Shared thing | Rule |
 |---|---|
-| A file an io tool edits | Inside the thread lock, the tool takes `lib.locks.file_lock(path)`: an exclusive lock on `${CLAUDE_PLUGIN_DATA}/locks/<sha1 of the resolved path>.lock`, or under the system temporary folder's `io-guard` with no data folder, through `msvcrt.locking` on Windows and `fcntl.flock` on macOS, held from the read to the atomic replace, with an `io.edit.wait_ms` wait of 5 seconds and then `FILE_LOCKED`. The write itself is a temp file in the same folder and `os.replace`, so a reader never sees half a file |
+| A file an io tool edits | Inside the thread lock, the tool takes `lib.locks.file_lock(path)`: an exclusive lock on `locks/<sha1 of the resolved path>.lock` in io-guard's folder, or under the system temporary folder's `io-guard` with no data folder, through `msvcrt.locking` on Windows and `fcntl.flock` on macOS, held from the read to the atomic replace, with an `io.edit.wait_ms` wait of 5 seconds and then `FILE_LOCKED`. The write itself is a temp file in the same folder and `os.replace`, so a reader never sees half a file |
 | Telemetry | One file per session, `events/<YYYY-MM>/<session>.jsonl`, so two servers never interleave lines. `tools/report.py` merges them |
 | Config | Loaded once per process and read-only after that. `io.config` writes the project file atomically, and a running server picks the change up at its next start |
 
@@ -1470,7 +1479,7 @@ call inside a hook tool has a 500 ms timeout and a cache miss counts as unknown,
 
 Crash safety has four parts. `dispatch` wraps every message in the fail-open boundary, so a bug answers `{}`
 or an `isError` result and the loop continues. The reader answers a malformed line with `-32700` and reads on.
-The watchdog writes `${CLAUDE_PLUGIN_DATA}/sessions/<session>.alive`, named by `CLAUDE_CODE_SESSION_ID` from
+The watchdog writes `sessions/<session>.alive` in io-guard's folder, named by `CLAUDE_CODE_SESSION_ID` from
 the server's environment, with its process, era and time (`context.md`, "Hooks and MCP", row 34). The
 `server.heartbeat` check runs in a `UserPromptSubmit` command hook and warns once when the beat is older than
 30 seconds with no clean stop. Claude Code restarts a server that exited on the next hook call, but one that
@@ -1480,13 +1489,13 @@ minutes (row 33). With no heartbeat for its session, the check reads that cache 
 end. That hook is the only Python spawn per turn, and costs about 250 ms.
 
 Shutdown is one ordered list: stop accepting, drain the workers with a 2 second cap, close the heartbeat. A
-background run keeps running past the server's end, and its log stays in the plugin data folder. Telemetry
+background run keeps running past the server's end, and its log stays in io-guard's folder. Telemetry
 needs no flush, because each line is on disk before `record` returns.
 
 ## 9. Record telemetry
 
-One JSONL line per decision or tool call, in `${CLAUDE_PLUGIN_DATA}/events/<YYYY-MM>/<session>.jsonl`, one file
-per session as section 8 says.
+One JSONL line per decision or tool call, in `events/<YYYY-MM>/<session>.jsonl` in io-guard's folder, one
+file per session as section 8 says.
 
 ```json
 {"schema": 1, "ts": "2026-09-27T14:03:11.412Z", "session": "abc123", "project": "myproject",
@@ -1517,11 +1526,11 @@ verification of one tool use share a trace, and `prompt_id` joins them to Claude
 events. `tools/report.py` groups by `trace_id` to show what one tool use cost end to end.
 
 `python tools/report.py [--data FOLDER ...] [--days 7]` (task 28) merges every session file of the days asked,
-from each installed io-guard's data folder unless `--data` names one, and leaves out `io-guard-inline`, the
-probes' folder. It prints one screen: the calls by event, tool, project and platform, the codes split into
-fixed, warned and refused, the time of a hook call, an io tool call and one tool use across its trace as p50,
-p90, p99 and max, the command shapes behind refusals, and each kind of `GUARD_ERROR` with its count. It holds
-command shapes and error hashes, so it prints to a terminal. `Report.counts()` is what a tool result, such as
+from io-guard's folder unless `--data` names others. The probes keep their own folder,
+`workbench/io-guard-home`, through `IOGUARD_HOME`. It prints one screen: the calls by event, tool, project and
+platform, the codes split into fixed, warned and refused, the time of a hook call, an io tool call and one tool
+use across its trace as p50, p90, p99 and max, the command shapes behind refusals, and each kind of
+`GUARD_ERROR` with its count. It holds command shapes and error hashes, so it prints to a terminal. `Report.counts()` is what a tool result, such as
 the dashboard's, may carry: counts and percentiles, and no command, path, project or error text.
 
 ## 10. Abstract the platform
@@ -1630,7 +1639,7 @@ Three kinds of extension, with a different answer each.
 - **Policy in config.** Every project sets patterns, skip trees, noise patterns and check options in
   `io-guard.json`, and the user sets verify commands in `config.json` (D24). This is the intended extension
   point and it needs no code.
-- **User-scope checks.** A directory `${CLAUDE_PLUGIN_DATA}/checks/` holds modules that subclass `Check` and
+- **User-scope checks.** A directory `checks/` in io-guard's folder holds modules that subclass `Check` and
   declare `CHECK_API = 1`. The registry loads them only when the user config sets
   `extensions.user_checks: true`, and a module declaring another `CHECK_API` is skipped with a warning. The
   user wrote them on the user's own machine, so they run with the plugin's trust.
@@ -1699,7 +1708,7 @@ Boxes, io-guard group:
 - `Config`: defaults, user, project, project local.
 - `Probe`: platform facts taken at session start.
 - `Scratchpad`: moved bodies and run logs.
-- `Plugin data`: config, probe, snapshots, handles, events, heartbeat.
+- `io-guard folder`: config, probe, snapshots, handles, locks, events, heartbeat, one per user.
 - `Dashboard page`: the ui resource and the standalone HTML.
 - `Skill`: codes, fixes and the tool for each job.
 
@@ -1740,7 +1749,7 @@ Arrows:
 - `hook.py` to `Heartbeat`: read once per turn, warn when stale.
 - `Config` to `Context`: loaded once, validated, merged.
 - `Probe` to `Context`: read by every platform-dependent check.
-- `Plugin data` to `Config`, `Probe`, `HandleStore`, `Telemetry`, `Heartbeat`: the durable folder.
+- `io-guard folder` to `Config`, `Probe`, `HandleStore`, `Telemetry`, `Heartbeat`: the durable folder.
 - `Telemetry` to `Dashboard page`: counts and percentiles, details in the page only.
 - `Dashboard page` to `io tools`: io.config and io.restore after the user confirms.
 - `Skill` to `Model`: the code table and the callable tool names, generated from CODES and ToolRegistry.

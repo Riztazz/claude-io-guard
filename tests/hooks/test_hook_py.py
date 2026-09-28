@@ -34,7 +34,7 @@ class HookPyTest(unittest.TestCase):
     def setUp(self):
         self.data = Path(tempfile.mkdtemp(prefix="ioguard-hookpy-"))
         self.env = {key: value for key, value in os.environ.items() if not key.startswith("CLAUDE_PLUGIN_")}
-        self.env.update(CLAUDE_PLUGIN_DATA=str(self.data), PYTHONPATH=str(INJECT))
+        self.env.update(IOGUARD_HOME=str(self.data), PYTHONPATH=str(INJECT))
 
     def tearDown(self):
         shutil.rmtree(self.data, ignore_errors=True)

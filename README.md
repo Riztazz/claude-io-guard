@@ -148,8 +148,8 @@ handle lasts an hour past the program's end.
   with the corrected call instead.
 - **It never blocks your work because of its own bug.** A check that crashes is skipped and logged, and you get one
   warning per session.
-- **Nothing leaves your machine.** Its telemetry holds codes and timings, never file content, and it stays in the
-  plugin's data folder.
+- **Nothing leaves your machine.** Its telemetry holds codes and timings, never file content, and it stays in
+  io-guard's folder, `~/.claude/io-guard`.
 
 ## Install it
 
@@ -173,9 +173,15 @@ Until 1.0, installs follow the latest commit. From 1.0 on, releases are tagged.
 
 ## Configure it
 
-Every setting has a default, and every default is a setting. Your settings live in `config.json` in the plugin's data
+Every setting has a default, and every default is a setting. Your settings live in `config.json` in io-guard's
 folder, and a project can add `.claude/io-guard.json`. A project file can only make io-guard stricter: it can't
 approve commands or make io-guard run a program.
+
+io-guard's folder is `~/.claude/io-guard`, or `io-guard` inside `CLAUDE_CONFIG_DIR` when you've moved `~/.claude`,
+or wherever `IOGUARD_HOME` points. It holds your `config.json`, the file locks that keep two sessions from
+writing one file at once, the telemetry, and each session's heartbeat. Every copy of the plugin shares it: the
+desktop app, the terminal, and an install from claude.ai or from a marketplace. Uninstalling the plugin leaves
+the folder, so delete it yourself to remove everything.
 
 **What happens to a rewritten command** is yours to choose, per permission mode:
 
@@ -336,7 +342,7 @@ docs/                 the architecture drawing, the design and its review, and t
 - After adding a code or an io tool, run `python tools/skill.py` to write the skill's tables. A test fails until
   you do.
 - See what io-guard fixed, warned about and refused this week with `python tools/report.py`. It reads the
-  telemetry of every installed io-guard on the machine, and `--data` names another folder.
+  telemetry in io-guard's folder, and `--data` names another folder.
 - Compare the failure classes before and after io-guard with `python tools/measure.py NAME=FOLDER ...`, one
   pair per transcript folder under `~/.claude/projects/`, and `--since` the day io-guard went on.
 - After a Claude Code update, run `python tools/probes/run_probe.py run all`, then `verdicts`, to recheck every

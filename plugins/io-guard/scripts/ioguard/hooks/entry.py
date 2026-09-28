@@ -14,7 +14,7 @@ from typing import Any
 from ioguard.checks.pipeline import Outcome, Pipeline
 from ioguard.checks.registry import Registry, default_registry
 from ioguard.hooks.answer import answer
-from ioguard.lib.context import Context, SessionState, plugin_data
+from ioguard.lib.context import Context, SessionState, home_folder
 from ioguard.lib.events import Event, Surface
 from ioguard.lib.results import Code, Result, render
 from ioguard.lib.telemetry import debug_log
@@ -32,18 +32,18 @@ class LiveContexts:
 
     def __init__(self) -> None:
         self.lock = threading.Lock()
-        self.contexts: dict[tuple[Path | None, str, Path], Context] = {}
-        self.sessions: dict[tuple[Path | None, str], SessionState] = {}
+        self.contexts: dict[tuple[Path, str, Path], Context] = {}
+        self.sessions: dict[tuple[Path, str], SessionState] = {}
         self.failed: set[str] = set()           # sessions already told that run_event failed
 
     def get(self, session_id: str, cwd: Path, registry: Registry) -> Context:
-        data = plugin_data(os.environ)
+        data = home_folder(os.environ)
         with self.lock:
             key = (data, session_id, cwd)
             if key not in self.contexts:
                 session = self.sessions.setdefault((data, session_id), SessionState.shared(data, session_id))
                 built = Context.live(data, cwd, registry.keys())
-                if data is not None and built.config.get("telemetry.debug"):
+                if built.config.get("telemetry.debug"):
                     debug_log(data / "debug.log")
                 self.contexts[key] = replace(built, session=session)
             return self.contexts[key]

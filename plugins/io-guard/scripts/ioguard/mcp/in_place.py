@@ -96,8 +96,8 @@ def held(path: Path, ctx: Context, tool: str) -> Iterator[None]:
 
 
 def lock_folder(ctx: Context) -> Path:
-    """The plugin data folder, or without one a folder in the system's temporary folder, which every
-    io-guard process without a data folder shares."""
+    """io-guard's folder, or without one a folder in the system's temporary folder, which every
+    io-guard process without one shares."""
     return ctx.data_dir or Path(tempfile.gettempdir()) / "io-guard"
 
 

@@ -76,7 +76,7 @@ class Clock(Protocol):
 @dataclass(frozen=True)
 class Probe:
     """What the session probe found about this machine. checks.session_probe takes it at SessionStart and
-    saves it as probe.json in the plugin data folder. A field io-guard has not probed is None."""
+    saves it as probe.json in io-guard's folder. A field io-guard has not probed is None."""
     os: str
     bash: ToolVersion | None
     pwsh: ToolVersion | None
@@ -165,7 +165,7 @@ class SessionState:
     @classmethod
     def shared(cls, data_dir: Path | None, session_id: str) -> "SessionState":
         """A session state whose warned keys every io-guard process of the session shares, the server and
-        each command hook alike, through a file in the plugin data folder."""
+        each command hook alike, through a file in io-guard's folder."""
         return cls(data_dir=data_dir, session_id=session_id if data_dir is not None else None)
 
     def first_time(self, key: str) -> bool:
@@ -260,7 +260,7 @@ class LiveFs:
 
 
 def session_file(data_dir: Path, session_id: str, kind: str) -> Path:
-    """A file the session's io-guard processes share: sessions/<session>.<kind> in the plugin data folder."""
+    """A file the session's io-guard processes share: sessions/<session>.<kind> in io-guard's folder."""
     return data_dir / "sessions" / f"{session_id}.{kind}"
 
 
@@ -285,10 +285,15 @@ def repository_root(git: GitPort, path: Path) -> Path | None:
         return None
 
 
-def plugin_data(env: Mapping[str, str]) -> Path | None:
-    """The plugin data folder: IOGUARD_DATA in the io server, CLAUDE_PLUGIN_DATA in a command hook."""
-    found = env.get("IOGUARD_DATA") or env.get("CLAUDE_PLUGIN_DATA")
-    return Path(found) if found else None
+def home_folder(env: Mapping[str, str]) -> Path:
+    """io-guard's folder, which every copy of the plugin on the machine shares, whatever id Claude Code gives
+    it: IOGUARD_HOME, then io-guard in CLAUDE_CONFIG_DIR, then ~/.claude/io-guard. It holds the user's
+    config.json, the file locks, the telemetry and the session files."""
+    if env.get("IOGUARD_HOME"):
+        return Path(env["IOGUARD_HOME"])
+    if env.get("CLAUDE_CONFIG_DIR"):
+        return Path(env["CLAUDE_CONFIG_DIR"]) / "io-guard"
+    return Path.home() / ".claude" / "io-guard"
 
 
 def load_probe(data_dir: Path | None, platform: Platform) -> Probe:
@@ -310,13 +315,13 @@ class Context:
     telemetry: Telemetry
     config_report: LoadReport | None = None
     env: Mapping[str, str] = field(default_factory=dict)   # the environment, so no check reads os.environ
-    data_dir: Path | None = None                           # the plugin data folder, None without one
+    data_dir: Path | None = None                           # io-guard's folder, None in a fake or a replay
 
     @classmethod
     def live(cls, data_dir: Path | None, project: Path,
              check_keys: Mapping[str, Mapping[str, ConfigKey]] | None = None) -> "Context":
-        """The real ports, the config from its four layers, and the probe from the plugin data folder. With
-        no data folder there is no user layer and no probe, and telemetry stays in memory."""
+        """The real ports, the config from its four layers, and the probe from io-guard's folder. With no
+        folder there is no user layer and no probe, and telemetry stays in memory."""
         platform = detect()
         user = () if data_dir is None else (ConfigLayer(Scope.USER, data_dir / "config.json"),)
         layers = (*user, ConfigLayer(Scope.PROJECT, project / ".claude" / "io-guard.json"),

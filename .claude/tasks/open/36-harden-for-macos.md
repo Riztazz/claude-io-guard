@@ -38,7 +38,7 @@ unit tests, not what the harness does on a Mac. The Mac also brings traps of its
 - **Portable-subset lint.** Warn on bash 4+ syntax and on GNU-only flags when the probe (task 10) finds bash 3.2 or
   BSD tools.
 - **Path comparisons.** Normalise Unicode to NFC before comparing paths. Ignore case where the file system does.
-- **Sandbox.** With the sandbox on, check that the plugin data folder and the scratchpad accept writes. Document any
+- **Sandbox.** With the sandbox on, check that io-guard's folder and the scratchpad accept writes. Document any
   `sandbox.filesystem.allowWrite` entry the guard needs.
 
 ## Where

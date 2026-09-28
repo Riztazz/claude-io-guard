@@ -5,8 +5,7 @@
       "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/server.py"],
       "env": {
         "PYTHONUTF8": "1",
-        "PYTHONIOENCODING": "utf-8",
-        "IOGUARD_DATA": "${CLAUDE_PLUGIN_DATA}"
+        "PYTHONIOENCODING": "utf-8"
       }
     }
   }
