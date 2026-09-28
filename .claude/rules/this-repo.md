@@ -20,3 +20,10 @@
 - **The kit's skills, rules and tools arrive through gitignored links** (D11). Git writes through a tracked link
   into the kit, so a link is never added to git, not even with `-f`.
 - **Before any push that makes content public, task 34's scrub runs first.**
+- **At the end of every task, read what io-guard told every session on this machine.** Run
+  `python tools/report.py --days 1`, with more days for a longer task. The lead's other projects run the installed
+  plugin, and a code this session never got can still be wrong there. The messages themselves are the
+  `hook_additional_context` attachments in each session's transcript. For each code, check that it was right and
+  that the agent acted on it. Then ask what should have fired and did not. Each wrong code, each code repeated with
+  no effect, and each missing one becomes a task in `.claude/tasks/open/`. The lead set this on 2026-09-28, after
+  another project's session filed six bugs that this repository's own session had not reported.
