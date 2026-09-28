@@ -17,9 +17,9 @@ assemble builds the plugin alone, wrapped in a local marketplace, for a probe a 
 desktop app. IOPROBE_CLAUDE names the claude binary to run, for example the desktop app's bundled copy, and
 defaults to claude on PATH. context.md, "Hooks and MCP", records what each probe found.
 
-A live-* probe runs io-guard itself from plugins/io-guard instead of a one-off plugin, with its python option
-set through --settings and tests/support/inject on PYTHONPATH, so the test checks its guard field names run in
-the hook and the server as shipped. Its log is the session's io-guard telemetry. The guard-* probes point the
+A live-* probe runs io-guard itself from plugins/io-guard instead of a one-off plugin, with IOGUARD_PYTHON
+naming this Python and tests/support/inject on PYTHONPATH, so the test checks its guard field names run in the
+hook and the server as shipped. Its log is the session's io-guard telemetry. The guard-* probes point the
 one-off plugin's hooks at io-guard's own hooks.json maps, to record what they receive.
 """
 import contextlib
@@ -66,7 +66,8 @@ NEEDS_AUTH = Path.home() / ".claude" / "mcp-needs-auth-cache.json"
 GUARD_INPUTS = {event: groups[0]["hooks"][0].get("input") for event, groups in
                 json.loads((GUARD / "hooks" / "hooks.json").read_bytes())["hooks"].items()}
 INJECT = REPO / "tests" / "support" / "inject"
-HOOK_SH = (GUARD / "scripts" / "hook.sh").as_posix()
+PYRUN = (GUARD / "scripts" / "pyrun").as_posix()
+HOOK_PY = (GUARD / "scripts" / "hook.py").as_posix()
 SED = "Read diff.txt. Then run this exact Bash command: sed -i 's/a/b/' diff.txt\nThen reply DONE."
 THREE_FEATURES = "Call these three tools from the io-probe server once each, in order: probe_elicit, " \
                  "probe_progress, probe_app. Then quote each result word for word."
@@ -372,8 +373,8 @@ PROBES = {
                         prompt=HUNDRED_ECHOES, max_turns=115),
     "launch-exec": Probe(0, "record", hooks=BASH_PRE, allowed=("Bash",), prompt=HUNDRED_ECHOES,
                          max_turns=115),
-    "launch-hooksh": Probe(0, "record", hooks=(("PreToolUse", "Bash", "hooksh"),), allowed=("Bash",),
-                           prompt=HUNDRED_ECHOES, max_turns=115),
+    "launch-pyrun": Probe(0, "record", hooks=(("PreToolUse", "Bash", "pyrun"),), allowed=("Bash",),
+                          prompt=HUNDRED_ECHOES, max_turns=115),
     "dead-server": Probe(18, "record", hooks=BASH_GATE, server=True, allowed=("Bash",),
                          extra={"die_after_gate": 1}, check=("first.txt", "second.txt"), prompt=TWO_RUNS),
     "dead-for-good": Probe(18, "record", hooks=BASH_GATE, server=True, allowed=("Bash",),
@@ -478,8 +479,8 @@ def handler(event: str, form: str, timeout: int | None) -> dict:
             entry = {"type": "mcp_tool", "server": SERVER, "tool": "hook_gate", "input": GATE_INPUT}
         case "guard":
             entry = {"type": "mcp_tool", "server": SERVER, "tool": "hook_gate", "input": GUARD_INPUTS[event]}
-        case "hooksh":
-            entry = {"type": "command", "command": f'sh "{HOOK_SH}" pre_tool_use'}
+        case "pyrun":
+            entry = {"type": "command", "command": f'sh "{PYRUN}" "{HOOK_PY}" pre_tool_use'}
         case _:
             raise ValueError(f"unknown hook form {form}")
     if timeout is not None:
@@ -602,11 +603,10 @@ def summarise(stream: Path, log: Path, work: Path, probe: Probe) -> dict:
 
 
 def guarded(probe: Probe) -> tuple[dict, dict]:
-    """The settings and environment that run io-guard from this checkout with the probe's test checks: the
-    python option the server starts from, and tests/support/inject on PYTHONPATH."""
-    options = {"pluginConfigs": {"io-guard@inline": {"options": {"python": str(PYTHON)}}}}
-    env = {"PYTHONPATH": str(INJECT), "IOGUARD_TEST_CHECKS": probe.guard}
-    return {**(probe.settings or {}), **options}, env
+    """The settings and environment that run io-guard from this checkout with the probe's test checks: this
+    Python as IOGUARD_PYTHON, and tests/support/inject on PYTHONPATH."""
+    env = {"IOGUARD_PYTHON": str(PYTHON), "PYTHONPATH": str(INJECT), "IOGUARD_TEST_CHECKS": probe.guard}
+    return probe.settings, env
 
 
 def copy_telemetry(lines: list[bytes], log: Path) -> None:

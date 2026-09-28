@@ -157,12 +157,13 @@ Once the first release is out:
 
 1. In claude.ai, open Customize > Plugins and add `Riztazz/claude-io-guard`. Or, in Claude Code, run
    `/plugin marketplace add Riztazz/claude-io-guard`, then `/plugin install io-guard@claude-io-guard`.
-2. You need Claude Code 2.1.281 or later and Python 3.14 or later. [`docs/compat.md`](docs/compat.md) says why
-   2.1.281, and what io-guard does when a Claude Code feature it uses is missing.
-3. On Windows with Python from python.org, run `/plugin configure io-guard` and set the Python interpreter to
-   `python`. The default is `python3`, which on Windows is often the Microsoft Store stub. When the setting
-   doesn't start Python 3.14 or later, io-guard says so once at the start of each session, and checks nothing
-   until it's fixed.
+2. You need Claude Code 2.1.281 or later and Python 3.14 or later, and on Windows, Git for Windows.
+   [`docs/compat.md`](docs/compat.md) says why 2.1.281, and what io-guard does when a Claude Code feature it
+   uses is missing.
+3. There's nothing to set. io-guard finds Python itself: `py -3`, then `python` on Windows, and `python3`, then
+   `python` on macOS. When yours is somewhere else, set `IOGUARD_PYTHON` to its full path in the `env` block of
+   `~/.claude/settings.json`. [`docs/launcher.md`](docs/launcher.md) has the details, and what you see when no
+   Python 3.14 is found.
 
 When the io server stops, your tool calls still run, unchecked, and io-guard says so once at the start of your
 next turn. Claude Code starts a stopped server again at the next tool call. When one fails to start, Claude Code

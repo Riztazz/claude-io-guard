@@ -1,52 +1,88 @@
 # Launching Python
 
 io-guard is written in Python, and Claude Code installs nothing for a plugin, so io-guard runs on the Python
-already on your machine. No interpreter name works on every machine. On Windows, `python` is the real one and
-`python3` is often the Microsoft Store stub. On macOS, `python3` is there and `python` may not be.
+already on your machine. It needs Python 3.14 or later.
 
-## Set the interpreter
+## How io-guard finds Python
 
-io-guard's one setting for this is the Python interpreter, and its default is `python3`. On Windows with Python
-from python.org, run `/plugin configure io-guard` and set it to `python`. Whatever you set has to start Python
-3.14 or later.
+One launcher, `scripts/pyrun`, starts Python for everything io-guard runs: the io server once per session, and
+the two command hooks at the start of a session and of each turn. All three run the same interpreter. It tries
+these in order:
 
-## What starts Python
-
-Two things do: the server once per session, and `hook.sh` at the session's start and at the start of each turn.
-
-| What | Started by | Which Python |
+| | Windows | macOS |
 |---|---|---|
-| The io server, which answers every guarded tool call | `.mcp.json`, from `${user_config.python}` | Your setting, or `python3` when you haven't set one |
-| The SessionStart hook, and the per-turn heartbeat, which costs 237 to 293 ms a turn | `hook.sh`, a POSIX `sh` script | Your setting, then `python3`, `python` and `py -3`, skipping the Store stub under `WindowsApps` |
+| 1 | `IOGUARD_PYTHON`, when you've set it | `IOGUARD_PYTHON`, when you've set it |
+| 2 | `py -3`, the launcher python.org installs | `python3` |
+| 3 | `python` | `python` |
 
-Every tool call goes to the running server through an `mcp_tool` hook, so no call starts Python.
+On Windows, `python3` isn't tried. On most machines it's the Microsoft Store's install stub, which prints "Python
+was not found" and exits. With Python from the Microsoft Store there's no `py`, and `python` is the Store's own
+Python.
+
+The server's command is `${CLAUDE_PLUGIN_ROOT}/scripts/pyrun`. On Windows, Claude Code runs that name through
+`cmd.exe`, which picks `pyrun.cmd`. On macOS it runs `pyrun`, a POSIX `sh` script. The hooks run
+`sh pyrun` on both, under Git Bash on Windows. `pyrun.cmd` looks commands up on your `PATH` only, never in the
+project folder the server starts in, so a `python.bat` in a repository you clone never runs.
+
+## Name your Python
+
+Set `IOGUARD_PYTHON` to the full path of your interpreter when the list above doesn't find Python 3.14. The
+`env` block of `~/.claude/settings.json` reaches the terminal and the desktop app alike:
+
+```json
+{
+  "env": {
+    "IOGUARD_PYTHON": "C:/Python314/python.exe"
+  }
+}
+```
+
+A user environment variable works too. The server and the hooks both read it, so one value covers all three.
+
+io-guard has no plugin setting for this. Claude Code keeps a plugin's settings under the plugin's name, and the
+desktop app loads some plugins under a second name, `io-guard@inline`, where a saved setting isn't found.
+`IOGUARD_PYTHON` is the same under every name.
+
+## When Python is missing or too old
+
+io-guard never blocks a tool call because of its own launch. What you see depends on what went wrong:
+
+- **No Python found:** the server doesn't start, and `/mcp` shows "io-guard found no Python. Install Python
+  3.14 or later, or set IOGUARD_PYTHON to its full path." On a Windows machine with no Python, `python` is
+  usually the Store stub, and `/mcp` shows its "Python was not found" instead.
+- **`IOGUARD_PYTHON` names no program:** the server doesn't start, and `/mcp` quotes the value.
+- **Python older than 3.14:** the session-start hook says so once, naming the interpreter and the fix.
+
+Claude Code then runs the session without the io server. Each tool call still runs, unchecked, and io-guard
+says the server is down once, at the start of your next turn.
+
+## Git for Windows
+
+On Windows, the two command hooks run `sh`, which comes with Git for Windows. Without it, Claude Code runs
+hooks through PowerShell, where those two hooks fail, and the io server still checks every tool call. Claude
+Code's own Bash tool needs Git Bash as well.
 
 ## What each hook path costs
 
 Each row is one headless session making 100 Bash calls, timed from the hook's start to its answer in Claude
-Code's own event stream. The runs used the `claude` CLI 2.1.283 on Windows 10 with Python 3.14.0, on
-2026-09-27. `tools/probes/run_probe.py` runs them as `launch-mcp`, `launch-exec` and `launch-hooksh`.
+Code's own event stream, with the `claude` CLI 2.1.283 on Windows 10 and Python 3.14.0, on 2026-09-28.
+`tools/probes/run_probe.py` runs them as `launch-mcp`, `launch-exec` and `launch-pyrun`. The first two answer
+from the probes' own small plugin, and the third runs io-guard's `hook.py`.
 
 | Path | p50 | p95 | Max |
 |---|---|---|---|
-| An `mcp_tool` hook on the running server | 1.2 ms | 1.6 ms | 4.5 ms |
-| A command hook that starts Python directly, in exec form | 53.4 ms | 58.0 ms | 61.6 ms |
-| A command hook through `hook.sh`, which starts Git Bash and then Python | 129.8 ms | 139.1 ms | 142.5 ms |
+| An `mcp_tool` hook on a running server | 37.9 ms | 43.2 ms | 45.7 ms |
+| A command hook that starts Python on a small script, in exec form | 52.1 ms | 56.6 ms | 65.4 ms |
+| A command hook through `sh pyrun` and `py -3`, running `hook.py` | 275.0 ms | 285.8 ms | 302.8 ms |
 
-io-guard uses the first path for every tool call. All three fit the 300 ms budget, and the first leaves nearly
-all of it for the checks. On the desktop app's bundled 2.1.281, ten calls each gave the same order: 1.5, 57.1
-and 89.7 ms at p50, the last for shell form without `hook.sh`.
+io-guard uses the first path for every tool call, and the other two only at the start of a session and of each
+turn. On 2026-09-27 the first path measured 1.2 ms at p50 on the same release, and task 43 looks for what
+changed. Most of the third row is `hook.py` itself, which imports the whole check pipeline: 197 ms at p50 over
+20 starts outside Claude Code, 156 ms of it imports. `sh pyrun` adds 36 ms, of which `py -3` is about 14.
+Setting `IOGUARD_PYTHON` skips `py`.
 
-## When Python is missing or too old
-
-io-guard never blocks a tool call because of its own launch. It tells you once, at the start of the session:
-
-- **No Python at all:** `hook.sh` answers with a message saying so, and naming the fix.
-- **A setting that doesn't start Python 3.14 or later**, the default `python3` on a Windows machine with only
-  the Store stub included: the message quotes the setting and says the io server is off.
-
-Claude Code then starts the session without the io server. Each guarded tool call still runs, and Claude Code
-adds its own notice to it: `MCP server 'plugin:io-guard:io' not connected`.
+The io server starts through `pyrun.cmd` and `py -3` in 395 to 411 ms on this machine, and in 231 to 248 ms
+with `IOGUARD_PYTHON` naming `python.exe`. That's once per session.
 
 ## Why there's no command-hook fallback
 

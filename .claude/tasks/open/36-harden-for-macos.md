@@ -26,7 +26,8 @@ unit tests, not what the harness does on a Mac. The Mac also brings traps of its
 - **Run every deferred live check on the Mac**, with Python 3.14 installed there, and record each one in task 04's
   pages:
   - task 03: the Bash tool with a 9 KB command and `echo 'a\\b' | od -c`, and `bash --version` through the Bash tool
-  - task 06: the server and `hook.sh` start
+  - task 06 and D29: the server and the hooks start through `pyrun`, which keeps its executable bit through a
+    clone, the plugin cache and the claude.ai sync, and `python3` on a Mac with only Apple's stub
   - task 08: `guard-fields`, `guard-large` and the four `live-*` probes, whose `python` option there is the Mac's
     own interpreter
   - task 10: the probe at session start

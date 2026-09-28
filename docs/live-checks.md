@@ -53,10 +53,13 @@ Confirmed with the `claude` CLI at 2.1.283 and the desktop app on 2.1.281, durin
 | The desktop Code tab loads a plugin from a local marketplace | the lead, in the Code tab | 2.1.281 | waits for the Mac | 2026-09-27 |
 | After an app restart, the desktop runs a cached copy of that plugin, not the marketplace folder | the io-probe server log | 2.1.281 | waits for the Mac | 2026-09-27 |
 | The desktop Code tab loads plugins synced from claude.ai, hooks and MCP servers included | this repository's sessions | 2.1.281 | waits for the Mac | 2026-09-27 |
-| io-guard's `.mcp.json` and `hooks.json` start its server and hooks, from the `python` setting | a headless session with io-guard installed | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+| io-guard's `.mcp.json` and `hooks.json` start its server and hooks through `pyrun`, with nothing set | `live-empty`, `live-server`, `live-server-down`, `live-answers` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
+| An MCP command naming a file with no extension starts the `.cmd` beside it, each argument whole | a one-off plugin, then `live-server` | 2.1.281, 2.1.283 | not needed: macOS runs `pyrun` | 2026-09-28 |
+| `IOGUARD_PYTHON` in the `env` block of `settings.json` reaches the server, and a wrong value is named in its MCP log | by hand, `--settings` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
+| No server process outlives its session, through `cmd.exe` and `py` | eight `live-*` sessions, then the process list | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
+| After an app restart, the desktop passes a plugin from a local-folder marketplace to each session as `<name>@inline`, and the options saved for its marketplace id don't reach it | the desktop's `main.log`, and io-guard's data folders | 2.1.281 | waits for the Mac | 2026-09-28 |
 | An unset `userConfig` option falls back to its default | io-guard installed with no `--config` | 2.1.283 | waits for the Mac | 2026-09-27 |
-| A wrong `python` setting gives one warning, and every tool call still runs | io-guard installed with a wrong setting | 2.1.283 | waits for the Mac | 2026-09-27 |
-| An `mcp_tool` hook answers in about 1.2 ms, against 53 ms in exec form and 130 ms through `hook.sh`, over 100 calls | `launch-mcp`, `launch-exec`, `launch-hooksh` | 2.1.283 | waits for the Mac | 2026-09-27 |
+| An `mcp_tool` hook answers in 37.9 ms at p50, against 52.1 ms in exec form on a small script and 275.0 ms through `pyrun` running io-guard's hook, over 100 calls. The first measured 1.2 ms on 2026-09-27, on the same release (task 43) | `launch-mcp`, `launch-exec`, `launch-pyrun` | 2.1.283 | waits for the Mac | 2026-09-28 |
 
 ## Hooks and MCP
 

@@ -26,20 +26,32 @@ class PluginFilesAgree(unittest.TestCase):
         self.assertTrue(named, "hooks.json has at least one mcp_tool hook")
         self.assertLessEqual(named, servers, "an mcp_tool hook names plugin:<plugin>:<server> from .mcp.json")
 
-    def test_the_server_starts_from_the_python_setting(self):
+    def test_the_server_and_the_command_hooks_start_python_through_pyrun(self):
         server = load(PLUGIN / ".mcp.json")["mcpServers"]["io"]
-        self.assertEqual(server["command"], "${user_config.python}",
-                         "the io server starts from the interpreter the user set (D15)")
-        self.assertIn("python", load(PLUGIN / ".claude-plugin" / "plugin.json")["userConfig"],
-                      "the manifest declares the python setting the server starts from")
+        self.assertEqual(server["command"], "${CLAUDE_PLUGIN_ROOT}/scripts/pyrun",
+                         "the server's command is one file in the plugin, with no other variable (D29)")
+        hooks = load(PLUGIN / "hooks" / "hooks.json")["hooks"]
+        commands = [hook["command"] for groups in hooks.values() for group in groups
+                    for hook in group["hooks"] if hook["type"] == "command"]
+        self.assertTrue(commands, "hooks.json has command hooks")
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertTrue(command.startswith('sh "${CLAUDE_PLUGIN_ROOT}/scripts/pyrun" '),
+                                "every command hook starts Python through pyrun")
+
+    def test_the_manifest_asks_the_user_for_nothing(self):
+        self.assertNotIn("userConfig", load(PLUGIN / ".claude-plugin" / "plugin.json"),
+                         "a saved option is lost when the desktop renames the plugin, so IOGUARD_PYTHON "
+                         "names Python instead (D29)")
 
     def test_every_script_a_hook_or_the_server_names_exists(self):
         texts = "".join(path.read_bytes().decode("utf-8")
                         for path in (PLUGIN / "hooks" / "hooks.json", PLUGIN / ".mcp.json"))
-        for script in ("hook.sh", "server.py"):
+        for script in ("pyrun", "hook.py", "server.py"):
             with self.subTest(script=script):
                 self.assertIn(f"/scripts/{script}", texts, f"the plugin config starts {script}")
                 self.assertTrue((PLUGIN_SCRIPTS / script).is_file(), f"scripts/{script} exists")
+        self.assertTrue((PLUGIN_SCRIPTS / "pyrun.cmd").is_file(), "scripts/pyrun.cmd exists for cmd.exe")
 
     def test_the_plugin_has_no_top_level_bin_folder(self):
         self.assertFalse((PLUGIN / "bin").exists(),

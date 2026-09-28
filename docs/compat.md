@@ -43,7 +43,7 @@ reference names no version for that, so the floor rests on the probes instead. O
 
 | Feature | Needs | Probe | Without it |
 |---|---|---|---|
-| An `mcp_tool` hook calls a tool on the plugin's own server, and the tool's answer is the hook's decision | 2.1.281 | `time-mcp`, `mcp-gate`, `mcp-subst` | Command hooks: 57 ms per call in exec form and 90 ms through `hook.sh`, against 1.5 ms (task 06) |
+| An `mcp_tool` hook calls a tool on the plugin's own server, and the tool's answer is the hook's decision | 2.1.281 | `time-mcp`, `mcp-gate`, `mcp-subst` | Command hooks: 52 ms per call in exec form on a small script, and 275 ms through `pyrun` running io-guard's hook ([`launcher.md`](launcher.md)) |
 | An `mcp_tool` hook's server restarts on the next call, and a server that can't start fails open | 2.1.281 | `dead-server`, `dead-for-good`, `live-server-down` | The heartbeat hook warns once at the next turn (task 23) |
 | A plugin's stdio server that fails to start is written to `~/.claude/mcp-needs-auth-cache.json`, and every session skips it for 15 minutes | 2.1.281 | `live-server-down` | io-guard's UserPromptSubmit hook reads that file and names the skip. If the file moves, the skip goes unnamed |
 | An MCP server's environment carries `CLAUDE_CODE_SESSION_ID`, its own session's id | 2.1.281 | `era-legacy`, `live-server` | The server writes no heartbeat, and a server that died goes unnamed |
@@ -82,5 +82,6 @@ reference names no version for that, so the floor rests on the probes instead. O
 | The MCP Tasks extension | No Claude client declares it | `era-legacy`, `era-auto` | Handles for background runs (task 25) |
 | MCP tools prompt in default mode, whatever their annotations | 2.1.281 | `mcp-prompts`, `mcp-permit` | The README's settings snippet allows the read-only io tools |
 | A plugin enabled on claude.ai loads in Claude Code | 2.1.273, docs | the desktop loaded `@synced` plugins | Install from the marketplace |
-| `userConfig` options appear in `/config` | 2.1.269, docs | not probed | `/plugin configure io-guard` |
-| An unset `userConfig` option falls back to its default, and reaches hooks as `CLAUDE_PLUGIN_OPTION_<KEY>` | 2.1.283 | the task 06 install checks | Nothing: the server and `hook.sh` both read the setting this way |
+| On Windows an MCP server's `command` naming a file with no extension starts the `.cmd` file beside it through `cmd.exe`, each argument whole | 2.1.281 | `live-server`, which starts io-guard through `pyrun` | None on Windows: the server doesn't start, and `/mcp` shows why |
+| The `env` block of `~/.claude/settings.json` reaches a plugin's MCP server and its command hooks | 2.1.281 | by hand on 2026-09-28, with `IOGUARD_PYTHON` set there only | `IOGUARD_PYTHON` as a user environment variable |
+| The desktop app passes a plugin from a local-folder marketplace, or one synced from claude.ai, to each session as `<name>@inline`, whose saved options and data folder are that id's | desktop app 2.9939.2, with 2.1.281 | its log and its code, 2026-09-28 | Nothing to fall back on. io-guard reads no plugin option (D29) |

@@ -26,7 +26,7 @@ which it answers, is `docs/design/review.md`. Both reviews use the task numbers 
 | D12 | A rewrite of a command is a user setting per permission mode, `transport.rewrite_mode`: `refuse` (the call is refused and the reason carries the corrected command), `ask` or `allow`. Defaults: `refuse` in auto and dontAsk, `ask` in default, acceptEdits and plan, `allow` in bypassPermissions. A project file may not set `allow` | A hook `allow` skips the permission prompt and the auto-mode classifier, so a silent rewrite would approve a command nobody judged. The lead set the auto-mode order: refuse first, ask second, allow third |
 | D13 | One io server per Claude Code session, shared by the session's subagents, runs the hook checks and the io tools. It is thread-safe: a reader thread, four workers, one writer lock and a lock per file. Two sessions on one project are two servers, kept safe on disk by an atomic replace plus one lock file per edited file, one telemetry file per session, and a config that is read-only after load. A process per call remains only as the fallback | A Python start per call costs about 100 ms. A daemon per project needs its own lifecycle and IPC, and one crash would stop guarding in every session of the project |
 | D14 | `io.run` obeys the user's Bash and PowerShell deny and ask rules: deny refuses, ask elicits the user's yes | Settings cannot match an MCP tool's arguments, so without parity `io.run` is a way around a rule such as `Bash(git push *)` |
-| D15 | Python 3.14 is the floor. Hooks and the server start `${user_config.python}`, which defaults to `python3`. On Windows with python.org Python the user sets `python` once, because `python3` there is the Microsoft Store stub | The lead runs 3.14 on Windows and will on the Mac. `python3` is right on macOS and Linux |
+| D15 | Python 3.14 is the floor. D29 says how io-guard starts it, and replaced the `${user_config.python}` setting this row first named | The lead runs 3.14 on Windows and will on the Mac |
 | D16 | Every policy value is a config key with its default in code. The time budget defaults to 300 ms, past which checks that run a subprocess are skipped, and a 2,000 ms cap, past which every remaining check is skipped | The lead: "configurable as everything else should be" |
 | D17 | Python lines stop at 110 characters, code and comments alike | The width the rules and skills already wrap at |
 | D18 | Until 1.0, `plugin.json` has no `version` and installs track commits. From 1.0 on, semantic version tags with release notes | Fast iteration now, a known-good version for users later |
@@ -40,6 +40,7 @@ which it answers, is `docs/design/review.md`. Both reviews use the task numbers 
 | D26 | A rewrite of an Edit or Write input answers `updatedInput` with no `permissionDecision`, so the harness asks or approves as it would have for the original call. A check's own ask or deny still outranks it. Set on 2026-09-27 in task 17, which asked for this answer once the harness was shown to keep its own decision ("Hooks and MCP", row 27) | An `allow` would skip the prompt for a write outside the working directory, or in default mode, that nobody approved. The rewrite restores only the file's own endings, BOM and indent, and the prompt shows the input as it will land |
 | D27 | io-guard has no write-roots rule, and refuses no Edit or Write for landing outside the project. `OUTSIDE_WRITE_ROOT` and `write_roots.extra` left the plan. Chosen by the lead on 2026-09-27 in task 19, over refusing only another checkout of the same repository, refusing with an extra root in the lead's config, and warning on every such write | Replay over 23,734 recorded Edit and Write calls: 880 (3.7%) landed in another repository or in a folder outside any, 610 of them in auto mode, and almost all on purpose, such as a kit task filed from a game project. Another checkout of the same repository (PTH-3) came to 13, all from a session whose folder was a junction. Claude Code already prompts for a write outside the working folder in default and acceptEdits modes |
 | D28 | An Edit or Write that Claude Code refuses before its hooks run is diagnosed at the session's next hook, from the end of the transcript, once per refused call. Chosen by the lead on 2026-09-27 in task 20, over leaving anchor misses to `io.edit` (task 24) and over a task of its own | Those refusals reach no hook ("Hooks and MCP", row 30), and they are the 67 anchor misses task 20 exists for. The model's next call is usually a Read of the same file, so the diagnosis lands before the retry. The transcript is Claude Code's own file, in a format it does not document, so `live-diagnose` checks it after each release |
+| D29 | The server and the command hooks start Python through one launcher, `scripts/pyrun`, and `pyrun.cmd` beside it for `cmd.exe`. `IOGUARD_PYTHON` names the interpreter. Without it Windows tries `py -3`, then `python`, and macOS `python3`, then `python`. No path is inspected, and `plugin.json` has no `userConfig`. Chosen by the lead on 2026-09-28, after Fable's review, over skipping `WindowsApps` paths and over a settings line every user would add | The desktop app passed io-guard to a session as `io-guard@inline`, whose saved options are empty, so the server ran the default `python3`, the Store stub, and checked nothing. A saved option is keyed by the plugin's id, and no id is stable across the desktop, the terminal and claude.ai. The plugin directory's checklist blocks a hook or MCP command with a variable other than `${CLAUDE_PLUGIN_ROOT}` for a plugin in a subfolder |
 
 ## Surfaces
 
@@ -204,6 +205,24 @@ such as `raw.lstrip('<U+FEFF>')`, and one put a literal U+00A0 in a map of typog
 a private-use glyph. `live-invisible` passed on both releases: Haiku was asked for a U+FEFF inside a Python
 string, wrote it on 2.1.283 and a U+200B instead on 2.1.281, and each time the model read `INVISIBLE_ADDED`
 naming the character it wrote and line 2.
+
+Task 40 followed an incident on 2026-09-28. After the lead restarted the desktop app, 2.9939.2 with Claude Code
+2.1.281, the io server failed in every desktop session: "Python was not found; run without arguments to install
+from the Microsoft Store", 195 ms after its start. The app's `main.log` read `[CCD] Passing 6 plugin(s) to SDK
+(skills: 1, remote: 4, local: 1)`, where it had read `local: 0` before. Its code passes each installed plugin
+whose marketplace has a `directory` or `file` source, and each plugin synced from claude.ai, to the session as
+`{type: "local", path}`, which Claude Code names `<name>@inline`. It does the same for every installed plugin
+when a switch in that code is off or `known_marketplaces.json` can't be read. The option saved under
+`io-guard@claude-io-guard` never reached `io-guard@inline`, whose server ran the default `python3`, and the
+session's telemetry moved to `io-guard-inline`. On the CLI 2.1.283, `"io-guard@inline": false` in `--settings`
+let the installed copy load in place of a `--plugin-dir` one. An MCP `command` naming `scripts/srv` started
+`srv.cmd` beside it on 2.1.281 and 2.1.283, with an argument holding a space intact. `IOGUARD_PYTHON` set only
+in the `env` block of `--settings` reached the server on both, and a wrong value stopped it with the value named
+in the MCP log. Through `pyrun`, `live-empty`, `live-server`, `live-server-down` and `live-answers` passed on
+both, the server connecting in 395 to 411 ms by `py -3`, against 231 to 248 ms with `IOGUARD_PYTHON` naming
+`python.exe`, and no server process outlived its session. `launch-pyrun` timed 275.0 ms at p50, of which
+`hook.py` alone is 197 ms started directly, 156 ms of it imports. `launch-mcp` timed 37.9 ms at p50 twice on
+2.1.283, where it had timed 1.2 ms on 2026-09-27, which task 43 looks into.
 
 Rules through a junction, checked on 2026-09-27 with Claude Code 2.1.281 and 2.1.283:
 

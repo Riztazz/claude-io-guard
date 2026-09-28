@@ -103,7 +103,7 @@ live checks.
 - **Record each confirmed harness fact** in `docs/live-checks.md` and `docs/compat.md` (task 04), and in
   `context.md`.
 - **Run io-guard live from this checkout with a `live-*` probe** in `tools/probes/run_probe.py`. It starts
-  `claude -p --plugin-dir plugins/io-guard` with the `python` option set, puts `tests/support/inject` on
+  `claude -p --plugin-dir plugins/io-guard` with `IOGUARD_PYTHON` naming this Python, puts `tests/support/inject` on
   `PYTHONPATH`, and names the test checks from `tests/support/injected.py` in `IOGUARD_TEST_CHECKS`. The plugin
   runs as shipped, and the run keeps the session's telemetry. A new check adds its own `live-*` probe.
 - **A verdict reads the transcript, never the model's summary.** The model leaves lines out when it quotes. A

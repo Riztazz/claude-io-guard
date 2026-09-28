@@ -1,48 +1,33 @@
-"""io-guard's command-hook entry point: python hook.py <event>, with the hook event as JSON on stdin.
+"""io-guard's command-hook entry point: pyrun hook.py <event>, with the hook event as JSON on stdin.
 
 It writes one ASCII JSON answer to stdout, the check pipeline's through hooks.entry, and exits 0. On
-session_start it also checks that this Python and the interpreter the io server starts from are both 3.14 or
-later, and warns once when either is not. A crash before the answer answers {} and logs GUARD_ERROR to stderr.
+session_start it also checks that this Python is 3.14 or later, and warns once when it is not. The io server
+starts through the same launcher, scripts/pyrun, so the check covers the server's Python too. A crash before
+the answer answers {} and logs GUARD_ERROR to stderr.
 
 This file runs on older Pythons long enough to say that they are too old, so it avoids syntax newer than 3.8,
 and it imports ioguard only on 3.14 or later.
 """
 import json
-import os
-import subprocess
 import sys
 import traceback
 
 MINIMUM = (3, 14)
-SERVER_DEFAULT = "python3"
-FIX = "Set the interpreter with /plugin configure io-guard, for example to python on Windows."
+FIX = ("Install Python 3.14 or later, or set IOGUARD_PYTHON to its full path in the env block of "
+       "~/.claude/settings.json.")
 
 
 def answer(reply):
     sys.stdout.buffer.write(json.dumps(reply).encode("ascii"))
 
 
-def server_python_is_new_enough(command):
-    """Whether the command the io server starts from runs Python 3.14 or later."""
-    probe = "import sys; print(sys.version_info >= (3, 14))"
-    try:
-        done = subprocess.run([command, "-c", probe], capture_output=True, timeout=10, check=False)
-    except (OSError, subprocess.SubprocessError):
-        return False
-    return done.returncode == 0 and done.stdout.strip() == b"True"
-
-
 def interpreter_warning():
-    """The one warning a session gets when a Python io-guard needs is missing or too old, or None."""
-    if sys.version_info[:2] < MINIMUM:
-        found = ".".join(str(part) for part in sys.version_info[:3])
-        return ("io-guard needs Python 3.14 or later, and " + sys.executable + " is " + found
-                + ", so it checks nothing this session. " + FIX)
-    command = os.environ.get("CLAUDE_PLUGIN_OPTION_PYTHON") or SERVER_DEFAULT
-    if not server_python_is_new_enough(command):
-        return ("io-guard's Python interpreter setting is " + json.dumps(command) + ", which does not start "
-                "Python 3.14 or later, so the io server is off and nothing is checked this session. " + FIX)
-    return None
+    """The one warning a session gets when this Python is older than 3.14, or None."""
+    if sys.version_info[:2] >= MINIMUM:
+        return None
+    found = ".".join(str(part) for part in sys.version_info[:3])
+    return ("io-guard needs Python 3.14 or later, and " + sys.executable + " is " + found
+            + ", so it checks nothing this session. " + FIX)
 
 
 def guard(raw):

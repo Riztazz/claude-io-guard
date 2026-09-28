@@ -98,8 +98,8 @@
   <path class="arrow fb" data-flows="B" data-from="iotools" data-to="handles" d="M1210,632 H1190 V458 H1172" marker-end="url(#head)"/>
   <path class="arrow fb" data-flows="B" data-from="lib" data-to="project" d="M1305,956 V1014" marker-end="url(#head)"/>
   <path class="arrow fb" data-flows="B" data-from="lib" data-to="git" d="M1075,956 V1014" marker-end="url(#head)"/>
-  <path class="arrow fc" data-flows="C" data-from="runner" data-to="hooksh" d="M760,200 V270 H420 V288" marker-start="url(#head)" marker-end="url(#head)"/>
-  <path class="arrow fc" data-flows="C" data-from="hooksh" data-to="lib" d="M460,318 H480 V928 H498" marker-end="url(#head)"/>
+  <path class="arrow fc" data-flows="C" data-from="runner" data-to="pyrun" d="M760,200 V270 H420 V288" marker-start="url(#head)" marker-end="url(#head)"/>
+  <path class="arrow fc" data-flows="C" data-from="pyrun" data-to="lib" d="M460,318 H480 V928 H498" marker-end="url(#head)"/>
   <path class="arrow fc" data-flows="C" data-from="threads" data-to="lib" d="M835,854 V898" marker-end="url(#head)"/>
   <path class="arrow fc" data-flows="C D" data-from="lib" data-to="data" d="M600,956 V1014" marker-end="url(#head)"/>
   <path class="arrow fd" data-flows="D" data-from="data" data-to="dashboard" d="M270,1044 H232" marker-end="url(#head)"/>
@@ -115,8 +115,8 @@
   <g class="box" id="client" tabindex="0"><title>Claude Code's MCP client: one stdio connection per session to the io server, with the legacy handshake by default.</title><rect x="1210" y="140" width="190" height="60" rx="9"/><text class="t" x="1226" y="165">MCP client</text><text class="s" x="1226" y="185">one stdio link per session</text></g>
 
   <g class="box" id="skill" tabindex="0"><title>The io-guard skill: every code, its fix, and which io tool does which job, generated from the code table and the tool registry.</title><rect x="40" y="290" width="190" height="56" rx="9"/><text class="t" x="56" y="313">io-guard skill</text><text class="s" x="56" y="332">codes, fixes, tool names</text></g>
-  <g class="box" id="hooksh" tabindex="0"><title>hook.sh finds Python and runs hook.py. Only SessionStart and the per-turn heartbeat check use it, and it warns once when no Python 3.14 starts.</title><rect x="270" y="290" width="190" height="56" rx="9"/><text class="t" x="286" y="313">hook.sh, hook.py</text><text class="s" x="286" y="332">session start, heartbeat</text></g>
-  <g class="box" id="hooksjson" tabindex="0"><title>Binds each tool event to a hook.* tool on the io server (mcp_tool hooks), and SessionStart and UserPromptSubmit to hook.sh.</title><rect x="730" y="290" width="210" height="56" rx="9"/><text class="t" x="746" y="313">hooks.json</text><text class="s" x="746" y="332">binds events to hook tools</text></g>
+  <g class="box" id="pyrun" tabindex="0"><title>pyrun finds Python and runs hook.py, and pyrun.cmd starts the io server the same way on Windows. Only SessionStart and the per-turn heartbeat check start hook.py, and it warns once when the Python found is older than 3.14.</title><rect x="270" y="290" width="190" height="56" rx="9"/><text class="t" x="286" y="313">pyrun, hook.py</text><text class="s" x="286" y="332">session start, heartbeat</text></g>
+  <g class="box" id="hooksjson" tabindex="0"><title>Binds each tool event to a hook.* tool on the io server (mcp_tool hooks), and SessionStart and UserPromptSubmit to pyrun.</title><rect x="730" y="290" width="210" height="56" rx="9"/><text class="t" x="746" y="313">hooks.json</text><text class="s" x="746" y="332">binds events to hook tools</text></g>
 
   <g class="box" id="handles" tabindex="0"><title>Handles for background runs and snapshots, with stated lifetimes. The elicitor asks the user for a decision, such as a locked file.</title><rect x="980" y="430" width="190" height="56" rx="9"/><text class="t" x="996" y="453">Handles, elicitor</text><text class="s" x="996" y="472">runs, snapshots, questions</text></g>
   <g class="box" id="protocol" tabindex="0"><title>Reads JSON-RPC from stdin, answers both MCP eras (2026-07-28 and the legacy initialize), validates _meta and maps errors.</title><rect x="1210" y="430" width="190" height="56" rx="9"/><text class="t" x="1226" y="453">Protocol</text><text class="s" x="1226" y="472">both MCP eras, _meta</text></g>
@@ -248,7 +248,7 @@
       'lib reads git for hunks, and io.stage writes the index.'
     ] },
     C: { name: 'C. Session start and the heartbeat', steps: [
-      'SessionStart, and each new prompt, run the two command hooks through hook.sh.',
+      'SessionStart, and each new prompt, run the two command hooks through pyrun.',
       'hook.py probes the platform, or checks the heartbeat, through lib.',
       "The server's watchdog writes the heartbeat every 5 seconds.",
       'lib writes the probe and the heartbeat into the plugin data folder. A heartbeat older than 30 seconds, or a server Claude Code skipped after a failed start, gives one warning.'

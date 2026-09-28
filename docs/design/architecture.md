@@ -11,13 +11,14 @@ Python 3.14 defers annotations, so no module needs `from __future__ import annot
 
 ```
 plugins/io-guard/
-  .claude-plugin/plugin.json       name, userConfig (python), no bin/
-  .mcp.json                        one stdio server, io, started from ${user_config.python}
+  .claude-plugin/plugin.json       name and links, no userConfig, no bin/
+  .mcp.json                        one stdio server, io, started through scripts/pyrun
   hooks/hooks.json                 mcp_tool hooks for tool events, one command hook for SessionStart
   skills/io-guard/SKILL.md         generated code and tool tables, hand-written steps
   ui/dashboard.html                the ui:// resource and the standalone page, one template
   scripts/
-    hook.sh                        POSIX launcher for command hooks, Git Bash on Windows, sh on macOS
+    pyrun                          POSIX sh launcher for the server and the command hooks
+    pyrun.cmd                      the same launcher for cmd.exe, which runs the server's command on Windows
     hook.py                        command-hook entry point
     server.py                      MCP server entry point
     precommit.py                   the optional git pre-commit hook, which runs the cli's precommit command
@@ -948,8 +949,8 @@ the budget, takes a lower number from a project file and refuses a higher one. A
 **The rewrite mode is the user's (D12).** For each permission mode the user layer sets `refuse`, `ask` or `allow`.
 In `refuse` the call is refused and the reason carries the corrected command, so the model reruns it and the
 auto-mode classifier judges it. In `ask` the user sees the corrected command. In `allow` it runs at once and no
-classifier sees it. `/plugin configure io-guard` cannot set nested keys, so the user edits `config.json`, calls
-`io.config`, or uses the dashboard page, and the README shows each.
+classifier sees it. The user edits `config.json`, calls `io.config`, or uses the dashboard page, and the README
+shows each. io-guard declares no `userConfig`, which could not hold nested keys anyway.
 
 A project file restricts and never widens. It disables a check, adds `skip_trees` and `noise_patterns`, and
 narrows `budget_bytes`. It cannot set `verify` or `format` commands, set `rewrite_mode` to `allow`, or turn telemetry
@@ -1056,10 +1057,12 @@ scoped name `plugin:io-guard:io`, and the tools are `hook.pre_tool_use`, `hook.p
       }]
     }],
     "SessionStart": [{
-      "hooks": [{"type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.sh\" session_start"}]
+      "hooks": [{"type": "command", "command":
+        "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/pyrun\" \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" session_start"}]
     }],
     "UserPromptSubmit": [{
-      "hooks": [{"type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.sh\" heartbeat"}]
+      "hooks": [{"type": "command", "command":
+        "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/pyrun\" \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" heartbeat"}]
     }]
   }
 }
@@ -1114,14 +1117,15 @@ disconnected server. The cost is the two risks in `review.md`, holes 3 and 4, an
 
 ### The launcher across Windows and macOS
 
-Only two things start Python. The server starts from `.mcp.json`, and the SessionStart and heartbeat hooks
-start from `scripts/hook.sh`. The command entry point `hook.py` serves those two hooks and the CLI.
+Only two things start Python, and both go through one launcher, `scripts/pyrun` (D29). The server starts from
+`.mcp.json`, and the SessionStart and heartbeat hooks from `hooks.json`. The command entry point `hook.py`
+serves those two hooks and the CLI.
 
 ```json
 {
   "mcpServers": {
     "io": {
-      "command": "${user_config.python}",
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/pyrun",
       "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/server.py"],
       "env": {"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "IOGUARD_DATA": "${CLAUDE_PLUGIN_DATA}"}
     }
@@ -1129,21 +1133,32 @@ start from `scripts/hook.sh`. The command entry point `hook.py` serves those two
 }
 ```
 
-`plugin.json` declares `userConfig.python` with the default `python3`, the title "Python interpreter" and the
-description "The command that starts Python 3.14 or later. Windows with python.org Python: python". A user
-changes it once with `/plugin configure io-guard`. The default suits macOS, where the Command Line Tools
-provide `python3` and no `python`.
+The server's command names one file in the plugin and no other variable, which is what the plugin directory's
+checklist asks of a plugin in a subfolder of its repository. On Windows the harness runs the command through
+`cmd.exe`, which resolves the extensionless name to `pyrun.cmd`. On macOS it runs `pyrun`, POSIX sh, which
+needs its executable bit (task 36). The hooks start `sh "${CLAUDE_PLUGIN_ROOT}/scripts/pyrun" <script>
+<event>`, which needs no executable bit, under Git Bash on Windows and `sh` on macOS, the same two places the
+Bash tool exists.
 
-`hook.sh` is POSIX sh, started as `sh "${CLAUDE_PLUGIN_ROOT}/scripts/hook.sh" <event>` so it needs no
-executable bit. It runs under Git Bash on Windows and `sh` on macOS, which are the same two places the Bash
-tool exists, and it uses only shell builtins. It resolves an interpreter with `command -v` in the order
-`$CLAUDE_PLUGIN_OPTION_PYTHON`, which is the user's setting, then `python3`, `python` and `py -3`. It skips any
-path under `WindowsApps`, runs `hook.py` with the event name, and on no interpreter prints a `systemMessage`
-naming the fix and exits 0. On `session_start`, `hook.py` checks that its own Python and the one the server
-starts from are both 3.14 or later, and a failed check is the session's one warning, again a `systemMessage`
-that names the setting and the fix. A Windows machine without Git Bash runs shell-form hooks through
-PowerShell, where the launcher does not run. That machine has no Bash tool either, and the `mcp_tool` hooks
-still guard PowerShell, Edit and Write.
+Both launchers try `IOGUARD_PYTHON` first, the one way a user names an interpreter. On Windows they then try
+`py -3`, the launcher python.org installs, then `python`, and never `python3`, which is usually the Microsoft
+Store stub. On macOS `pyrun` tries `python3`, then `python`. `pyrun` tells the two apart by `OS=Windows_NT`, which
+Windows sets in every process's environment. Each uses only builtins and looks commands up on `PATH` alone:
+`pyrun.cmd` sets `NoDefaultCurrentDirectoryInExePath` and asks `where` for `$PATH:` matches, so a `python.bat`
+in the project folder the server starts in never runs. With no interpreter, or an `IOGUARD_PYTHON` that names
+no program, each writes one line naming the fix to stderr and exits 1: the server's stderr goes to the MCP log
+that `/mcp` shows, and a command hook's to the debug log.
+
+`plugin.json` declares no `userConfig`. Claude Code keeps a saved option under the plugin's id, and the desktop
+app passes plugins from a local-folder marketplace and plugins synced from claude.ai to each session as
+`io-guard@inline`, whose options are empty. `IOGUARD_PYTHON` reaches every copy, from the `env` block of
+`~/.claude/settings.json` or from the user's environment.
+
+On `session_start`, `hook.py` checks that its own Python is 3.14 or later. The server started through the same
+launcher, with the same environment, so the check covers it too, and a failed check is the session's one
+warning, a `systemMessage` naming the interpreter and the fix. A Windows machine without Git Bash runs
+shell-form hooks through PowerShell, where the two command hooks do not run. That machine has no Bash tool
+either, and the `mcp_tool` hooks still guard PowerShell, Edit and Write.
 
 Every tool event goes through the `mcp_tool` hooks, and no command-hook fallback ships. Every release from
 2.1.281, the minimum, runs `mcp_tool` hooks (`docs/compat.md`). A fallback would also have nowhere to live: a
@@ -1542,7 +1557,7 @@ behind a `lib` function that takes the `Platform`: `paths.normalise`, `paths.res
 | Atomic write retry | `PermissionError` retried five times with backoff | one attempt |
 | File names | case-insensitive, device names | case-insensitive on APFS by default, NFD |
 | Shell dialect lint | bash 5 from Git Bash, PowerShell 5.1 and 7 | bash 3.2 or Homebrew bash, BSD tools: `NOT_PORTABLE` names bash 4 syntax when the probe finds bash 3, and GNU options always (task 36) |
-| Launcher | Git Bash runs `hook.sh` | `sh` runs `hook.sh` |
+| Launcher | `cmd.exe` runs `pyrun.cmd` for the server, Git Bash runs `pyrun` for the hooks: `py -3`, then `python` | `pyrun` for both: `python3`, then `python` |
 
 ## 11. Test at six levels
 
@@ -1662,8 +1677,8 @@ Boxes, harness group:
 - `Model`: the agent choosing the next call.
 
 Boxes, io-guard group:
-- `hooks.json`: binds tool events to hook.* tools and SessionStart to hook.sh.
-- `hook.sh`: finds Python and starts hook.py.
+- `hooks.json`: binds tool events to hook.* tools and SessionStart to pyrun.
+- `pyrun`: finds Python and starts hook.py or the io server.
 - `hook.py`: command entry point, stdin to stdout.
 - `hooks.entry`: runs the pipeline for one event.
 - `hooks.answer`: renders an Outcome into the event's JSON.
@@ -1694,8 +1709,8 @@ Arrows:
 - `Hook runner` to `hooks.json`: matches the event and the tool.
 - `hooks.json` to `MCP client`: an mcp_tool hook names plugin:io-guard:io.
 - `MCP client` to `io server`: tools/call hook.pre_tool_use with the substituted fields.
-- `hooks.json` to `hook.sh`: SessionStart in shell form.
-- `hook.sh` to `hook.py`: starts Python with the event name.
+- `hooks.json` to `pyrun`: SessionStart in shell form.
+- `pyrun` to `hook.py`: starts Python with the event name.
 - `hook.py` to `hooks.entry`: the parsed event.
 - `io server` to `hooks.bridge`: the flat field map.
 - `hooks.bridge` to `hooks.entry`: the rebuilt Event.

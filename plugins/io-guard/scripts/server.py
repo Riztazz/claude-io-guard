@@ -1,4 +1,4 @@
-"""io-guard's io MCP server, which .mcp.json starts once per Claude Code session: python server.py.
+"""io-guard's io MCP server, which .mcp.json starts once per Claude Code session: pyrun server.py.
 
 It serves the io tools and the hook tools over stdio until stdin closes. ioguard.mcp.server holds the loop.
 """

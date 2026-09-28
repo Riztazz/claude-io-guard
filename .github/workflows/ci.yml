@@ -20,9 +20,9 @@ jobs:
       - name: Show the checkout's line-ending setting
         shell: bash
         run: git config --get core.autocrlf || echo "core.autocrlf is unset"
-      - name: Check that hook.sh parses as POSIX sh
+      - name: Check that pyrun parses as POSIX sh
         shell: bash
-        run: sh -n plugins/io-guard/scripts/hook.sh
+        run: sh -n plugins/io-guard/scripts/pyrun
       - name: Run the tests, and fail when none run
         run: python tests/run_all.py
       - name: Install the claude CLI

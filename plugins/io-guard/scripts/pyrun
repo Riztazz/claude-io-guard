@@ -1,0 +1,31 @@
+#!/bin/sh
+# Starts Python with the arguments given: pyrun <script> [arguments]. The io server and the command hooks
+# both start through it, so they run one interpreter. IOGUARD_PYTHON names that interpreter. Without it,
+# Windows runs py -3, the launcher python.org installs, then python, in the order pyrun.cmd uses. macOS
+# runs python3, then python. Only shell builtins run here, so any PATH works.
+
+if [ -n "${IOGUARD_PYTHON:-}" ]; then
+    if ! command -v "$IOGUARD_PYTHON" >/dev/null 2>&1; then
+        echo "io-guard: IOGUARD_PYTHON is $IOGUARD_PYTHON, which is not a program." \
+             "Set it to the full path of Python 3.14 or later." >&2
+        exit 1
+    fi
+    exec "$IOGUARD_PYTHON" "$@"
+fi
+
+if [ "${OS:-}" = Windows_NT ]; then
+    if command -v py >/dev/null 2>&1; then
+        exec py -3 "$@"
+    fi
+    candidates=python
+else
+    candidates="python3 python"
+fi
+for candidate in $candidates; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+        exec "$candidate" "$@"
+    fi
+done
+
+echo "io-guard found no Python. Install Python 3.14 or later, or set IOGUARD_PYTHON to its full path." >&2
+exit 1

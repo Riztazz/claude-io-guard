@@ -7,13 +7,5 @@
   },
   "homepage": "https://github.com/Riztazz/claude-io-guard",
   "repository": "https://github.com/Riztazz/claude-io-guard",
-  "license": "MIT",
-  "userConfig": {
-    "python": {
-      "type": "string",
-      "title": "Python interpreter",
-      "description": "The command that starts Python 3.14 or later. Windows with python.org Python: python",
-      "default": "python3"
-    }
-  }
+  "license": "MIT"
 }

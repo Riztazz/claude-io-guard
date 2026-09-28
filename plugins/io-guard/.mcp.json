@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "io": {
-      "command": "${user_config.python}",
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/pyrun",
       "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/server.py"],
       "env": {
         "PYTHONUTF8": "1",

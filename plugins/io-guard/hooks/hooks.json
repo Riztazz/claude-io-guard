@@ -82,7 +82,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.sh\" session_start"
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/pyrun\" \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" session_start"
           }
         ]
       }
@@ -92,7 +92,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.sh\" heartbeat"
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/pyrun\" \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" heartbeat"
           }
         ]
       }
