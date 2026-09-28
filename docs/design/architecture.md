@@ -59,6 +59,7 @@ plugins/io-guard/
                                    ask rules, met by an argument list
         runs.py                    interpreter, argv_of, key: what an io.run call runs
         patterns.py                problem, nested: a project file's regex that could stall a line's match
+        portable.py                bash4, gnu_only: what bash 3.2 and macOS's BSD tools lack or read otherwise
         commit_message.py          subcommand, sources, problems: where a git commit's message comes from, and
                                    what in it a policy forbids
       checks/                      policy, one module per check
@@ -415,6 +416,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Transport | `SHELL_WRITE`, a warning for a new script inside a repository (GIT-1) | 12, in `CODES` |
 | Transport | `BACKTICK_IN_DOUBLE_QUOTES`, `TRAILING_BACKSLASH_QUOTE`, `DIALECT_MISMATCH`, `POWERSHELL_TRAP`, `PIPE_HIDES_EXIT`, `INLINE_SCRIPT_INVALID` | 13, in `CODES` |
 | Transport | `MSYS_PATH`, `RESERVED_NAME` | 14, in `CODES` |
+| Transport | `NOT_PORTABLE`, a warning for bash 4 syntax under bash 3.2 and GNU options on macOS | 36, in `CODES` |
 | Bytes | `EOL_CONVERTED`, `BOM_RESTORED`, `EOL_MISMATCH`, `INDENT_MISMATCH` | 17, in `CODES` |
 | Bytes | `BOM_CHANGED`, `ENCODING_INVALID`, `NON_ASCII_ADDED`, `CONTROL_BYTES_ADDED`, `SIZE_COLLAPSED`, `UNINTENDED_CHANGE`, all warnings | 18, in `CODES` |
 | Stale | `ANCHOR_NOT_FOUND`, `ANCHOR_AMBIGUOUS`, `STALE_VIEW`, all warnings on a call that already failed, and refusals when an io tool of task 24 answers with them | 20, in `CODES` |
@@ -781,7 +783,9 @@ def msys_prefix(word: str, posix_roots: Collection[str]) -> Optional[str]   # ta
 def reserved(path: Path) -> Optional[str]                   # "nul" for nul.txt, the name before the first dot
 def link_target(path: Path) -> Optional[Path]               # through a junction or symlink, None through none
 def inside(path: Path, roots: Collection[Path], platform: Platform) -> Optional[Path]   # the deepest root
-def resolved(path: Path) -> str                             # task 24: links followed, case folded as named
+def resolved(path: Path, platform: Optional[Platform] = None) -> str
+                                                            # task 24: links followed, and task 36: NFC on
+                                                            # macOS, case folded where the file system ignores it
 class LockTable: lock(path) -> threading.Lock               # task 24: one per resolved path, per process
 
 # git.py
@@ -1537,7 +1541,7 @@ behind a `lib` function that takes the `Platform`: `paths.normalise`, `paths.res
 | Lock holders | Restart Manager through `ctypes` | `lsof -F pc` |
 | Atomic write retry | `PermissionError` retried five times with backoff | one attempt |
 | File names | case-insensitive, device names | case-insensitive on APFS by default, NFD |
-| Shell dialect lint | bash 5 from Git Bash, PowerShell 5.1 and 7 | bash 3.2 or Homebrew bash, BSD tools |
+| Shell dialect lint | bash 5 from Git Bash, PowerShell 5.1 and 7 | bash 3.2 or Homebrew bash, BSD tools: `NOT_PORTABLE` names bash 4 syntax when the probe finds bash 3, and GNU options always (task 36) |
 | Launcher | Git Bash runs `hook.sh` | `sh` runs `hook.sh` |
 
 ## 11. Test at six levels

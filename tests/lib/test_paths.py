@@ -91,6 +91,15 @@ class OneLockPerFile(unittest.TestCase):
                              (resolved(root / "real" / "a.txt"), 1, False),
                              "a path through a link and a path with .. name one file, which has one lock")
 
+    def test_on_a_mac_a_decomposed_name_and_another_case_name_the_same_file(self):
+        composed, decomposed = "caf" + chr(0xE9), "cafe" + chr(0x301)
+        mac, linux = Platform("darwin", True), Platform("linux", False)
+        self.assertEqual(resolved(Path(f"/w/{decomposed}.txt"), mac),
+                         resolved(Path(f"/W/{composed}.TXT"), mac),
+                         "task 36: APFS hands back NFD and ignores case, so both spellings share a lock")
+        self.assertNotEqual(resolved(Path("/w/A.txt"), linux), resolved(Path("/w/a.txt"), linux),
+                            "a file system that keeps case keeps two files")
+
 
 if __name__ == "__main__":
     unittest.main()

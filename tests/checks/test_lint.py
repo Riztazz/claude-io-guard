@@ -8,7 +8,7 @@ from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import default_registry
 from ioguard.checks.session_probe import WINDOWS_CUT
 from ioguard.lib.config import Config, defaults
-from ioguard.lib.context import Context, Probe
+from ioguard.lib.context import Context, Probe, ToolVersion
 from ioguard.lib.decisions import Verdict
 from ioguard.lib.events import Event, Surface
 from ioguard.lib.platform import Platform
@@ -192,6 +192,34 @@ class PowerShellCallsThatAlwaysFail(unittest.TestCase):
                         '"$pid = 5"', "$errors = 1", "# $pid = 5"):
             with self.subTest(command=command):
                 self.assertEqual(codes(command, "PowerShell"), (Verdict.OBSERVE, ()), "each of these runs")
+
+
+class AMacsOldBashAndBsdToolsAreNamed(unittest.TestCase):
+    def mac(self, bash: str | None) -> Context:
+        found = None if bash is None else ToolVersion("/bin/bash", bash, None)
+        probe = replace(Probe.unprobed(MACOS), bash=found)
+        return Context.fake(config=Config(defaults(REGISTRY.keys()).values), platform=MACOS, probe=probe)
+
+    def decided(self, command: str, ctx: Context):
+        event = Event.from_hook_json(events.bash(command, Path("/Users/me/project")), Surface.MCP_HOOK, MACOS)
+        return lint(Pipeline(REGISTRY).run(event, ctx))
+
+    def test_bash_4_syntax_warns_under_bash_3_2_and_runs(self):
+        decision = self.decided("readarray -t lines < list.txt", self.mac("3.2.57"))
+        self.assertEqual((decision.verdict, [result.code for result in decision.results]),
+                         (Verdict.ALLOW, [Code.NOT_PORTABLE]), "task 36: a warning, and the call runs")
+        self.assertIn("bash 3.2.57 lacks it", decision.results[0].message, "the message names the version")
+
+    def test_a_newer_bash_on_the_mac_passes_bash_4_syntax_and_still_meets_bsd_tools(self):
+        self.assertEqual(self.decided("readarray -t lines < list.txt", self.mac("5.2.37")).verdict,
+                         Verdict.OBSERVE, "Homebrew's bash 5 reads it")
+        found = self.decided("grep -P '\\d+' log.txt", self.mac("5.2.37"))
+        self.assertEqual([result.code for result in found.results], [Code.NOT_PORTABLE],
+                         "the tools are BSD's whatever bash runs them")
+
+    def test_windows_meets_none_of_it(self):
+        self.assertEqual(codes("readarray -t lines < f; grep -P 'a' f"), (Verdict.OBSERVE, ()),
+                         "Git Bash is bash 5 with GNU tools")
 
 
 if __name__ == "__main__":

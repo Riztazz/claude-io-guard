@@ -127,6 +127,10 @@ CODES: tuple[CodeSpec, ...] = (
     CodeSpec("POWERSHELL_TRAP", Layer.TRANSPORT, Severity.REFUSED,
              "PowerShell refuses this command before it does anything.",
              "Change the command as the message says, then run it again.", "0.1"),
+    CodeSpec("NOT_PORTABLE", Layer.TRANSPORT, Severity.WARNING,
+             "The command uses bash 4 syntax or a GNU option, which this machine's bash 3.2 or BSD tools "
+             "read another way or lack.", "Write it as the message says, for bash 3.2 and the BSD tools.",
+             "0.1"),
     CodeSpec("PIPE_HIDES_EXIT", Layer.TRANSPORT, Severity.WARNING,
              "A pipe gives the command the exit code of its last part, which hides a build or test failure.",
              "Read the output for the result, not the exit code.", "0.1"),

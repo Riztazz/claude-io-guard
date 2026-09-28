@@ -97,6 +97,7 @@ A refused call did not run. A warning, or a note that io-guard fixed something, 
 | `MOJIBAKE` | The output holds text that went through the wrong code page. | Copy none of that text into a file, and run the command again with UTF-8 input and output. |
 | `MSYS_PATH` | Git Bash would turn an argument that starts with a slash into a path under its install folder, so io-guard kept it as written. | Nothing to do. |
 | `NON_ASCII_ADDED` | The write added non-ASCII characters to a file this project keeps ASCII. | Replace them with ASCII, on the lines the message names. |
+| `NOT_PORTABLE` | The command uses bash 4 syntax or a GNU option, which this machine's bash 3.2 or BSD tools read another way or lack. | Write it as the message says, for bash 3.2 and the BSD tools. |
 | `OUTPUT_SAVED` | The output was too long to show, so io-guard shows its first and last lines and its errors. | Read the saved file with offset and limit for the rest. |
 | `PATH_NOT_FOUND` | The path does not exist. | Call the tool again with one of the paths the message names. |
 | `PATTERN_INVALID` | ripgrep rejected the Grep pattern before it searched. | Call Grep again with the pattern the message gives. |

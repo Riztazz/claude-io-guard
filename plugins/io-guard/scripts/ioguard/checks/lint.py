@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 
 from ioguard.checks.base import Check, CheckMeta, Cost
-from ioguard.lib import pwsh, python_source, shell
+from ioguard.lib import portable, pwsh, python_source, shell
 from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Rewrite, Verdict
@@ -95,6 +95,23 @@ def bash_dialect(command: str, found: shell.Scan, simples: tuple[shell.SimpleCom
         findings.add(Code.DIALECT_MISMATCH,
                      "This command holds a PowerShell here-string, which bash reads as ordinary quotes.",
                      "Send the command to the PowerShell tool, or use a bash heredoc.", offset=here.start())
+
+
+def unportable(command: str, found: shell.Scan, simples: tuple[shell.SimpleCommand, ...], ctx: Context,
+               findings: Findings) -> None:
+    """bash 4 syntax when the session probe measured an older bash, and GNU-only options on macOS, whose
+    tools are BSD's. Each is a warning, because the command may still do what was meant."""
+    old = portable.major(ctx.probe.bash.version if ctx.probe.bash else None)
+    named = f"bash {ctx.probe.bash.version}" if ctx.probe.bash else "bash"
+    lacks = []
+    if old is not None and old < 4:
+        lacks += [(each, f"{named} lacks it") for each in portable.bash4(command, found.states, simples)]
+    if ctx.platform.macos:
+        lacks += [(each, "macOS's BSD tools read it another way") for each in portable.gnu_only(simples)]
+    for each, why in lacks[:3]:
+        findings.add(Code.NOT_PORTABLE, f"This command uses {each.what}, and {why}: "
+                                        f"{shown(command, each.offset)}", each.fix, severity=Severity.WARNING,
+                     offset=each.offset)
 
 
 def python_bodies(command: str, found: shell.Scan, simples: tuple[shell.SimpleCommand, ...],
@@ -205,7 +222,7 @@ class Lint(Check):
                                             "its first words, such as make or npm test.")},
         codes=frozenset({Code.BACKTICK_IN_DOUBLE_QUOTES, Code.TRAILING_BACKSLASH_QUOTE,
                          Code.DIALECT_MISMATCH, Code.POWERSHELL_TRAP, Code.PIPE_HIDES_EXIT,
-                         Code.INLINE_SCRIPT_INVALID}),
+                         Code.INLINE_SCRIPT_INVALID, Code.NOT_PORTABLE}),
         description="Refuses a shell command whose quoting, escaping or dialect would change what runs, and "
                     "fixes a Windows path whose last backslash escapes its quote.")
 
@@ -236,6 +253,7 @@ class Lint(Check):
                          offset=at)
         python(python_bodies(command, found, simples, ctx), findings)
         hidden_exit(command, simples, self.options["build_commands"], findings)
+        unportable(command, found, simples, ctx, findings)
         return self.trailing_backslashes(command, found)
 
     def trailing_backslashes(self, command: str, found: shell.Scan) -> Rewrite | None:

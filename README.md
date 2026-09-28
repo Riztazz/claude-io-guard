@@ -196,6 +196,10 @@ cuts commands near 7,800 bytes. The setting is `transport.budget_bytes`, and a p
 a well-formed command over 5,000 bytes still fails with "unexpected EOF", your machine's Bash tool cuts sooner,
 so io-guard holds the rest of the session's commands below that command's length, on macOS too.
 
+**On a Mac:** a Bash command that uses bash 4 syntax, such as `readarray` or `${name,,}`, gets a warning when
+your `bash` is macOS's 3.2, and one that gives a GNU-only option, such as `sed -i` with no suffix or `grep -P`,
+gets one whatever bash runs it, because the tools are BSD's. The warning names the form both read.
+
 **Shell defaults:** at session start, io-guard gives every later Bash call `PYTHONUTF8=1` and
 `PYTHONIOENCODING=utf-8`, so a Python print of a non-ASCII character works through a cp1252 console. On Windows
 it adds `DOTNET_CLI_UI_LANGUAGE=en` and `VSLANG=1033`, so build tools report in English. The lists are the settings

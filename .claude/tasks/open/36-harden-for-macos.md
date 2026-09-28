@@ -52,3 +52,27 @@ unit tests, not what the harness does on a Mac. The Mac also brings traps of its
 ## Notes
 
 - Waits for the lead's Mac (D21). Until then, code assumes the Mac has Python 3.14 installed.
+
+## Blocked on
+
+The lead's Mac, for every live check above and the sandbox.
+
+## What changed so far
+
+- **Portable-subset lint, built 2026-09-28.** `lib/portable.py` finds bash 4 syntax, `readarray`, `mapfile`,
+  `coproc`, `${x,,}` and `${x^^}`, `declare -A`, `|&`, `&>>`, `;;&`, `globstar`, `${a[-1]}`, `${x@Q}` and
+  `wait -n`, and GNU-only options: `sed -i` with no suffix, `grep -P`, `stat -c`, `date -d`, `find -printf`,
+  `cp` and `mv -t`, `du -b` and `head -n` with a negative count. An operator counts only unquoted, and an
+  expansion also in double quotes. `shell.lint` gives the new warning `NOT_PORTABLE` for the bash 4 forms when
+  the session probe measured bash below 4, and for the GNU forms on macOS, three at most per command. Windows
+  meets none of it.
+- **Path names as APFS compares them.** `paths.resolved`, the key of the lock table and of `file_lock`, is NFC
+  on macOS and folds case where the file system ignores it, so an NFD name and another spelling of one file
+  share one lock. `normalise` already made names NFC, and `inside` already ignored case.
+- **Estimate.** Read as if under bash 3.2 and BSD tools, 451 of the corpus's 58,779 recorded Bash commands
+  (0.77%), all written on Windows, would be named: `sed -i` with no suffix 377, `stat -c` 45, `grep -P` 16,
+  `find -printf` 8, `head -n -N` 3, `date -d` 2 and `declare -A` 1. Each is a form BSD's tool rejects or reads
+  another way. The first version also named `|&` inside a double-quoted grep pattern, which is why operators
+  now count only unquoted.
+- Tests: 720 before, 729 after, all passing on Windows: `tests/lib/test_portable.py` 5, `test_lint.py` 3,
+  `test_paths.py` 1. CI runs them on the macOS runner.

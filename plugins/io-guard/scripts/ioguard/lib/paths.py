@@ -9,7 +9,7 @@ import unicodedata
 from collections.abc import Collection
 from pathlib import Path
 
-from ioguard.lib.platform import Platform
+from ioguard.lib.platform import Platform, detect
 
 SLASH_ARGUMENT = re.compile(r"^(--?[\w-]+[=:])?(/(?!/)[^/;]*)(/)?")
 DEVICE_NAMES = frozenset({"con", "prn", "aux", "nul", *(f"com{n}" for n in range(1, 10)),
@@ -55,10 +55,16 @@ def link_target(path: Path) -> Path | None:
     return None if os.path.normcase(real) == os.path.normcase(os.path.abspath(path)) else Path(real)
 
 
-def resolved(path: Path) -> str:
-    """One name per file for path: absolute, through every junction and link, in the platform's case for
-    names."""
-    return os.path.normcase(os.path.realpath(path))
+def resolved(path: Path, platform: Platform | None = None) -> str:
+    """One name per file for path: absolute, through every junction and link, NFC on macOS, and with case
+    folded where the file system ignores it, so two spellings of one file give one name."""
+    on = platform or detect()
+    real = os.path.realpath(path)
+    if on.windows:
+        real = os.path.normcase(real)
+    if on.macos:
+        real = unicodedata.normalize("NFC", real)
+    return real.casefold() if on.case_insensitive else real
 
 
 class LockTable:

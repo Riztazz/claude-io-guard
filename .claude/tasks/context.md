@@ -195,6 +195,9 @@ at `38df1e4`. Its data folder is `~/.claude/plugins/data/io-guard-claude-io-guar
 repository has its own `.claude/io-guard.json`, and a session in each connected the io server and wrote its
 telemetry. Task 31 measures from that date.
 
+Task 36 built its code parts before the Mac returns: read as if under bash 3.2 and BSD tools, 451 of 58,779
+recorded Bash commands (0.77%) use a form those lack or read another way, 377 of them `sed -i` with no suffix.
+
 Task 39 counted the invisible characters recorded Edit and Write calls added: 4 of 23,717 calls, all of which
 ran. Three put a literal U+FEFF inside a Python string where the escape was meant, in OrbitalDrift scripts
 such as `raw.lstrip('<U+FEFF>')`, and one put a literal U+00A0 in a map of typographic characters. None added
