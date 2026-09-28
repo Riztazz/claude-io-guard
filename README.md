@@ -297,13 +297,15 @@ The repository is also the plugin's marketplace. The shipped plugin is `plugins/
 ```
 plugins/io-guard/     the plugin: manifest, hooks, the io server, the skill
 tests/                the unittest suite and the byte fixtures
-tools/                corpus, replay, report and measure scripts, and the harness probes
+tools/                corpus, replay, report, measure and skill scripts, and the harness probes
 docs/                 the architecture drawing, the design and its review, and the harness pages
 .claude/tasks/        the build plan: one file per task, in build order
 ```
 
 - Start with [`.claude/tasks/README.md`](.claude/tasks/README.md), then `context.md` beside it, then the design.
 - Run the tests with `python -m unittest discover -s tests -t .`.
+- After adding a code or an io tool, run `python tools/skill.py` to write the skill's tables. A test fails until
+  you do.
 - After a Claude Code update, run `python tools/probes/run_probe.py run all`, then `verdicts`, to recheck every
   harness fact io-guard relies on. [`docs/compat.md`](docs/compat.md) lists the features, and
   [`docs/live-checks.md`](docs/live-checks.md) says when each was last confirmed.

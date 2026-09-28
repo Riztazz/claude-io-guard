@@ -6,7 +6,7 @@ plugin's marketplace: github.com/Riztazz/claude-io-guard.
 
 ## Layout
 
-The tasks build most of this. Today the marketplace, the plugin's manifest, hooks, launcher, stub skill, the
+The tasks build most of this. Today the marketplace, the plugin's manifest, hooks, launcher, skill, the
 `ioguard` package's runtime core (`lib/` and the pipeline in `checks/`, with eighteen checks: the session probe,
 `write.location`, `write.locks`, `shell.writes`, `transport.body`, `shell.lint`, `win.paths`, `conform.write`,
 `conform.edit`, `verify.write`, `verify.command`, `shell.touched`, `read.profile`, `diagnose.failure`,
@@ -83,6 +83,8 @@ Each line works once the task that builds it has landed.
   `live-*` probe, which adds test checks through `tests/support/inject`
 - The staged files against their last commit: `python plugins/io-guard/scripts/precommit.py`, which exits 1 on a
   finding, or the same script as a repository's `.git/hooks/pre-commit`
+- The skill page's tool and code tables: `python tools/skill.py` writes them, and `--check` exits 1 when they are
+  out of date
 - The plugin in the desktop app, which is the lead's main surface: run
   `claude plugin marketplace add <path to this clone>`, then `claude plugin install io-guard@claude-io-guard`
 

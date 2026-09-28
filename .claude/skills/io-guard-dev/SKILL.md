@@ -31,8 +31,8 @@ and `prose`.
    decision.
 2. **`checks` imports `lib`. `hooks`, `mcp` and `cli` import `lib` and `checks`, and never each other.** The one
    exception: `mcp.tools_hook` calls `hooks.bridge`. `tests/test_layout.py` enforces all of it.
-3. **`tools/` scripts import `ioguard.cli` and hold no logic.** A copy of the logic in a script tests a parallel
-   implementation.
+3. **`tools/` scripts import `ioguard.cli`, or `ioguard.mcp.skill` for the skill page, and hold no logic.** A
+   copy of the logic in a script tests a parallel implementation.
 
 **A check is one class with one `run`** (`architecture.md`, section 3). It is registered by name in
 `default_registry()`, declares its codes, its config keys and its cost in `CheckMeta`, and returns a `Decision`

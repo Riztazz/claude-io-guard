@@ -22,7 +22,7 @@ from typing import Any
 from ioguard.lib import bytesio
 from ioguard.lib.context import Context
 from ioguard.lib.platform import detect
-from ioguard.lib.results import Code, Result, render
+from ioguard.lib.results import Code, Result, callable_name, render
 from ioguard.mcp.progress import CancelToken, ProgressReporter
 
 log = logging.getLogger("ioguard.mcp")
@@ -207,6 +207,13 @@ class ToolRegistry:
                 entry["outputSchema"] = schema(spec.output, loose=True)
             entries.append(entry)
         return entries
+
+    def markdown(self) -> str:
+        """The skill's tool table: each tool the model calls, its job, and the name it calls it by. The hook
+        tools, which the model never calls, are left out."""
+        rows = [f"| {spec.title} | `{spec.name}` | `{callable_name(spec.name)}` |"
+                for spec in self.specs.values() if spec.input is not None]
+        return "\n".join(["| Job | Tool | Call it as |", "|---|---|---|", *rows])
 
     def call(self, name: str, arguments: Mapping[str, Any], call: ToolCall) -> dict:
         """The tools/call result. A bug in a tool answers GUARD_ERROR as a tool error, and a bug in a hook

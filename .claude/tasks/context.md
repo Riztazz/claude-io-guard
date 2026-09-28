@@ -167,6 +167,16 @@ same bytes as `fmt_hunks.py --apply` in all 12, with both pointed at the same cl
 passed on both releases: an `io.edit` then `io.format` on a BOM and CRLF file under `LineEnding: LF` left the
 committed line as it was and every line CRLF.
 
+Task 27's `live-skill-doctor` passed on both releases: `/skill-doctor` in `claude -p` listed `io-guard:io-guard`
+at under 20 tokens of context a turn, the full page loading only when the skill runs. `live-skill` passed on
+both: five turns in dontAsk mode, each naming a command to try first, met `SHELL_WRITE`, `MSYS_PATH`,
+`TRAILING_BACKSLASH_QUOTE`, `POWERSHELL_TRAP` and `DIALECT_MISMATCH`, and Haiku's next call in each turn ran.
+It never loaded the skill, so the refusals' own text carried the recovery. Haiku steps around the traps it
+knows: it escaped backticks inside double quotes, wrote `/dev/null` for `nul`, and in one 2.1.281 run sent
+`tasklist /FI` to PowerShell, so those refusals never fired. A turn ending "Then reply DONE" got DONE after a
+refusal, with no retry. In `claude -p` in default mode, a fix answered `ask` is denied, because nobody is there
+to approve it, and `permission_denials` lists the fixed command.
+
 Rules through a junction, checked on 2026-09-27 with Claude Code 2.1.281 and 2.1.283:
 
 - **Claude Code loads a rule, or an `@` import, only when its real path is inside the project.** A junction's real

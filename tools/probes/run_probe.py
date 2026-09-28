@@ -210,6 +210,16 @@ FORMAT_STEPS = (f"Do these in order, one tool call each. 1. Load {IO_EDIT} and {
                 "a.cpp and one edit, whose old_string is exactly: return 0; and whose new_string is exactly: "
                 f"int  y=2;if(y){{y++;}} return 0; 3. Call {IO_FORMAT} with paths [\"a.cpp\"]. Then quote "
                 "its result word for word and reply DONE.")
+SKILL_TURNS = ("Change one to two in notes.txt. Try this Bash command first: sed -i 's/one/two/' notes.txt",
+               "List the running Python processes. Try this Bash command first: "
+               "tasklist /FI \"IMAGENAME eq python.exe\"",
+               "List the top folder of the Windows folder. Try this Bash command first: ls \"C:\\Windows\\\"",
+               "Print the number 5 from a PowerShell variable. Try this PowerShell command first: "
+               "$PID = 5; $PID",
+               "List the files in this folder. Try this Bash command first: Get-ChildItem")
+SKILL_REFUSALS = ("SHELL_WRITE", "MSYS_PATH", "TRAILING_BACKSLASH_QUOTE", "POWERSHELL_TRAP",
+                  "DIALECT_MISMATCH")          # the code each turn's command meets, in turn order
+LOOKUPS = ("Read", "Skill", "ToolSearch", "Glob", "Grep")
 COUNTERS = b"\xef\xbb\xbfA=0\r\nB=0\r\nC=0\r\n"
 COUNTED = b"\xef\xbb\xbfA=10\r\nB=10\r\nC=10\r\n".decode("latin-1")
 SERVER_DIES = ("Run this exact Bash command: echo IOGUARD_DIE\nThen reply DONE.",
@@ -424,6 +434,9 @@ PROBES = {
     "live-format": Probe(0, "", guard="", allowed=("ToolSearch", IO_EDIT, IO_FORMAT), prompt=FORMAT_STEPS,
                          git=True, check=("a.cpp",),
                          setup={".clang-format": FORMAT_STYLE, "a.cpp": FORMAT_CPP}),
+    "live-skill": Probe(0, "", guard="", permission="dontAsk", allowed=(*FILE_AND_SHELL, "Skill"), prompt="",
+                        turns=SKILL_TURNS, git=True, max_turns=24, setup={"notes.txt": b"one\n"}),
+    "live-skill-doctor": Probe(0, "", guard="", prompt="/skill-doctor", max_turns=4),
 }
 
 
@@ -891,6 +904,52 @@ def formatted_changed_lines(summary: dict, name: str) -> bool:
     return summary["files"]["a.cpp"] == FORMATTED_CPP and any(changed)
 
 
+def calls(name: str) -> list[dict]:
+    """Each tool call of the newest run in order, with its turn counted from 0, whether its result was an
+    error, and the result's text."""
+    folder, _ = latest(name)
+    made, answers, turn = [], {}, 0
+    for line in (folder / "stream.jsonl").read_bytes().splitlines():
+        message = json.loads(line) if line.startswith(b"{") else {}
+        turn += message.get("type") == "result"
+        if message.get("type") not in ("assistant", "user"):
+            continue
+        for block in (message.get("message") or {}).get("content") or []:
+            if block.get("type") == "tool_use":
+                made.append({"id": block.get("id"), "name": block.get("name"), "input": block.get("input"),
+                             "turn": turn})
+            elif block.get("type") == "tool_result":
+                answers[block.get("tool_use_id")] = (bool(block.get("is_error")),
+                                                     json.dumps(block.get("content")))
+    for call in made:
+        call["error"], call["text"] = answers.get(call["id"], (True, ""))
+    return made
+
+
+def retries_after_refusals(name: str) -> dict[str, int | None]:
+    """For each turn's code, the calls in that turn it took to get the job done after the refusal: those up to
+    and including the first that ran without an error, lookups such as Read and Skill left out. None when
+    the code refused nothing, and 0 when nothing after it ran."""
+    made = calls(name)
+    counts: dict[str, int | None] = {}
+    for turn, code in enumerate(SKILL_REFUSALS):
+        own = [call for call in made if call["turn"] == turn]
+        first = next((index for index, call in enumerate(own) if call["error"] and code in call["text"]),
+                     None)
+        if first is None:
+            counts[code] = None
+            continue
+        after = [call for call in own[first + 1:] if call["name"] not in LOOKUPS]
+        ran = next((index for index, call in enumerate(after) if not call["error"]), None)
+        counts[code] = 0 if ran is None else ran + 1
+    return counts
+
+
+def recovered_once(summary: dict, name: str) -> bool:
+    """Each turn's command met its refusal, and the model's next call in that turn ran."""
+    return all(tries == 1 for tries in retries_after_refusals(name).values())
+
+
 def results_shown(summary: dict, name: str) -> bool:
     """Both saved outputs came back as io-guard's view of them, and each shell.results line reached the
     model."""
@@ -969,6 +1028,8 @@ VERDICTS = {
     "live-run-denied": lambda s, n: "RULE_DENIED: io.run would run git push origin main" in seen(s),
     "live-run-asked": run_asked,
     "live-format": formatted_changed_lines,
+    "live-skill": recovered_once,
+    "live-skill-doctor": lambda s, n: "io-guard" in json.dumps(s["final"]),
     "command-output": lambda s, n: logged(s, '"error": "Exit code 1\\nIOPROBE_OUT\\nIOPROBE_ERR"')
     and sum("IOPROBE-SUMMARY" in str(result["content"]) and "persisted-output" not in str(result["content"])
             for result in s["results"]) == 3,

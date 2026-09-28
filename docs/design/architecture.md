@@ -101,6 +101,7 @@ plugins/io-guard/
         tools_history.py           io.snapshot, io.restore, io.compare, io.stage
         tools_dashboard.py         io.dashboard, io.config, the ui resource
         tools_hook.py              hook.pre_tool_use, hook.post_tool_use, hook.post_tool_use_failure, hook.ping
+        skill.py                   the skill page's tool and code tables, which tools/skill.py writes
       cli/
         main.py                    corpus and replay today, then probe, check, profile, codes, report, serve, doctor
         labels.py                  the baseline's labels for a recorded call's result and command shape
@@ -113,7 +114,8 @@ tools/                             ioguard.py, corpus.py, replay.py, measure.py,
 
 Four rules hold the layout together. `lib` imports only the standard library and other `lib` modules. `checks`
 imports `lib`. `hooks`, `mcp` and `cli` are the ways in, and each imports `lib` and `checks` and never another,
-except that `mcp.tools_hook` calls `hooks.bridge`. `tools/` scripts import `ioguard.cli` and hold no logic.
+except that `mcp.tools_hook` calls `hooks.bridge`. `tools/` scripts import `ioguard.cli`, or `ioguard.mcp.skill`
+for the skill page, and hold no logic.
 
 ## 2. Define the core types
 
@@ -1196,7 +1198,7 @@ class ToolRegistry:
     def register(self, spec: ToolSpec) -> None: ...
     def list(self) -> list[dict]: ...                    # tools/list entries, in registration order
     def call(self, name: str, arguments: Mapping[str, Any], call: ToolCall) -> dict: ...
-    # markdown(), the skill's tool table, arrives with task 27
+    def markdown(self) -> str: ...                       # the skill's tool table, hook tools left out, task 27
 ```
 
 A hook tool takes the map an `mcp_tool` hook sends and returns its MCP result as it is. A bug in one answers
@@ -1215,6 +1217,10 @@ Each tool is one module with its input and output dataclasses, its `ToolSpec` an
 takes the input dataclass and a `ToolCall` holding the `Context`, the `CancelToken` and the
 `ProgressReporter`, and returns the output dataclass. The `hook.*` tools are registered last, with the
 description "Called by Claude Code hooks. Not for the model."
+
+`markdown()` gives the skill page its tool table, and `mcp/skill.py` writes it and the code table from `CODES`
+between the page's marker lines, run as `python tools/skill.py`. A test fails while the shipped page differs,
+so a new tool or code ships with its row (task 27).
 
 ### Run a program, and read its log
 
