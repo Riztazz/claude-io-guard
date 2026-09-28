@@ -21,7 +21,7 @@ from ioguard.mcp.toolspec import ToolCall, ToolRegistry, ToolSpec
 from tests import PLUGIN_SCRIPTS, REPO
 from tests.support import injected
 
-SERVER = PLUGIN_SCRIPTS / "server.py"
+SERVER = PLUGIN_SCRIPTS / "ioguard_mcp.py"
 INJECT = REPO / "tests" / "support" / "inject"
 REQUESTS = Path(__file__).parent / "requests"
 SESSION = "s1"

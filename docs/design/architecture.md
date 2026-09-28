@@ -20,7 +20,7 @@ plugins/io-guard/
     pyrun                          POSIX sh launcher for the server and the command hooks
     pyrun.cmd                      the same launcher for cmd.exe, which runs the server's command on Windows
     hook.py                        command-hook entry point
-    server.py                      MCP server entry point
+    ioguard_mcp.py                 MCP server entry point, named so a kill aimed at server.py misses it
     precommit.py                   the optional git pre-commit hook, which runs the cli's precommit command
     ioguard/
       __init__.py                  PLUGIN_VERSION, CONFIG_SCHEMA, CHECK_API, TELEMETRY_SCHEMA
@@ -1130,7 +1130,7 @@ takes the refusals after the last call that ran, and answers each once, before t
 `Event.from_fields`, and returns the answer JSON as the tool's text content. The harness reads that text exactly
 as it reads command-hook stdout, and a `deny` in it blocks the call. The tool never sets `isError`, because an
 error result produces a hook notice on every call. A `GUARD_ERROR` answers `{}` and warns once through
-`user_message`. `scripts/server.py` starts `mcp.server`, which serves the hook tools, `hook.ping` and the io
+`user_message`. `scripts/ioguard_mcp.py` starts `mcp.server`, which serves the hook tools, `hook.ping` and the io
 tools (section 7).
 
 A session runs several processes: the server, and a command hook at SessionStart and at each UserPromptSubmit.
@@ -1175,7 +1175,7 @@ serves those two hooks and the CLI.
   "mcpServers": {
     "io": {
       "command": "${CLAUDE_PLUGIN_ROOT}/scripts/pyrun",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/server.py"],
+      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/ioguard_mcp.py"],
       "env": {"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
     }
   }
@@ -1684,7 +1684,7 @@ behind a `lib` function that takes the `Platform`: `paths.normalise`, `paths.res
 | check | Does this check decide right on this event? | `tests/checks/` with `Context.fake` | CI |
 | pipeline | Do checks order, compose, stop, budget and fail open as specified? | `tests/checks/test_pipeline.py` | CI |
 | hook | Does JSON in give the documented JSON out? | `tests/hooks/`, `hook.py` as a subprocess | CI |
-| conformance | Does the server answer both eras from recorded requests? | `tests/mcp/`, `server.py` as a subprocess | CI |
+| conformance | Does the server answer both eras from recorded requests? | `tests/mcp/`, `ioguard_mcp.py` as a subprocess | CI |
 | replay | What would each check have done to the recorded calls? | `tools/replay.py` over `corpus/` | local, before a rule ships |
 | live | What does this harness really do? | `tools/probes/` and `docs/live-checks.md` | by hand, with the version recorded. Windows only while the lead's Mac is down (D21) |
 

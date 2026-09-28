@@ -2,7 +2,7 @@
   "mcpServers": {
     "io": {
       "command": "${CLAUDE_PLUGIN_ROOT}/scripts/pyrun",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/server.py"],
+      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/ioguard_mcp.py"],
       "env": {
         "PYTHONUTF8": "1",
         "PYTHONIOENCODING": "utf-8"

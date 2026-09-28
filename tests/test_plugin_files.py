@@ -47,7 +47,7 @@ class PluginFilesAgree(unittest.TestCase):
     def test_every_script_a_hook_or_the_server_names_exists(self):
         texts = "".join(path.read_bytes().decode("utf-8")
                         for path in (PLUGIN / "hooks" / "hooks.json", PLUGIN / ".mcp.json"))
-        for script in ("pyrun", "hook.py", "server.py"):
+        for script in ("pyrun", "hook.py", "ioguard_mcp.py"):
             with self.subTest(script=script):
                 self.assertIn(f"/scripts/{script}", texts, f"the plugin config starts {script}")
                 self.assertTrue((PLUGIN_SCRIPTS / script).is_file(), f"scripts/{script} exists")

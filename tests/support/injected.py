@@ -1,7 +1,7 @@
 """Checks a test puts into io-guard's registry, each giving one shape of answer, and install, which adds them.
 
 inject/sitecustomize.py installs the ones IOGUARD_TEST_CHECKS names into a Python a test starts, so hook.py
-and server.py run with them as shipped. A live check starts Claude Code with the same variables.
+and ioguard_mcp.py run with them as shipped. A live check starts Claude Code with the same variables.
 """
 import os
 from collections.abc import Iterable

@@ -25,7 +25,7 @@ The server's command is `${CLAUDE_PLUGIN_ROOT}/scripts/pyrun`. On Windows, Claud
 project folder the server starts in, so a `python.bat` in a repository you clone never runs.
 
 `pyrun` hands every argument to the Python it picks, so `pyrun --help` prints Python's own help. To see what a
-script does, run it with `--help` instead: `pyrun hook.py --help` or `pyrun server.py --help`.
+script does, run it with `--help` instead: `pyrun hook.py --help` or `pyrun ioguard_mcp.py --help`.
 
 ## Name your Python
 
