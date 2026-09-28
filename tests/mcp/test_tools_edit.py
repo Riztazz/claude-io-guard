@@ -12,6 +12,7 @@ from pathlib import Path
 from types import MappingProxyType
 from unittest import mock
 
+from ioguard.lib import journal
 from ioguard.lib.config import Config, defaults
 from ioguard.lib.context import Context, LiveFs
 from ioguard.lib.fakes import FakeFs
@@ -98,6 +99,22 @@ class EditTest(unittest.TestCase):
         batch = tuple(EditPair(*pair) for pair in pairs)
         found = self.run_tool(edit, EditInput("a.txt", batch, **given), ctx)
         return ctx.fs.files[CWD / "a.txt"], found
+
+
+class AnIoToolWriteIsJournaled(EditTest):
+    def test_the_edit_lands_in_the_journal_with_its_line_and_tag(self):
+        ctx = self.context({CWD / "a.txt": b"one\r\ntwo\r\n"})
+        ctx.session.tag = "pass"
+        self.run_tool(edit, EditInput("a.txt", (EditPair("two", "TWO"),)), ctx)
+        [entry] = journal.entries(self.data)
+        self.assertEqual((entry.tool, entry.tag, entry.changed.lines, entry.changed.added),
+                         ("io.edit", "pass", ((2, 2),), (journal.key("TWO"),)),
+                         "an io tool's write is journaled like an Edit, from its own before and after")
+
+    def test_a_call_that_changes_nothing_journals_nothing(self):
+        ctx = self.context({CWD / "a.txt": b"one\n"})
+        self.run_tool(edit, EditInput("a.txt", (EditPair("one", "one"),)), ctx)
+        self.assertEqual(list(journal.entries(self.data)), [], "no write, no journal line")
 
 
 class AnInvisibleCharacterIsNamed(EditTest):

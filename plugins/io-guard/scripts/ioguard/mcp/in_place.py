@@ -7,12 +7,14 @@ Claude Code does not see an io tool's write as its own, so every result says to 
 built-in Edit.
 """
 import hashlib
+import logging
 import tempfile
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+from ioguard.checks.journal_write import record_write
 from ioguard.lib import locks, paths
 from ioguard.lib.context import Context
 from ioguard.lib.profile import BOM_CHAR, Bom, Profile, profile
@@ -21,6 +23,7 @@ from ioguard.mcp.toolspec import ToolFailure
 
 NOTE = "The built-in Edit tool needs a fresh Read of this file before its next use."
 LOCKS = paths.LockTable()
+log = logging.getLogger("ioguard.mcp")
 
 
 @dataclass(frozen=True)
@@ -176,4 +179,8 @@ def write(loaded: Loaded, data: bytes, ctx: Context, tool: str) -> Written:
                 holding = ""
             raise refused(Code.FILE_LOCKED, f"{holding or 'Another program'} holds {path.name} open, so "
                           f"{tool} could not replace it and wrote nothing.", tool, path, ctx) from None
+        try:
+            record_write(ctx, path, tool, loaded.data, data)
+        except Exception:
+            log.exception("GUARD_ERROR: io-guard could not add the %s of %s to the journal.", tool, path)
     return Written(data, data != loaded.data)

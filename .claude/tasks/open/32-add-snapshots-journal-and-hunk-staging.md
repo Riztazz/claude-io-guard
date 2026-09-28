@@ -55,3 +55,10 @@ It comes after the measurement (D20), so task 31's numbers can reshape it.
   recorded, once. Elicitation stays out, since no surface shows its form. `FsPort` gained `files_under`, and
   `lib.context.read_or_none` replaced three copies of the same read. `live-restore` passed on 2.1.281 and
   2.1.283. Tests: 746 before, 767 after.
+- **Part 2, the journal, 2026-09-28.** `lib.journal` keeps `journal/<YYYY-MM>/<session>.jsonl` in io-guard's
+  folder: per write the file, the lines, the tool, the time, the session's tag, and a 12-digit SHA-1 key per
+  added and removed line, never text. The new check `journal.write` records Edit and Write at PostToolUse
+  from verify.write's snapshot, which it reads with `SessionState.peek_snapshot` before verify.write takes it,
+  and `mcp.in_place.write` records the io tools' own writes. `io.snapshot` sets the session's tag. Live on
+  2.1.283, `live-restore` journaled its `io.edit` under the tag `probe`, and `live-verify` its Write and Edit.
+  Tests: 767 before, 782 after.

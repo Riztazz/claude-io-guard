@@ -130,7 +130,7 @@ class VerifyWrite(Check):
         tools=frozenset({Tool.EDIT, Tool.WRITE}), platforms=frozenset({"win32", "darwin"}),
         severity=Severity.WARNING, cost=Cost.MEDIUM,
         reads=frozenset({"file_path", "content", "old_string", "new_string", "replace_all"}),
-        writes=frozenset(), after=frozenset({"conform.write", "conform.edit"}),
+        writes=frozenset(), after=frozenset({"conform.write", "conform.edit", "journal.write"}),
         config={
             "repair": ConfigKey(bool, True, "Put back a BOM a write dropped and the line endings it "
                                 "changed."),

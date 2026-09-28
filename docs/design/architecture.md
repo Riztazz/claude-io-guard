@@ -64,6 +64,7 @@ plugins/io-guard/
         commit_message.py          subcommand, sources, problems: where a git commit's message comes from, and
                                    what in it a policy forbids
         snapshots.py               take, find, pending, sweep: files' bytes kept under a tag for seven days
+        journal.py                 changed, record, entries: each write's lines and task tag, as line keys
       checks/                      policy, one module per check
         base.py                    Check, CheckMeta, Cost
         registry.py                Registry, default_registry
@@ -77,6 +78,7 @@ plugins/io-guard/
         win_paths.py               win.paths: MSYS_PATH for slash arguments and cmd /c, RESERVED_NAME for nul
         conform_write.py           conform.write: EOL_CONVERTED, BOM_RESTORED, EOL_MISMATCH for a mixed file
         conform_edit.py            conform.edit: INDENT_MISMATCH, new_string in the indent around the match
+        journal_write.py           journal.write: each Edit and Write into the journal, before verify.write
         verify_write.py            verify.write: the file after an Edit or Write against its snapshot, repairs
         verify_command.py          verify.command: the user's verify command on the written file
         touched.py                 shell.touched: TOUCHED_BY_SHELL, the files a shell command changed or made
@@ -1394,6 +1396,22 @@ io.restore(tag, paths = []) -> RestoreOutput(snapshot, restored, unchanged, note
   whose files all match the snapshot asks nothing and writes nothing.
 - **Put back.** Each changed file, a deleted one included, is written back whole through `write_atomic`,
   held as the edit tools hold one. Unlike `git checkout`, the other files stay as they are (GIT-6).
+
+### The edit journal
+
+`lib.journal` keeps one line per write in `journal/<YYYY-MM>/<session>.jsonl` in io-guard's folder: the
+time, the session, the project, the file, the tool, the session's task tag, which the last `io.snapshot`
+set, and the lines the write changed (GIT-4). It keeps no text. Each line the write added or removed is
+the first 12 hex digits of its SHA-1 without its line ending, from bytes read as UTF-8 with any other byte
+kept, so a line keys the same from the file and from `git diff`, and `io.stage` finds the hunk it landed
+in whatever moved around it. `changed` trims the common head and tail and compares the rest line by line,
+and a middle over 4,000 lines is one change.
+
+Two writers feed it, both in the io server. `journal.write`, at PostToolUse for Edit and Write, reads the
+file against the snapshot `verify.write` kept at PreToolUse, and runs before `verify.write` takes it. A
+file too large for that snapshot to keep its bytes goes unrecorded. The io tools that change a file record
+from `mcp.in_place.write`, which holds the bytes before and after. `io.restore` records nothing, since it
+undoes. The check's own `enabled` switches both off.
 
 ### Handles
 

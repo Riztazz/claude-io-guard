@@ -186,7 +186,9 @@ approve commands or make io-guard run a program.
 
 io-guard's folder is `~/.claude/io-guard`, or `io-guard` inside `CLAUDE_CONFIG_DIR` when you've moved `~/.claude`,
 or wherever `IOGUARD_HOME` points. It holds your `config.json`, the file locks that keep two sessions from
-writing one file at once, the telemetry, and each session's heartbeat. Every copy of the plugin shares it: the
+writing one file at once, the telemetry, each session's heartbeat, the snapshots, and the edit journal:
+one line per write naming the file, the lines it changed, the tool and the task, with each line kept as a
+hash and never as text. Every copy of the plugin shares it: the
 desktop app, the terminal, and an install from claude.ai or from a marketplace. Uninstalling the plugin leaves
 the folder, so delete it yourself to remove everything.
 

@@ -196,6 +196,11 @@ class SessionState:
             while len(self.snapshots) > SNAPSHOTS_KEPT:
                 del self.snapshots[next(iter(self.snapshots))]
 
+    def peek_snapshot(self, tool_use_id: str) -> Snapshot | ShellSnapshot | None:
+        """The snapshot kept for this call, left in the session for the check that takes it."""
+        with self.lock:
+            return self.snapshots.get(tool_use_id)
+
     def take_snapshot(self, tool_use_id: str) -> Snapshot | ShellSnapshot | None:
         """The snapshot kept for this call, removed from the session, or None."""
         with self.lock:
