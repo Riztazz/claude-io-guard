@@ -215,6 +215,10 @@ CODES: tuple[CodeSpec, ...] = (
              "old_string ends in a space or tab that new_string lacks, so the Edit would join new_string to "
              "the text after it.",
              "End old_string and new_string one character later, with the space inside both.", "0.1"),
+    CodeSpec("LINES_JOINED", Layer.BYTES, Severity.REFUSED,
+             "The Edit deletes old_string and the line break after it, so the lines around it would join.",
+             "Move old_string one line break later, so it ends with the line break instead of opening with "
+             "it.", "0.1"),
 )
 Code = Enum("Code", {spec.code: spec.code for spec in CODES})
 SPECS: dict[Code, CodeSpec] = {Code[spec.code]: spec for spec in CODES}

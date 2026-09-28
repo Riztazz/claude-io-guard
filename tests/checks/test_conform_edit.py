@@ -102,6 +102,19 @@ class ADroppedSpaceIsRefused(unittest.TestCase):
         outcome = edit(b"a = f(x.Place.Branch, \n", ".Place.Branch, ", ".Place.Branch.ToInt(),")
         self.assertEqual(outcome.verdict, Verdict.OBSERVE, "nothing follows the space on its line")
 
+    def test_a_recorded_deletion_that_would_join_two_lines_is_refused_with_the_old_string_to_send(self):
+        data = (b'VERDICTS = {\n    "a": lambda s, n: seen(s),\n    "b": lambda s, n: note_left_alone(n),\n'
+                b'    "c": lambda s, n: locked(n),\n}\n')
+        old = '\n    "b": lambda s, n: note_left_alone(n),'
+        result = decided(edit(data, old, "")).results[0]
+        self.assertEqual((result.code, result.fix.input["old_string"]),
+                         (Code.LINES_JOINED, '    "b": lambda s, n: note_left_alone(n),\n'),
+                         "the same lines, ending with their line break, delete cleanly")
+        self.assertIn('2|     "a": lambda s, n: seen(s),    "c": lambda s, n: locked(n),', result.message,
+                      "the message shows the two entries joined, as the recorded Edit left them")
+        self.assertEqual(edit(data, result.fix.input["old_string"], "").verdict, Verdict.OBSERVE,
+                         "the old_string the fix names is not refused")
+
     def test_the_setting_turns_the_refusal_off(self):
         ctx = context(self.BRANCHES, **{"checks.conform.edit.space_dropped": False})
         outcome = edit(self.BRANCHES, ".Place.Branch, ", ".Place.Branch,", replace_all=True, ctx=ctx)

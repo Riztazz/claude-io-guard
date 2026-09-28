@@ -173,6 +173,10 @@ PIPE_TWICE = ("Do these in order, one tool call each, and never retry. 1. Run th
               "python -m unittest discover -s . 2>&1 | tail -3 2. Run the same Bash command again. Then "
               "reply DONE.")
 PIPE_WARNED = "PIPE_HIDES_EXIT: This command pipes python -m unittest into tail"
+INSTALLED = "io-guard@claude-io-guard"
+DELETE_JOIN = ("Read f.txt. Then call the Edit tool once with exactly these arguments, changing none of "
+               "them: {\"file_path\": \"f.txt\", \"old_string\": \"\\nb\", \"new_string\": \"\"} Then reply "
+               "DONE.")
 SCRIPT_GIVEN = "Run this exact Bash command and nothing else: python rewrite.py a.txt Then reply DONE."
 REWRITE_PY = b"import sys\nwith open(sys.argv[1], 'w') as out:\n    out.write('two\\n')\n"
 INDEX_ONLY = ("Do these in order, one tool call each, and never retry. 1. Run the Bash command: python -c "
@@ -461,6 +465,12 @@ PROBES = {
     "live-touched": Probe(0, "", guard="", allowed=("Read", "Bash"), git=True, prompt=TOUCHED,
                           check=("a.cpp", "conv.txt"), setup=TOUCHED_FILES),
     "live-pipe-once": Probe(0, "", guard="", allowed=("Bash",), prompt=PIPE_TWICE, max_turns=6),
+    "edit-delete-join": Probe(0, "record", allowed=("Read", "Edit"), permission="acceptEdits",
+                              prompt=DELETE_JOIN, check=("f.txt",), setup={"f.txt": b"a\nb\nc\n"}),
+    "live-lines-joined": Probe(0, "", guard="", allowed=("Read", "Edit"), permission="acceptEdits",
+                               prompt=DELETE_JOIN.replace("Then reply", "If the Edit is refused, do what the "
+                                                          "refusal says. Then reply"),
+                               check=("f.txt",), setup={"f.txt": b"a\nb\nc\n"}, max_turns=8),
     "live-script-write": Probe(0, "", guard="", allowed=("Bash",), git=True, prompt=SCRIPT_GIVEN, max_turns=4,
                                check=("a.txt",), setup={"a.txt": b"one\n", "rewrite.py": REWRITE_PY}),
     "live-touched-index": Probe(0, "", guard="", allowed=("Bash",), git=True, prompt=INDEX_ONLY, max_turns=8,
@@ -714,6 +724,14 @@ def user_config(values: dict | None):
             path.write_bytes(before)
 
 
+def without_installed(settings: dict | None) -> dict:
+    """settings with the lead's installed io-guard off. A user setting enables it in every session, the CLI
+    loads it from this checkout, and a probe runs io-guard through --plugin-dir or not at all."""
+    found = dict(settings or {})
+    found["enabledPlugins"] = {**found.get("enabledPlugins", {}), INSTALLED: False}
+    return found
+
+
 def run(name: str) -> Path:
     probe = PROBES[name]
     out = OUT / name / time.strftime("%Y%m%d-%H%M%S")
@@ -740,6 +758,7 @@ def run(name: str) -> Path:
             "--max-turns", str(probe.max_turns), *probe.extra_args]
     if probe.allowed:
         argv += ["--allowedTools", *probe.allowed]
+    settings = without_installed(settings)
     if settings is not None:
         argv += ["--settings", json.dumps(settings)]
     started = time.time()
@@ -1203,6 +1222,8 @@ VERDICTS = {
         "EOL_MISMATCH: This command changed conv.txt from CRLF to LF line endings.")),
     "live-results": results_shown,
     "live-pipe-once": piped_twice_warned_once,
+    "edit-delete-join": lambda s, n: s["files"]["f.txt"] == "ac\n",
+    "live-lines-joined": lambda s, n: s["files"]["f.txt"] == "a\nc\n" and "LINES_JOINED: " in seen(s),
     "live-script-write": lambda s, n: s["files"]["a.txt"].replace("\r\n", "\n") == "two\n"
     and context_reached(n, "SHELL_WRITE: This command gives")
     and context_reached(n, "SHELL_WRITE: rewrite.py changed a.txt"),

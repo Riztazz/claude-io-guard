@@ -103,6 +103,8 @@ Confirmed with `tools/probes/run_probe.py`, whose `verdicts` command rechecks ev
 | 33. A plugin's stdio server that fails to start is cached in `~/.claude/mcp-needs-auth-cache.json`, and every session in the next 15 minutes skips it, CLI and desktop alike | `live-server-down` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | 34. An MCP server's environment names its own session in `CLAUDE_CODE_SESSION_ID` | `era-legacy` | 2.1.283 | waits for the Mac | 2026-09-28 |
 | 39. The desktop app rewrites a memory note's frontmatter after a Write or an Edit, before PostToolUse reads it. `claude -p` leaves the note as written | the lead's desktop sessions, a one-off `claude -p` run | desktop 2.1.281, CLI 2.1.283 | waits for the Mac | 2026-09-28 |
+| 41. An Edit with an empty `new_string` also removes the line break after its match, so `\nb` deleted from `a\nb\nc\n` leaves `ac\n` | `edit-delete-join` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
+| A deletion that would join two lines is refused with `LINES_JOINED`, and the model's `b\n` after it leaves `a\nc\n` | `live-lines-joined` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | 40. A resume and a `/compact` keep the session id, and SessionStart fires with `startup`, `resume` and `compact`. A file dirty before the first start is named once, and one the session made before a compaction is not | one-off runs of `claude -p` for task 51 | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 
 ## io-guard itself

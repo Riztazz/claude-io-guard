@@ -363,6 +363,7 @@ denied, and the rerun denied all three. Ten calls each took:
 | 38 | An MCP tool call names its tool use | `live-commit-asked`, task 29 | Yes. Claude Code's `tools/call` to a plugin server carries `_meta` `claudecode/toolUseId`, the id the call's hooks receive as `tool_use_id`, beside `progressToken`. 2.1.281 and 2.1.283 |
 | 39 | A memory note lands as the Write or Edit gave it | this repository's and CLICKER's desktop sessions, and a one-off `claude -p` run, task 50 | Only from `claude -p`. In the desktop app a Write of `projects/<project>/memory/<name>.md` came back with `description` quoted and `node_type: memory`, `originSessionId` and `modified` added under `metadata`, and each Edit of a note moves `modified`, before PostToolUse reads the file. The same Write and Edit from `claude -p` 2.1.283 landed as given. Desktop 2.1.281, 2026-09-28 |
 | 40 | A resume and a compaction keep the session id | one-off `claude -p` runs, task 51 | Yes. `--resume <id>` and `--resume <id> /compact` ran under the first run's `session_id`, and SessionStart fired as `SessionStart:resume` and `SessionStart:compact`. So a file kept per session id survives both. 2.1.281 and 2.1.283 |
+| 41 | An Edit with an empty new_string removes only old_string | `edit-delete-join`, task 58 | No. On `a\nb\nc\n`, old_string `\nb` with an empty new_string left `ac\n`: the tool removes the line break after the match too. 2.1.281 and 2.1.283 |
 
 ## Doc facts, checked on 2026-09-27
 

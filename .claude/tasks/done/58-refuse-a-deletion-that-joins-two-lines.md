@@ -3,7 +3,8 @@ title: Refuse an Edit whose deletion joins two lines
 stage: I
 area: bytes
 created: 2026-09-28
-status: open
+status: done
+claimed-by: Pala Elektroniczna, session 7eeb509f
 depends-on: [49]
 findings: []
 platforms: [windows, macos]
@@ -48,3 +49,30 @@ That is a guess until a probe shows it.
 
 - The two recorded Edits are refused, with the `old_string` that deletes the same lines and leaves the lines
   around them apart.
+
+## What changed
+
+The probe confirmed the guess: `edit-delete-join` on 2.1.281 and 2.1.283 left `ac\n` (row 41 of "Hooks and
+MCP"). The live runs then showed a second way to the same join: refused, Haiku sent `\nb\n`, which removes both
+line breaks itself. So the rule covers every deletion that opens with a line break and ends on one, its own or
+the tool's, where both lines around it hold text.
+
+- `lib/anchors.py`: `deletion_joins(text, old, new, every)`, each line such a deletion leaves joined.
+- `checks/conform_edit.py`: refuses it with `LINES_JOINED`, the joined lines shown, and the fix naming
+  `old_string` one line break later with an empty `new_string`, plus the way to join lines on purpose.
+  `checks.conform.edit.lines_joined`, true by default, turns it off.
+- `lib/results.py`: `LINES_JOINED`, a refusal in the Bytes layer. `tools/skill.py` wrote its row.
+- `tools/probes/run_probe.py`: `edit-delete-join`, the harness fact, and `live-lines-joined`. Also every probe
+  now turns off the lead's installed `io-guard@claude-io-guard`. A user setting enables it in every session and
+  the CLI loads it from this checkout, so since its install on 2026-09-28 the raw probes ran io-guard, and the
+  io-guard probes ran it twice. The debug logs now show it disabled in both.
+- Tests: `tests/lib/test_anchors.py` (1) and `tests/checks/test_conform_edit.py` (1), the second from the
+  recorded `VERDICTS` Edit.
+- Docs: `docs/design/architecture.md`, `docs/live-checks.md`, `docs/compat.md`, `.claude/tasks/context.md`.
+
+Evidence:
+
+- `python tests/run_all.py` ran 843 tests, all passing, up from 841.
+- `live-lines-joined` passed 3 runs on 2.1.283 and 2 on 2.1.281 with the rule as it ships.
+- The corpus of 2026-09-27 holds 2 Edits of the first shape in 17,370, and neither joined lines.
+- Checked on Windows on 2026-09-28.

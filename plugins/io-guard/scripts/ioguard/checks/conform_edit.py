@@ -1,4 +1,4 @@
-"""Give an Edit's new text the indent of the lines around it, and stop one that joins two words.
+"""Give an Edit's new text the indent of the lines around it, and stop one that joins two words or two lines.
 
 When every indented line of new_string uses spaces and the lines around the one match of old_string use
 tabs, or the other way round, the check converts new_string's indent. A new_string that mixes the two beside
@@ -12,6 +12,11 @@ new_string to the text after the match wherever the line goes on: .Branch, 1 bec
 check refuses that Edit, with the joined lines and the strings that end one character later. Those carry the
 model's intent either way, since the space inside them survives: .Branch, 1 to .Branch.ToInt(), 1 keeps it,
 and .Branch, 1 to .Branch.ToInt(),1 drops it.
+
+An Edit with an empty new_string also loses the line break after its match (context.md, "Hooks and MCP", row
+41). So a deletion whose old_string opens with a line break, and ends on one, its own or that one, joins the
+line before it to the line after. The check refuses it when both lines hold text, with the same lines'
+old_string moved one line break later, which deletes them and joins nothing.
 """
 import json
 
@@ -35,10 +40,12 @@ class ConformEdit(Check):
         config={
             "space_dropped": ConfigKey(bool, True, "Refuse an Edit whose old_string ends in a space or tab "
                                        "that new_string lacks, where the line goes on after it."),
+            "lines_joined": ConfigKey(bool, True, "Refuse a deletion whose old_string opens with a line "
+                                      "break and ends without one, where a line break follows it."),
         },
-        codes=frozenset({Code.INDENT_MISMATCH, Code.SPACE_DROPPED}),
+        codes=frozenset({Code.INDENT_MISMATCH, Code.SPACE_DROPPED, Code.LINES_JOINED}),
         description="Gives an Edit's new text the indent of the lines around it, and stops one that joins "
-                    "two words.")
+                    "two words or two lines.")
 
     def run(self, event: Event, ctx: Context) -> Decision:
         path, old, new = event.file_path, event.old_string, event.new_string
@@ -53,6 +60,9 @@ class ConformEdit(Check):
         joined = anchors.joins(text, old, new, every) if self.options["space_dropped"] else ()
         if joined:
             return Decision(self.meta.id, Verdict.DENY, results=(dropped(joined, old, new, event, ctx),))
+        merged = anchors.deletion_joins(text, old, new, every) if self.options["lines_joined"] else ()
+        if merged:
+            return Decision(self.meta.id, Verdict.DENY, results=(lines_merged(merged, old, event, ctx),))
         if every or text.count(old) != 1:
             return Decision.observe(self.meta.id)
         first = anchors.line_of(text, text.index(old))
@@ -72,6 +82,23 @@ class ConformEdit(Check):
                                fix=Fix("Edit", {}, f"Indent new_string with {here} only."))
             return Decision(self.meta.id, Verdict.ALLOW, results=(result,))
         return Decision.observe(self.meta.id)
+
+
+def lines_merged(merged: tuple[anchors.Joined, ...], old: str, event: Event, ctx: Context) -> Result:
+    """The refusal: each line as the deletion would leave it, and old_string moved one line break later."""
+    shown = "\n".join(f"{place.line}| {place.after}" for place in merged[:SHOWN])
+    message = (f"This Edit deletes old_string and the line break after it, so it joins the lines on "
+               f"{listed(tuple(place.line for place in merged))} of {event.file_path.name}:\n{shown}")
+    moved = old[1:] if old.endswith("\n") else old[1:] + "\n"
+    join = "To join them on purpose, send both lines as old_string and the joined line as new_string."
+    if not moved:
+        return Result.of(Code.LINES_JOINED, message, event.tool_name, ctx.platform.os, file=event.file_path,
+                         evidence={"lines": [place.line for place in merged]}, fix=Fix("Edit", {}, join))
+    text = (f"Send exactly old_string {json.dumps(moved)} and an empty new_string, with no line break before "
+            f"it, so the same lines go and the lines around them stay apart. {join}")
+    return Result.of(Code.LINES_JOINED, message, event.tool_name, ctx.platform.os, file=event.file_path,
+                     evidence={"lines": [place.line for place in merged]},
+                     fix=Fix("Edit", {"old_string": moved, "new_string": ""}, text))
 
 
 def dropped(joined: tuple[anchors.Joined, ...], old: str, new: str, event: Event, ctx: Context) -> Result:

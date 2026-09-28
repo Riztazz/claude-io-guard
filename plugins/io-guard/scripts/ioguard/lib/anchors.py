@@ -86,6 +86,30 @@ def joins(text: str, old: str, new: str, every: bool) -> tuple[Joined, ...]:
     return tuple(found)
 
 
+def deletion_joins(text: str, old: str, new: str, every: bool) -> tuple[Joined, ...]:
+    """Each place where deleting old joins two lines that hold text. With new empty, the Edit tool also
+    removes the line break after a match that ends without one. So a deletion that opens with a line break,
+    and ends on one, its own or the tool's, leaves the line before it against the line after. Only the one
+    match counts unless every."""
+    if new or not old.startswith("\n"):
+        return ()
+    matches = find(text, old)
+    if not every and len(matches) != 1:
+        return ()
+    found = []
+    for match in matches:
+        end = match.end
+        if not old.endswith("\n"):
+            if text[end:end + 1] != "\n":
+                continue
+            end += 1
+        start, stop = text.rfind("\n", 0, match.start) + 1, text.find("\n", end)
+        head, tail = text[start:match.start], text[end:None if stop < 0 else stop]
+        if head.strip() and tail.strip():
+            found.append(Joined(line_of(text, match.start), head + tail, "\n"))
+    return tuple(found)
+
+
 @dataclass(frozen=True)
 class Squeezed:
     """Text with its spaces and tabs removed, and where each kept run of characters starts in the text."""

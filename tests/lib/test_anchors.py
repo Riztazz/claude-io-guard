@@ -1,7 +1,7 @@
 """lib.anchors finds where an old_string is, where it nearly is, and the shortest text naming one place."""
 import unittest
 
-from ioguard.lib.anchors import blind, closest, edit_view, find, joins, unique_anchor
+from ioguard.lib.anchors import blind, closest, deletion_joins, edit_view, find, joins, unique_anchor
 
 TABS = "void f()\n{\n\tint a = 1;\n\tint b = 2;\n}\n"
 
@@ -79,6 +79,22 @@ class ADroppedSpaceJoinsTheTextAfterIt(unittest.TestCase):
             with self.subTest(old=old, new=new):
                 self.assertEqual(joins(self.TEXT, old, new, every=True), (),
                                  "only a space after text in old_string, missing from new_string, can join")
+
+    def test_a_deletion_that_opens_with_a_line_break_joins_the_lines_around_it(self):
+        text = "a\nb\nc\nb"
+        found = deletion_joins("a\nb\nc\n", "\nb", "", every=False)
+        self.assertEqual([(place.line, place.after) for place in found], [(1, "ac")],
+                         "the tool removes the line break after b too, so a meets c")
+        self.assertEqual([place.after for place in deletion_joins("a\nb\nc\n", "\nb\n", "", every=False)],
+                         ["ac"], "an old_string with both line breaks joins the same two lines")
+        for old, new, every in (("b\n", "", False), ("\nb", "x", False), ("\nb", "", False)):
+            with self.subTest(old=old, new=new):
+                self.assertEqual(deletion_joins(text, old, new, every), (),
+                                 "one that opens with text, replaces, or is repeated joins nothing")
+        self.assertEqual(len(deletion_joins(text, "\nb", "", every=True)), 1,
+                         "with replace_all each match a line break follows counts, and the last has none")
+        self.assertEqual(deletion_joins("a\n\nb\n\nc\n", "\nb\n", "", every=False), (),
+                         "a join into a blank line leaves every line of text on its own")
 
     def test_the_joined_line_is_the_last_line_of_a_multi_line_new_string(self):
         found = joins("f(a, b);\n", "a, ", "a,\n  c,", every=False)
