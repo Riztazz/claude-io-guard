@@ -189,6 +189,12 @@ the commit in their throwaway repository. Over the corpus, 339 recorded commands
 lead's policy, `Co-Authored-By` and `Generated with` forbidden and ASCII only, would refuse 74: all for a
 `Co-Authored-By` line, 73 of them in calls that ran, and none for any other reason.
 
+Task 30 installed io-guard on the lead's machine on 2026-09-28, at user scope from this checkout's marketplace,
+at `38df1e4`. Its data folder is `~/.claude/plugins/data/io-guard-claude-io-guard`, and the lead's
+`config.json` there holds `py_compile` for `.py` and the commit policy. Each of the four projects and this
+repository has its own `.claude/io-guard.json`, and a session in each connected the io server and wrote its
+telemetry. Task 31 measures from that date.
+
 Task 39 counted the invisible characters recorded Edit and Write calls added: 4 of 23,717 calls, all of which
 ran. Three put a literal U+FEFF inside a Python string where the escape was meant, in OrbitalDrift scripts
 such as `raw.lstrip('<U+FEFF>')`, and one put a literal U+00A0 in a map of typographic characters. None added

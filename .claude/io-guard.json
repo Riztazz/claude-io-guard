@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "checks": {
+    "shell.lint": {
+      "build_commands": ["python tests/run_all.py", "python -m unittest", "python -m pytest", "pytest",
+                         "python tools/probes/run_probe.py", "python tools/replay.py", "make", "cmake --build",
+                         "ninja", "msbuild", "dotnet build", "dotnet test", "npm test", "npm run", "tox"]
+    }
+  }
+}
