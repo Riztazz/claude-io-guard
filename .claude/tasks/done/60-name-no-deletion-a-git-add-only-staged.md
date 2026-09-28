@@ -3,7 +3,8 @@ title: Name no deletion when a command only staged a rename another command made
 stage: I
 area: checks
 created: 2026-09-28
-status: open
+status: done
+claimed-by: Pala Elektroniczna, session 7eeb509f
 depends-on: [46]
 findings: []
 platforms: [windows, macos]
@@ -41,3 +42,22 @@ deleted.
 ## Done when
 
 - A `git add` that only stages a rename made earlier gets no `TOUCHED_BY_SHELL`.
+
+## What changed
+
+- `checks/touched.py`: `status` returns git's entries, and `codes` makes the `(path, XY)` set the comparison
+  uses, as before. `listed_paths` gives every path git status names, with a rename's `original` too, and the
+  snapshot keeps each one's stat. A rename's old path is missing on disk before and after, so the stat test that
+  already skips an index-only change skips it.
+- Tests: `tests/checks/test_touched.py` (1: `RM done/a.md <- open/a.md` before, `A done/a.md` and
+  `D open/a.md` after, `open/a.md` never on disk, names nothing). Against the HEAD `touched.py` it fails with
+  `This command deleted open/a.md.`, the message this task quotes.
+- Docs: none needed. The module's docstring already says a change to git's index alone is left out.
+
+Evidence:
+
+- `python tests/run_all.py` from Git Bash ran 864 tests, all passing, up from 863.
+- `live-touched-index` passed on 2.1.283 on Windows on 2026-09-28: `git add` and `git reset` still name nothing,
+  and the file the command created is still named.
+- Not run live: a `git mv` then a `git add` in a real session. No probe has that shape, and the unit test holds
+  the status pair git gave on 2026-09-28.

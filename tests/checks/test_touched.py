@@ -82,6 +82,15 @@ class TheCommandsChangesAreNamed(unittest.TestCase):
                 session.git.current_status = GitStatus(after)
                 self.assertEqual(session.after(), [], "the files' bytes did not move, so nothing is named")
 
+    def test_staging_a_rename_made_earlier_names_nothing(self):
+        renamed = StatusEntry("done/a.md", "R", "M", "open/a.md")
+        session = Session(before=(renamed,))
+        session.fs.files[CWD / "done" / "a.md"] = b"x\n"
+        session.run(events.bash("git add done/a.md", CWD))
+        session.git.current_status = GitStatus((entry("done/a.md", "A "), entry("open/a.md", "D ")))
+        self.assertEqual(session.after(command="git add done/a.md"), [],
+                         "open/a.md was gone before the command, so the command deleted nothing")
+
     def test_a_listed_file_whose_bytes_moved_is_still_named(self):
         session = Session(before=(entry("a.txt", " M"),))
         session.fs.files[CWD / "a.txt"] = b"x\n"

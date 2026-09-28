@@ -24,7 +24,7 @@ from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context, ShellSnapshot, repository_root
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
-from ioguard.lib.git import GitError
+from ioguard.lib.git import GitError, StatusEntry
 from ioguard.lib.profile import profile
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity, callable_name
 
@@ -62,14 +62,26 @@ def under(path: Path, folders: frozenset[Path]) -> bool:
     return any(path == folder or path.is_relative_to(folder) for folder in folders)
 
 
-def status(ctx: Context, root: Path | None) -> frozenset[tuple[str, str]] | None:
-    """Each changed or untracked path from root with its XY code, or None when git cannot say."""
+def status(ctx: Context, root: Path | None) -> tuple[StatusEntry, ...] | None:
+    """git status from root, or None when git cannot say."""
     if root is None:
         return None
     try:
-        return frozenset((entry.path, entry.index + entry.worktree) for entry in ctx.git.status(root).entries)
+        return ctx.git.status(root).entries
     except GitError:
         return None
+
+
+def codes(entries: tuple[StatusEntry, ...] | None) -> frozenset[tuple[str, str]] | None:
+    """Each changed or untracked path with its XY code."""
+    if entries is None:
+        return None
+    return frozenset((entry.path, entry.index + entry.worktree) for entry in entries)
+
+
+def listed_paths(entries: tuple[StatusEntry, ...] | None) -> set[str]:
+    """Every path git status names, a rename's old path too."""
+    return {name for entry in entries or () for name in (entry.path, entry.original) if name}
 
 
 def in_words(items: list[str]) -> str:
@@ -104,8 +116,8 @@ class Touched(Check):
             with ctx.session.lock:
                 read = list(ctx.session.read_profiles)
             found = status(ctx, root)
-            listed = {} if found is None else {root / name: ctx.fs.stat(root / name) for name, _ in found}
-            snapshot = ShellSnapshot(root, found, {path: ctx.fs.stat(path) for path in read}, listed)
+            listed = {root / name: ctx.fs.stat(root / name) for name in listed_paths(found)}
+            snapshot = ShellSnapshot(root, codes(found), {path: ctx.fs.stat(path) for path in read}, listed)
             ctx.session.keep_snapshot(event.tool_use_id, snapshot)
             return Decision.observe(self.meta.id)
         before = ctx.session.take_snapshot(event.tool_use_id)
@@ -129,7 +141,7 @@ class Touched(Check):
         deleted = sorted(path for path, stat in moved.items()
                          if stat is None and before.stats[path] is not None)
         created, changed = [], []
-        after = status(ctx, before.root)
+        after = codes(status(ctx, before.root))
         if before.status is not None and after is not None:
             unindexed = {name for name, code in after if code[0] == "D" and ctx.fs.exists(before.root / name)}
             for name, code in sorted(after - before.status):
