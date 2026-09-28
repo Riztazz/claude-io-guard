@@ -36,9 +36,10 @@ plugins/io-guard/
                                    Edit tool reads a file, and made in the file's own text
         indent.py                  style, reindented, around, fitted: new text in the indent of the lines where
                                    it lands
-        shell.py                   scan, commands, budget_length, moved, pipelines, exit_candidates, the hazards
-                                   bash reads differently
+        shell.py                   scan, commands, blanked, budget_length, moved, pipelines, exit_candidates, the
+                                   hazards bash reads differently
         pwsh.py                    commands, blanked, file_calls
+        kills.py                   broad_stop: a stop by a shared runtime's name or by a command-line match
         python_source.py           compile_report: a Python body's syntax error or warning, without running it
         paths.py                   normalise, msys_prefix, reserved, link_target, inside, resolved, LockTable
         git.py                     Git, the GitPort implementation
@@ -76,7 +77,8 @@ plugins/io-guard/
                                    write.locks: FILE_LOCKED after a failed write
         transport_body.py          BODY_MOVED_TO_FILE, TRANSPORT_BUDGET, BACKSLASH_TRANSPORT
         shell_writes.py            SHELL_WRITE, scratch script warning, a script file's writes read first
-        lint.py                    shell.lint: quoting, escapes, dialect, Python bodies, PIPE_HIDES_EXIT once
+        lint.py                    shell.lint: quoting, escapes, dialect, Python bodies, PIPE_HIDES_EXIT once,
+                                   STOPS_BY_MATCH
         win_paths.py               win.paths: MSYS_PATH for slash arguments and cmd /c, RESERVED_NAME for nul
         conform_write.py           conform.write: EOL_CONVERTED, BOM_RESTORED, EOL_MISMATCH for a mixed file
         conform_edit.py            conform.edit: INDENT_MISMATCH, SPACE_DROPPED, LINES_JOINED
@@ -439,6 +441,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Transport | `BACKTICK_IN_DOUBLE_QUOTES`, `TRAILING_BACKSLASH_QUOTE`, `DIALECT_MISMATCH`, `POWERSHELL_TRAP`, `PIPE_HIDES_EXIT`, `INLINE_SCRIPT_INVALID` | 13, in `CODES` |
 | Transport | `MSYS_PATH`, `RESERVED_NAME` | 14, in `CODES` |
 | Transport | `NOT_PORTABLE`, a warning for bash 4 syntax under bash 3.2 and GNU options on macOS | 36, in `CODES` |
+| Transport | `STOPS_BY_MATCH`, a warning for a stop by a shared runtime's name or by a command-line match | 64, in `CODES` |
 | Bytes | `EOL_CONVERTED`, `BOM_RESTORED`, `EOL_MISMATCH`, `INDENT_MISMATCH` | 17, in `CODES` |
 | Bytes | `BOM_CHANGED`, `ENCODING_INVALID`, `NON_ASCII_ADDED`, `CONTROL_BYTES_ADDED`, `SIZE_COLLAPSED`, `UNINTENDED_CHANGE`, all warnings | 18, in `CODES` |
 | Stale | `ANCHOR_NOT_FOUND`, `ANCHOR_AMBIGUOUS`, `STALE_VIEW`, all warnings on a call that already failed, and refusals when an io tool of task 24 answers with them | 20, in `CODES` |

@@ -125,6 +125,7 @@ A refused call did not run. A warning, or a note that io-guard fixed something, 
 | `STAGE_FAILED` | git could not stage the hunks, so the index is as it was. | Fix what git's message names, such as a file git does not track yet, then call io.stage again. |
 | `STALE_BINARY` | The last build in this session failed, so this run used what an earlier build made. | Fix the build and build again before trusting this result. |
 | `STALE_VIEW` | The file holds something other than what the call expected. | Read the file again, then change only what differs. |
+| `STOPS_BY_MATCH` | The command stops every process a name or a match picks, other sessions' processes too. | Stop the one process by its id. |
 | `TOUCHED_BY_SHELL` | A shell command changed files the agent had read, or made new ones. | Read the changed files again before the next Edit. |
 | `TRAILING_BACKSLASH_QUOTE` | A backslash before a closing double quote escapes the quote in bash, so io-guard wrote the path with forward slashes. | Nothing to do. |
 | `TRANSPORT_BUDGET` | The command is longer than the Bash tool carries on this platform. | Write the script to a file with the Write tool, then run the file. |

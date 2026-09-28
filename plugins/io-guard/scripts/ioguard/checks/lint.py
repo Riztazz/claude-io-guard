@@ -7,14 +7,16 @@ does not compile is refused before any part of the command runs, and one that co
 as an invalid escape, runs with that warning (SHW-6). PowerShell syntax in the Bash tool and bash syntax in
 the PowerShell tool are refused (SHL-1), and so are the PowerShell calls that always fail (SHL-4, SHL-5). The
 first build or test a session pipes into a filter gets a warning that the exit code shown is the filter's
-(OUT-1). Later ones get none here, because shell.results names what a pipe hid after each run. The check
-runs after transport.body, so a body moved into a file is compiled from that file, byte-exact.
+(OUT-1). Later ones get none here, because shell.results names what a pipe hid after each run. A command
+that stops processes by a shared runtime's name, such as python, or by a command-line match gets a warning,
+since it stops other sessions' servers too. The check runs after transport.body, so a body moved into a file
+is compiled from that file, byte-exact.
 """
 import re
 from pathlib import Path
 
 from ioguard.checks.base import Check, CheckMeta, Cost
-from ioguard.lib import portable, pwsh, python_source, shell
+from ioguard.lib import kills, portable, pwsh, python_source, shell
 from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Rewrite, Verdict
@@ -180,6 +182,18 @@ def hidden_exit(command: str, simples: tuple[shell.SimpleCommand, ...],
     return None
 
 
+def broad_stop(command: str, code: str, findings: Findings) -> None:
+    """A stop of processes other sessions run too, by a shared runtime's name or by a command-line match. A
+    warning only, since stopping every copy of a program is sometimes what the user wants."""
+    stop = kills.broad_stop(command, code)
+    if stop is not None:
+        findings.add(Code.STOPS_BY_MATCH,
+                     f"This command stops {stop}, whatever started it, so it can stop other Claude Code "
+                     f"sessions' servers too.",
+                     "Stop the one process by its id: take it from the port the process listens on, or from "
+                     "what its start printed.", Severity.WARNING, stop=stop)
+
+
 def powershell(command: str, findings: Findings) -> None:
     """Bash syntax in a PowerShell command, and the PowerShell calls that always fail. On macOS /dev/null,
     tail and head exist, so only Windows gets those two rules."""
@@ -209,6 +223,7 @@ def powershell(command: str, findings: Findings) -> None:
     if taken is not None:
         findings.add(Code.POWERSHELL_TRAP, f"PowerShell refuses to assign ${taken[1]}, a read-only automatic "
                      f"variable.", "Give the variable another name.")
+    broad_stop(command, code, findings)
 
 
 class Lint(Check):
@@ -223,7 +238,7 @@ class Lint(Check):
                                             "replaces it.")},
         codes=frozenset({Code.BACKTICK_IN_DOUBLE_QUOTES, Code.TRAILING_BACKSLASH_QUOTE,
                          Code.DIALECT_MISMATCH, Code.POWERSHELL_TRAP, Code.PIPE_HIDES_EXIT,
-                         Code.INLINE_SCRIPT_INVALID, Code.NOT_PORTABLE}),
+                         Code.INLINE_SCRIPT_INVALID, Code.NOT_PORTABLE, Code.STOPS_BY_MATCH}),
         description="Refuses a shell command whose quoting, escaping or dialect would change what runs, and "
                     "fixes a Windows path whose last backslash escapes its quote.")
 
@@ -260,6 +275,7 @@ class Lint(Check):
                          f"shown is {into}'s, not {label}'s.", "Read the output for the result, not the exit "
                          "code.", command=label)
         unportable(command, found, simples, ctx, findings)
+        broad_stop(command, shell.blanked(command, found), findings)
         return self.trailing_backslashes(command, found)
 
     def trailing_backslashes(self, command: str, found: shell.Scan) -> Rewrite | None:

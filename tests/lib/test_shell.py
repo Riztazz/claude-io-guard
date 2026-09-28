@@ -158,6 +158,16 @@ class TheBudgetLength(unittest.TestCase):
         self.assertEqual(shell.budget_length("za" + chr(0x17C)), 4, "a length is in UTF-8 bytes")
 
 
+class BlankedKeepsOnlyCode(unittest.TestCase):
+    def test_strings_comments_and_heredoc_bodies_become_spaces(self):
+        command = "echo 'pkill x' \"$y\" # kill\ncat <<'E'\nbody\nE\nls"
+        blanked = shell.blanked(command)
+        self.assertEqual((len(blanked), blanked.count("\n"), "pkill" in blanked, "body" in blanked,
+                          blanked.split()), (len(command), command.count("\n"), False, False,
+                                             ["echo", "'", "'", '"', '"', "cat", "<<'E'", "ls"]),
+                         "only code and the quote marks are left, at the offsets they had")
+
+
 @unittest.skipIf(BASH is None, "no bash on this machine to run the commands")
 class AMovedCommandRunsTheSame(unittest.TestCase):
     def run_bash(self, command: str, cwd: Path) -> bytes:

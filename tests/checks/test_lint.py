@@ -166,6 +166,29 @@ class APipeHidesABuildsExitCode(unittest.TestCase):
                          (Verdict.ALLOW, (Code.PIPE_HIDES_EXIT,)), "the setting names the project's build")
 
 
+class AStopByNameReachesOtherSessions(unittest.TestCase):
+    def test_a_stop_by_match_is_warned_about_and_a_stop_by_id_is_not(self):
+        match = ("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'server.py' } | "
+                 "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }")
+        found = {(command, tool): codes(command, tool) for command, tool in
+                 ((match, "PowerShell"), ("Stop-Process -Id 25300", "PowerShell"),
+                  ("pkill -f server.py", "Bash"), ("kill 1234", "Bash"))}
+        self.assertEqual(found, {(match, "PowerShell"): (Verdict.ALLOW, (Code.STOPS_BY_MATCH,)),
+                                 ("Stop-Process -Id 25300", "PowerShell"): (Verdict.OBSERVE, ()),
+                                 ("pkill -f server.py", "Bash"): (Verdict.ALLOW, (Code.STOPS_BY_MATCH,)),
+                                 ("kill 1234", "Bash"): (Verdict.OBSERVE, ())},
+                         "a warning that lets the call run, and none for a stop of one process by its id")
+
+    def test_the_warning_names_what_picked_the_processes_and_the_id_route(self):
+        result = lint(run("pkill -f server.py")).results[0]
+        self.assertEqual((result.message, result.fix.text),
+                         ("This command stops every process pkill -f matches, whatever started it, so it can "
+                          "stop other Claude Code sessions' servers too.",
+                          "Stop the one process by its id: take it from the port the process listens on, or "
+                          "from what its start printed."),
+                         "the message says what the command reaches, and the fix names the id")
+
+
 class BashSentToPowerShell(unittest.TestCase):
     def test_bash_syntax_is_refused(self):
         for command in ("export PATH=x", "python - <<'PY'\nprint(1)\nPY", "Get-Date > /dev/null"):

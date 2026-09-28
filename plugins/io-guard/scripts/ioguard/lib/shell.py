@@ -413,6 +413,14 @@ def unquote(text: str, states: bytes | bytearray, start: int, end: int) -> str:
     return "".join(out)
 
 
+def blanked(command: str, found: Scan | None = None) -> str:
+    """The command with the text inside each pair of quotes, each comment and each heredoc body turned into
+    spaces, so a search of what is left finds only code. The quote marks stay, and every offset still points
+    at the same place."""
+    states = (found or scan(command)).states
+    return "".join(char if states[at] == NORMAL or char == "\n" else " " for at, char in enumerate(command))
+
+
 def budget_length(command: str) -> int:
     """The command's length as the Windows Bash tool's transport counts it: UTF-8 bytes, and each apostrophe
     as four, which is how the baseline's largest passing and smallest failing commands line up."""
