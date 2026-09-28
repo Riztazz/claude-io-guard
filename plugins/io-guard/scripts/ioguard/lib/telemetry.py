@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import secrets
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -82,12 +83,15 @@ class TelemetryEvent:
 
 
 class Telemetry:
-    """Appends each event to its session's file, or keeps it in memory when there is no data folder."""
+    """Appends each event to its session's file, or keeps it in memory when there is no data folder. One lock
+    serialises the appends, so the io server's workers never interleave two lines, and a line is on disk
+    before record returns, so a crash loses none."""
 
     def __init__(self, data_dir: Path | None, enabled: bool = True) -> None:
         self.data_dir = data_dir
         self.enabled = enabled
         self.events: list[TelemetryEvent] = []
+        self.lock = threading.Lock()
 
     @classmethod
     def memory(cls) -> "Telemetry":
@@ -100,16 +104,18 @@ class Telemetry:
     def record(self, event: TelemetryEvent) -> None:
         if not self.enabled:
             return
-        if self.data_dir is None:
-            self.events.append(event)
-            return
-        path = self.path_for(event)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("ab") as out:
-            out.write((json.dumps(event.to_json()) + "\n").encode("ascii"))
+        line = (json.dumps(event.to_json()) + "\n").encode("ascii")
+        with self.lock:
+            if self.data_dir is None:
+                self.events.append(event)
+                return
+            path = self.path_for(event)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("ab") as out:
+                out.write(line)
 
     def flush(self) -> None:
-        """Each record is written and closed at once, so nothing waits. The io server queues records."""
+        """Each record is written and closed at once, so nothing waits here."""
 
 
 def debug_log(path: Path) -> None:

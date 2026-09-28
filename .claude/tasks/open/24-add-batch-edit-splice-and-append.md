@@ -34,6 +34,9 @@ Agents rebuilt three primitives again and again, because no tool offered them:
 - **`io.append(path, text, wrap_column?, date_prefix?)`**: appends the text, wrapped at `wrap_column`, in the
   file's profile.
 - **Every result carries the same line:** "the built-in Edit needs a fresh Read of this file before its next use".
+- **`paths.LockTable`**, moved here from task 23 with its first user: one `threading.Lock` per resolved path inside
+  the server, held across the read, the profile and the write, inside which `lib.locks.file_lock` (task 23) holds
+  the path against other processes.
 
 All three call `lib`: the profile, the atomic write, the file lock and the anchor matching. None of these tools
 gets a copy of its own.
@@ -48,6 +51,8 @@ gets a copy of its own.
   built"), on CRLF, LF and BOM fixtures, in CI on both platforms.
 - An interrupted write never leaves a truncated file (BYT-9).
 - Two processes editing one file through `io.edit` at once both land, one after the other.
+- Live on Windows, three parallel subagents editing one file through `io.edit` serialise without a lost edit. This
+  Done-when moved here from task 23, which built the server but not `io.edit`.
 
 ## Notes
 

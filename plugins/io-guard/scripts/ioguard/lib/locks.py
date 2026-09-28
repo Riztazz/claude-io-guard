@@ -1,19 +1,30 @@
-"""The processes that hold a file open: the Restart Manager on Windows, lsof on macOS.
+"""The processes that hold a file open, and a lock that io-guard's own processes share on one file.
 
 A tool's write replaces a file by renaming a temporary file over it, and Windows refuses the rename with EPERM
 while another process holds the file without FILE_SHARE_DELETE, such as an editor or a build. The Restart
 Manager is the Windows API for that question, reached through ctypes. macOS asks lsof, whose -F pc output
 gives a process id line and a command line per holder.
+
+file_lock serialises io-guard's processes, two sessions' servers or a server and a command hook, on one path.
+It locks a file named for the path in the plugin data folder, never the path itself, so no editor or build
+ever waits on it.
 """
+import hashlib
+import os
 import sys
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import BinaryIO
 
 from ioguard.lib import proc
 from ioguard.lib.platform import Platform
 
 MORE_DATA = 234          # ERROR_MORE_DATA: the list grew between the two RmGetList calls
 ATTEMPTS = 3
+RETRY_S = 0.02
 
 
 @dataclass(frozen=True)
@@ -82,3 +93,47 @@ def restart_manager(path: Path) -> tuple[Process, ...]:
         raise OSError(f"The list of processes that hold {path} kept growing.")
     finally:
         manager.RmEndSession(session)
+
+
+@contextmanager
+def file_lock(path: Path, data_dir: Path, wait_s: float = 5.0) -> Iterator[None]:
+    """Hold path against every other io-guard process and thread that asks for the same path, for the with
+    block. TimeoutError when another holder keeps it past wait_s seconds."""
+    folder = data_dir / "locks"
+    folder.mkdir(parents=True, exist_ok=True)
+    name = hashlib.sha1(os.path.normcase(os.path.abspath(path)).encode("utf-8")).hexdigest()
+    deadline = time.monotonic() + wait_s
+    with open(folder / f"{name}.lock", "a+b") as handle:
+        while not locked(handle):
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"Another io-guard process has held {path} for {wait_s:g} seconds.")
+            time.sleep(RETRY_S)
+        try:
+            yield
+        finally:
+            unlocked(handle)
+
+
+def locked(handle: BinaryIO) -> bool:
+    """Take the lock file's lock without waiting: its first byte on Windows, the whole file on macOS."""
+    try:
+        if sys.platform == "win32":
+            import msvcrt
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return False
+    return True
+
+
+def unlocked(handle: BinaryIO) -> None:
+    if sys.platform == "win32":
+        import msvcrt
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)

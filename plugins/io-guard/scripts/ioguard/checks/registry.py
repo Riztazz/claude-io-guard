@@ -6,6 +6,7 @@ from ioguard.checks.command_results import CommandResults
 from ioguard.checks.conform_edit import ConformEdit
 from ioguard.checks.conform_write import ConformWrite
 from ioguard.checks.diagnose import DiagnoseFailure, DiagnoseRefused
+from ioguard.checks.heartbeat import Heartbeat
 from ioguard.checks.lint import Lint
 from ioguard.checks.location import Location, LockHolders
 from ioguard.checks.read_profile import ReadProfile
@@ -84,7 +85,7 @@ class Registry:
 
 CHECKS: tuple[type[Check], ...] = (SessionProbe, Location, LockHolders, ShellWrites, TransportBody, Lint,
                                    WinPaths, ConformWrite, ConformEdit, VerifyWrite, VerifyCommand, Touched,
-                                   ReadProfile, DiagnoseFailure, DiagnoseRefused, CommandResults)
+                                   ReadProfile, DiagnoseFailure, DiagnoseRefused, CommandResults, Heartbeat)
 
 
 def default_registry() -> Registry:

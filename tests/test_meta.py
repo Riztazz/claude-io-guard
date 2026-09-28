@@ -17,8 +17,8 @@ TESTS_DIR = REPO / "tests"
 
 def test_sources() -> dict[str, str]:
     """Every test module but this one, which names codes only to check the others."""
-    return {path.name: path.read_bytes().decode("utf-8") for path in TESTS_DIR.rglob("test_*.py")
-            if path.name != "test_meta.py"}
+    return {path.relative_to(TESTS_DIR).as_posix(): path.read_bytes().decode("utf-8")
+            for path in TESTS_DIR.rglob("test_*.py") if path.name != "test_meta.py"}
 
 
 def test_methods() -> dict[str, list[str]]:

@@ -1,0 +1,11 @@
+{
+  "0": {"result.supportedVersions": ["2026-07-28", "2025-11-25"], "result.resultType": "complete",
+        "result.ttlMs": 300000, "result.cacheScope": "private", "result.serverInfo.name": "io-guard"},
+  "1": {"result.resultType": "complete", "result.ttlMs": 300000, "result.cacheScope": "private",
+        "result._meta.io.modelcontextprotocol/serverInfo.name": "io-guard", "result.tools.0.name": "io.read"},
+  "2": {"result.resultType": "complete", "result.structuredContent.profile": "CRLF, BOM, UTF-8, 2 lines"},
+  "3": {"error.code": -32602},
+  "4": {"error.code": -32022, "error.data.supported": ["2026-07-28", "2025-11-25"]},
+  "5": {"result.resources": [], "result.resultType": "complete"},
+  "6": {"result.content.0.text": "{}", "result.resultType": "complete"}
+}

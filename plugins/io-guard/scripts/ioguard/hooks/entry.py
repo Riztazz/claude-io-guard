@@ -26,7 +26,8 @@ class LiveContexts:
     """The live Context for each session and project this process serves, built on first use.
 
     The config and the probe load once per process (docs/design/architecture.md, section 8). A session keeps
-    one SessionState across its projects, so a once-per-session warning goes out once.
+    one SessionState across its projects, and shares its warned keys with the session's other io-guard
+    processes, so a once-per-session warning goes out once.
     """
 
     def __init__(self) -> None:
@@ -35,13 +36,13 @@ class LiveContexts:
         self.sessions: dict[tuple[Path | None, str], SessionState] = {}
         self.failed: set[str] = set()           # sessions already told that run_event failed
 
-    def get(self, event: Event, registry: Registry) -> Context:
+    def get(self, session_id: str, cwd: Path, registry: Registry) -> Context:
         data = plugin_data(os.environ)
         with self.lock:
-            key = (data, event.session_id, event.cwd)
+            key = (data, session_id, cwd)
             if key not in self.contexts:
-                session = self.sessions.setdefault((data, event.session_id), SessionState())
-                built = Context.live(data, event.cwd, registry.keys())
+                session = self.sessions.setdefault((data, session_id), SessionState.shared(data, session_id))
+                built = Context.live(data, cwd, registry.keys())
                 if data is not None and built.config.get("telemetry.debug"):
                     debug_log(data / "debug.log")
                 self.contexts[key] = replace(built, session=session)
@@ -77,7 +78,7 @@ def run_event(raw: Mapping[str, Any], surface: Surface, ctx: Context | None = No
         return {}
     try:
         registry = registry or default_registry()
-        ctx = ctx or CONTEXTS.get(event, registry)
+        ctx = ctx or CONTEXTS.get(event.session_id, event.cwd, registry)
         outcome = with_config_message(Pipeline(registry).run(event, ctx), ctx, event.cwd)
         mode = ctx.config.get(f"transport.rewrite_mode.{event.permission_mode.value}")
         return answer(event, outcome, mode)

@@ -1,0 +1,7 @@
+{"jsonrpc": "2.0", "id": 0, "method": "server/discover", "params": {}}
+{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {"_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": {}, "io.modelcontextprotocol/clientInfo": {"name": "claude-code", "version": "2.1.283"}}}}
+{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "io.read", "arguments": {"path": "tests/fixtures/bom-crlf.txt"}, "_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": {}}}}
+{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "io.read", "arguments": {"path": "tests/fixtures/bom-crlf.txt"}}}
+{"jsonrpc": "2.0", "id": 4, "method": "tools/list", "params": {"_meta": {"io.modelcontextprotocol/protocolVersion": "2031-01-01", "io.modelcontextprotocol/clientCapabilities": {}}}}
+{"jsonrpc": "2.0", "id": 5, "method": "resources/list", "params": {"_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": {}}}}
+{"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "hook.ping", "arguments": {}, "_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": {}}}}

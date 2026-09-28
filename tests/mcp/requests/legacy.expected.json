@@ -1,0 +1,20 @@
+{
+  "0": {"result.protocolVersion": "2025-11-25", "result.serverInfo.name": "io-guard",
+        "result.capabilities.tools.listChanged": false, "!result.resultType": null},
+  "1": {"result.tools.*.name": ["io.read", "hook.pre_tool_use", "hook.post_tool_use",
+                                "hook.post_tool_use_failure", "hook.ping"],
+        "result.tools.0.annotations.readOnlyHint": true, "result.tools.0.outputSchema.additionalProperties": true,
+        "result.tools.0.inputSchema.required": ["path"], "!result.ttlMs": null},
+  "2": {"result.structuredContent.profile": "CRLF, BOM, UTF-8, 2 lines", "result.structuredContent.total_lines": 2,
+        "!result.isError": null},
+  "3": {"result.content.0.text": "{}", "!result.isError": null},
+  "4": {"result.isError": true, "result.structuredContent.code": "PATH_NOT_FOUND"},
+  "5": {"error.code": -32602},
+  "6": {"error.code": -32602},
+  "7": {"result.supportedVersions": ["2026-07-28", "2025-11-25"], "result.resultType": "complete",
+        "result.cacheScope": "private"},
+  "8": {"!result.resultType": null, "!result.ttlMs": null},
+  "9": {"error.code": -32601},
+  "10": {"result": {}},
+  "null": {"error.code": -32700}
+}

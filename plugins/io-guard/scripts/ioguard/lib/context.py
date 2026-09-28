@@ -4,6 +4,7 @@ A check receives a Context and reads it. No check writes into it except the sess
 fields. Context.live builds the real ports, and Context.fake builds in-memory ones for tests.
 """
 import json
+import logging
 import os
 import stat as stat_module
 import sys
@@ -23,6 +24,8 @@ from ioguard.lib.locks import Process
 from ioguard.lib.platform import Platform, detect
 from ioguard.lib.profile import Profile
 from ioguard.lib.telemetry import Telemetry
+
+log = logging.getLogger("ioguard.lib")
 
 
 @dataclass(frozen=True)
@@ -153,14 +156,31 @@ class SessionState:
     tracked: dict[Path, bool] = field(default_factory=dict)       # git's answer per path, asked once
     last_failed_build: str | None = None                          # the words of the build that last failed
     lock: threading.RLock = field(default_factory=threading.RLock)
+    data_dir: Path | None = None       # with a session id, the folder whose warned file the processes share
+    session_id: str | None = None
+
+    @classmethod
+    def shared(cls, data_dir: Path | None, session_id: str) -> "SessionState":
+        """A session state whose warned keys every io-guard process of the session shares, the server and
+        each command hook alike, through a file in the plugin data folder."""
+        return cls(data_dir=data_dir, session_id=session_id if data_dir is not None else None)
 
     def first_time(self, key: str) -> bool:
-        """True the first time a key is seen this session, so a warning goes out once."""
+        """True the first time a key is seen this session, in any of its processes, so a warning goes out
+        once."""
         with self.lock:
             if key in self.warned:
                 return False
             self.warned.add(key)
-            return True
+            if self.data_dir is None or self.session_id is None:
+                return True
+            try:
+                return first_in_file(session_file(self.data_dir, self.session_id, "warned"), self.data_dir,
+                                     key)
+            except (OSError, TimeoutError) as error:
+                log.debug("io-guard could not share the warning %s with the session's other processes: %s",
+                          key, error)
+                return True
 
     def keep_snapshot(self, tool_use_id: str, snapshot: Snapshot | ShellSnapshot) -> None:
         """Keep what a call looked like before it ran, for its PostToolUse, until the PostToolUse takes it."""
@@ -231,6 +251,24 @@ class LiveFs:
             if seen >= limit:
                 break
         return tuple(found)
+
+
+def session_file(data_dir: Path, session_id: str, kind: str) -> Path:
+    """A file the session's io-guard processes share: sessions/<session>.<kind> in the plugin data folder."""
+    return data_dir / "sessions" / f"{session_id}.{kind}"
+
+
+def first_in_file(path: Path, data_dir: Path, key: str) -> bool:
+    """Add key to the file of keys at path, one JSON string a line, and say whether it was new. file_lock
+    keeps two processes from both finding the key new."""
+    line = json.dumps(key) + "\n"
+    with locks.file_lock(path, data_dir, wait_s=1.0):
+        if path.is_file() and line in path.read_text(encoding="utf-8").splitlines(keepends=True):
+            return False
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8", newline="\n") as out:
+            out.write(line)
+    return True
 
 
 def repository_root(git: GitPort, path: Path) -> Path | None:

@@ -168,7 +168,10 @@ class Server:
     def serve(self) -> None:
         env_keys = ("MCP_PROTOCOL_NEGOTIATION", "MCP_SDK_GENERATION", "CLAUDE_PLUGIN_ROOT",
                     "CLAUDE_PLUGIN_DATA")
-        record({"started": sys.argv, "env": {key: os.environ.get(key) for key in env_keys}})
+        named = sorted(key for key in os.environ if key.startswith(("CLAUDE", "MCP", "AI_AGENT")))
+        sessions = {key: os.environ[key] for key in named if "SESSION" in key}
+        record({"started": sys.argv, "env": {key: os.environ.get(key) for key in env_keys},
+                "env_names": named, "session_like": sessions})
         if PROBE.get("stay_dead") and DEAD_MARKER.exists():
             record({"dying": "stays dead after its first death"})
             sys.exit(3)

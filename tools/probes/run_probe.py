@@ -61,6 +61,7 @@ HUNDRED_ECHOES = "Run the Bash command echo n1, then echo n2, and so on up to ec
                  "reply DONE."
 GUARD = REPO / "plugins" / "io-guard"
 GUARD_DATA = Path.home() / ".claude" / "plugins" / "data" / "io-guard-inline"
+NEEDS_AUTH = Path.home() / ".claude" / "mcp-needs-auth-cache.json"
 GUARD_INPUTS = {event: groups[0]["hooks"][0].get("input") for event, groups in
                 json.loads((GUARD / "hooks" / "hooks.json").read_bytes())["hooks"].items()}
 INJECT = REPO / "tests" / "support" / "inject"
@@ -161,6 +162,13 @@ RESULTS = ("Do these in order, one tool call each, and never retry. 1. Run the B
 RESULTS_SEEN = ("OUTPUT_SAVED: The output was",
                 "EXIT_BENIGN: Exit code 1 is the answer grep gives when no line matches",
                 "PIPE_HIDES_EXIT: The output has 1 line that reports errors (1 exception)")
+IO_READ = "mcp__plugin_io-guard_io__io_read"
+SERVER_READ = (f"Do these in order, one tool call each. 1. Run the Bash command: echo hi 2. Load {IO_READ} "
+               f"with the ToolSearch tool, with the query select:{IO_READ} 3. Call {IO_READ} with path "
+               "keep.txt. Then quote the first line of its result word for word.")
+SERVER_DIES = ("Run this exact Bash command: echo IOGUARD_DIE\nThen reply DONE.",
+               "Run this exact Bash command: echo IOGUARD_TWO\nThen quote word for word any hook message or "
+               "error you saw, and reply DONE.")
 CONFORM_OFF = json.dumps({"checks": {"conform.write": {"enabled": False}}}).encode("ascii")
 READ_ONLY = "Read Hero.uasset. Then use the Edit tool once on Hero.uasset to replace v1 with v2, and use " \
             "no other tool. Then quote word for word the error or note that came back."
@@ -200,6 +208,8 @@ class Probe:
     model: str = "haiku"
     extra_args: tuple = ()
     guard: str | None = None     # run io-guard itself, with these test checks, instead of io-probe
+    turns: tuple = ()            # prompts sent one at a time through stream-json input, instead of prompt
+    pause_s: float = 0.0         # the wait after each turn's result before the next turn
 
 
 PROBES = {
@@ -342,6 +352,13 @@ PROBES = {
                           check=("a.cpp", "conv.txt"), setup=TOUCHED_FILES),
     "live-results": Probe(0, "", guard="", allowed=("Bash", "PowerShell"), prompt=RESULTS, max_turns=10,
                           setup={"s.txt": b"one\ntwo\n"}),
+    "live-server": Probe(0, "", guard="", allowed=("Bash", "ToolSearch", IO_READ), prompt=SERVER_READ,
+                         setup={"keep.txt": b"\xef\xbb\xbfalpha\r\nbeta\r\n"}),
+    "live-server-modern": Probe(0, "", guard="", allowed=("Bash", "ToolSearch", IO_READ), prompt=SERVER_READ,
+                                env={"MCP_PROTOCOL_NEGOTIATION": "auto"},
+                                setup={"keep.txt": b"\xef\xbb\xbfalpha\r\nbeta\r\n"}),
+    "live-server-down": Probe(0, "", guard="die", allowed=("Bash",), prompt="", turns=SERVER_DIES, pause_s=40,
+                              extra={"dead_marker": True}),
     "live-verify-direct": Probe(0, "", guard="", permission="acceptEdits", allowed=("Read", "Write", "Edit"),
                                 prompt=VERIFY_DIRECT, check=("keep.txt",), max_turns=10,
                                 setup={"keep.txt": b"\xef\xbb\xbfalpha\r\nbeta\r\n",
@@ -503,6 +520,32 @@ def copy_telemetry(lines: list[bytes], log: Path) -> None:
             return
 
 
+def forget_failed_start(server: str) -> bool:
+    """Remove the failed start Claude Code cached for server in mcp-needs-auth-cache.json, which would skip
+    the server in every session for the next 15 minutes. True when there was one to remove."""
+    if not NEEDS_AUTH.is_file():
+        return False
+    cache = json.loads(NEEDS_AUTH.read_bytes())
+    if cache.pop(server, None) is None:
+        return False
+    NEEDS_AUTH.write_bytes(json.dumps(cache).encode("ascii"))
+    return True
+
+
+def feed(session: subprocess.Popen, probe: Probe, answered: threading.Semaphore) -> None:
+    """Send each turn as a stream-json user message, the next one pause_s after the last one's result, and
+    close stdin after the last result."""
+    for index, text in enumerate(probe.turns):
+        if index:
+            answered.acquire(timeout=300)
+            time.sleep(probe.pause_s)
+        message = {"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": text}]}}
+        session.stdin.write(json.dumps(message).encode("utf-8") + b"\n")
+        session.stdin.flush()
+    answered.acquire(timeout=300)
+    session.stdin.close()
+
+
 def run(name: str) -> Path:
     probe = PROBES[name]
     out = OUT / name / time.strftime("%Y%m%d-%H%M%S")
@@ -518,9 +561,12 @@ def run(name: str) -> Path:
         settings, extra = guarded(probe)
         env = {**env, **extra}
     prepare_work(probe, work)
+    if probe.extra.get("dead_marker"):
+        env = {**env, "IOGUARD_TEST_DEAD": str(out / "dead.marker")}
     holder = hold(work / probe.extra["hold"]) if "hold" in probe.extra else None
     claude = os.environ.get("IOPROBE_CLAUDE", "claude")
-    argv = [claude, "-p", probe.prompt, "--plugin-dir", str(plugin), *helper, "--output-format",
+    prompt = ["--input-format", "stream-json"] if probe.turns else [probe.prompt]
+    argv = [claude, "-p", *prompt, "--plugin-dir", str(plugin), *helper, "--output-format",
             "stream-json", "--verbose", "--include-hook-events", "--debug-file", str(out / "debug.txt"),
             "--permission-mode", probe.permission, "--model", probe.model,
             "--max-turns", str(probe.max_turns), *probe.extra_args]
@@ -530,18 +576,24 @@ def run(name: str) -> Path:
         argv += ["--settings", json.dumps(settings)]
     started = time.time()
     lines, arrivals = [], []
+    answered = threading.Semaphore(0)
     with (out / "stderr.txt").open("wb") as stderr:
         session = subprocess.Popen(argv, cwd=work, stdout=subprocess.PIPE, stderr=stderr,
-                                   env={**os.environ, **env})
+                                   stdin=subprocess.PIPE if probe.turns else None, env={**os.environ, **env})
         killer = threading.Timer(600, session.kill)
         killer.start()
+        if probe.turns:
+            threading.Thread(target=feed, args=(session, probe, answered), daemon=True).start()
         for line in session.stdout:
             arrivals.append(time.time_ns())
             lines.append(line)
+            if probe.turns and line.startswith(b"{") and json.loads(line).get("type") == "result":
+                answered.release()
         exit_code = session.wait()
         killer.cancel()
     if holder is not None:
         holder.communicate(b"", timeout=30)
+    skip_cached = forget_failed_start("plugin:io-guard:io") if probe.extra.get("dead_marker") else None
     (out / "stream.jsonl").write_bytes(b"".join(lines))
     if probe.guard is not None:
         copy_telemetry(lines, log)
@@ -551,7 +603,7 @@ def run(name: str) -> Path:
     versions = [note["version"] for note in details["notes"] if isinstance(note, dict) and "version" in note]
     summary = {"probe": name, "item": probe.item, "claude": versions[0] if versions else None,
                "exit": exit_code, "seconds": round(time.time() - started, 1),
-               "hook_ms": hook_durations(lines, arrivals), **details}
+               "hook_ms": hook_durations(lines, arrivals), "skip_cached": skip_cached, **details}
     write_json(out / "summary.json", summary)
     return out
 
@@ -686,6 +738,30 @@ def repaired_then_edited(summary: dict, name: str, calls: list[str]) -> bool:
             and context_reached(name, "EOL_CONVERTED: The Write tool left keep.txt"))
 
 
+def served(summary: dict, name: str, era: str) -> bool:
+    """io-guard's server connected, io.read named keep.txt's CRLF and BOM, and the server's heartbeat, which
+    it marks stopped at the end of the session, recorded the MCP era it used."""
+    folder, _ = latest(name)
+    lines = [json.loads(line) for line in (folder / "stream.jsonl").read_bytes().splitlines()
+             if line.startswith(b"{")]
+    init = next(line for line in lines if line.get("subtype") == "init")
+    connected = any(server.get("name") == "plugin:io-guard:io" and server.get("status") == "connected"
+                    for server in init.get("mcp_servers") or ())
+    read = any("CRLF, BOM" in str(result["content"]) for result in summary["results"])
+    beat = GUARD_DATA / "sessions" / f"{init['session_id']}.alive"
+    recorded = beat.is_file() and json.loads(beat.read_bytes()).get("era") == era
+    return connected and read and recorded
+
+
+def down_named(summary: dict, name: str) -> bool:
+    """The second turn's UserPromptSubmit hook named SERVER_DOWN, that turn's command still ran, and Claude
+    Code cached the failed restart, which the run then removed."""
+    warned = any("SERVER_DOWN" in json.dumps(event) for event in summary["hook_events"]
+                 if "UserPromptSubmit" in str(event.get("hook_name")))
+    ran = any("IOGUARD_TWO" in str(result["content"]) for result in summary["results"])
+    return warned and ran and summary.get("skip_cached") is True
+
+
 def results_shown(summary: dict, name: str) -> bool:
     """Both saved outputs came back as io-guard's view of them, and each shell.results line reached the
     model."""
@@ -755,6 +831,9 @@ VERDICTS = {
         "TOUCHED_BY_SHELL: This command changed a.cpp, read before it",
         "EOL_MISMATCH: This command changed conv.txt from CRLF to LF line endings.")),
     "live-results": results_shown,
+    "live-server": lambda s, n: served(s, n, "legacy"),
+    "live-server-modern": lambda s, n: served(s, n, "modern"),
+    "live-server-down": down_named,
     "command-output": lambda s, n: logged(s, '"error": "Exit code 1\\nIOPROBE_OUT\\nIOPROBE_ERR"')
     and sum("IOPROBE-SUMMARY" in str(result["content"]) and "persisted-output" not in str(result["content"])
             for result in s["results"]) == 3,

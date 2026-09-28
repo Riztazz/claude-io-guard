@@ -104,6 +104,9 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
                                         project_narrows=True),
     "telemetry.enabled": ConfigKey(bool, True, "Record each decision in the plugin data folder.",
                                    project_forbids=(False,)),
+    "io.read.max_bytes": ConfigKey(int, 16 * 1024 * 1024, "The largest file io.read reads, in bytes."),
+    "io.read.max_chars": ConfigKey(int, 60_000, "The most characters of a file one io.read returns. The "
+                                   "result names the call for the lines after them."),
     "telemetry.retention_days": ConfigKey(int, 90, "Days a telemetry file is kept."),
     "telemetry.debug": ConfigKey(bool, False, "Write tracebacks to the debug log."),
     "skip_trees": ConfigKey(list, [], "Globs, from the repository root, such as Content/**, whose changes a "

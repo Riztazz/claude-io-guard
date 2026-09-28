@@ -39,6 +39,9 @@ A run tool is also a way around the user's rules. Settings cannot match an MCP t
   tool execution error, `HANDLE_EXPIRED`, that says how to start the run again.
 - **`io.read_log(path, since_line?)`**: returns the lines added since the last call, minus `noise_patterns` from the
   config. It replaces `logcheck.sh`, which ran 83 times.
+- **Moved here from task 23 with their first user:** `mcp/handles.py`'s `HandleStore` with `HANDLE_EXPIRED`
+  (`architecture.md`, section 7, "Handles"), and `ProgressReporter` in `mcp/progress.py`, beside task 23's
+  `CancelToken`, sending `notifications/progress` at most twice a second for a run that has a `progressToken`.
 
 ## Where
 
@@ -62,3 +65,6 @@ A run tool is also a way around the user's rules. Settings cannot match an MCP t
   hook allows, 600 s by default. Bound them before `io.read_log` applies any: a length cap and a refusal of nested
   quantifiers at config load, or project patterns matched as plain substrings while only the user's own patterns
   are regexes. Raised with D24 on 2026-09-27, and the lead asked for it to be kept on record.
+- **Task 22's `checks.shell.results.error_patterns` has the same exposure.** A project file may set it, and every
+  Bash and PowerShell result runs its patterns in the io server. The guard built here covers both keys. Found on
+  2026-09-28 during task 23.

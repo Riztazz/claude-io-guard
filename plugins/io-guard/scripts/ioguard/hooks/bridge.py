@@ -7,10 +7,11 @@ call.
 """
 import json
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
-from ioguard.checks.registry import Registry
-from ioguard.hooks.entry import run_event
+from ioguard.checks.registry import Registry, default_registry
+from ioguard.hooks.entry import CONTEXTS, run_event
 from ioguard.lib.context import Context
 from ioguard.lib.events import Surface
 
@@ -22,3 +23,8 @@ def call(fields: Mapping[str, Any], ctx: Context | None = None, registry: Regist
     """The hook tool's MCP result for one substituted map."""
     reply = run_event(fields, Surface.MCP_HOOK, ctx, registry)
     return {"content": [{"type": "text", "text": json.dumps(reply, ensure_ascii=True)}]}
+
+
+def context(session_id: str, cwd: Path) -> Context:
+    """The live context the session's hook calls use, for an io tool the same server runs."""
+    return CONTEXTS.get(session_id, cwd, default_registry())

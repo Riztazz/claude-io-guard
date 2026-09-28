@@ -12,12 +12,12 @@ from python.org, run `/plugin configure io-guard` and set it to `python`. Whatev
 
 ## What starts Python
 
-Two things do, once each per session:
+Two things do: the server once per session, and `hook.sh` at the session's start and at the start of each turn.
 
 | What | Started by | Which Python |
 |---|---|---|
 | The io server, which answers every guarded tool call | `.mcp.json`, from `${user_config.python}` | Your setting, or `python3` when you haven't set one |
-| The SessionStart hook, and the per-turn heartbeat once task 23 adds it | `hook.sh`, a POSIX `sh` script | Your setting, then `python3`, `python` and `py -3`, skipping the Store stub under `WindowsApps` |
+| The SessionStart hook, and the per-turn heartbeat, which costs 237 to 293 ms a turn | `hook.sh`, a POSIX `sh` script | Your setting, then `python3`, `python` and `py -3`, skipping the Store stub under `WindowsApps` |
 
 Every tool call goes to the running server through an `mcp_tool` hook, so no call starts Python.
 

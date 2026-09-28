@@ -1,0 +1,117 @@
+"""The tool registry makes each tool's schemas from its dataclasses, lists the tools in order, parses a call's
+arguments, and keeps every answer bounded and every bug inside the tool."""
+import shutil
+import tempfile
+import unittest
+from dataclasses import dataclass
+from pathlib import Path
+
+from ioguard.lib.results import Code
+from ioguard.mcp.progress import CancelToken
+from ioguard.mcp.toolspec import (NO_DECISION, InvalidArguments, ToolCall, ToolRegistry, ToolSpec,
+                                  callable_name, doc, schema)
+
+
+@dataclass(frozen=True)
+class Inner:
+    line: int
+
+
+@dataclass(frozen=True)
+class Given:
+    path: str = doc("The file.")
+    lines: list[int] = doc("Line numbers.", default_factory=list)
+    inner: Inner | None = None
+    quiet: bool = False
+
+
+@dataclass(frozen=True)
+class Said:
+    text: str
+
+    def render(self) -> str:
+        return f"said: {self.text}"
+
+
+def spec(name: str, handler, given: type | None = Given, said: type | None = Said, **fields) -> ToolSpec:
+    return ToolSpec(name, name, "A test tool.", given, said, read_only=True, destructive=False,
+                    idempotent=True, handler=handler, **fields)
+
+
+def call(spill: Path | None = None) -> ToolCall:
+    return ToolCall(lambda: None, CancelToken(), Path("."), spill)
+
+
+class SchemasComeFromTheDataclasses(unittest.TestCase):
+    def test_an_input_schema_is_strict_and_names_what_is_required(self):
+        made = schema(Given, loose=False)
+        self.assertEqual((made["required"], made["additionalProperties"], made["properties"]["path"]),
+                         (["path"], False, {"type": "string", "description": "The file."}),
+                         "a field without a default is required, and an unknown argument is refused")
+        self.assertEqual((made["properties"]["lines"], made["properties"]["inner"]["properties"]["line"]),
+                         ({"type": "array", "items": {"type": "integer"}, "description": "Line numbers."},
+                          {"type": "integer"}), "lists and nested dataclasses become arrays and objects")
+
+    def test_an_output_schema_is_loose(self):
+        made = schema(Said, loose=True)
+        self.assertEqual((made["additionalProperties"], "required" in made), (True, False),
+                         "the client checks structuredContent, so a new field or a saved result passes")
+
+    def test_the_list_keeps_the_registration_order_and_the_annotations(self):
+        tools = ToolRegistry()
+        for name in ("io.b", "io.a"):
+            tools.register(spec(name, lambda given, call: Said("x")))
+        listed = tools.list()
+        self.assertEqual([entry["name"] for entry in listed], ["io.b", "io.a"], "tools/list keeps one order")
+        self.assertEqual(listed[0]["annotations"]["readOnlyHint"], True, "the annotations come from the spec")
+        self.assertEqual(callable_name("io.read"), "mcp__plugin_io-guard_io__io_read",
+                         "the model calls a tool with its dots as underscores")
+
+
+class ACallIsParsedAndAnswered(unittest.TestCase):
+    def test_arguments_become_the_input_dataclass(self):
+        seen = []
+        tools = ToolRegistry()
+        tools.register(spec("io.echo", lambda given, call: seen.append(given) or Said(given.path)))
+        answer = tools.call("io.echo", {"path": "a.txt", "inner": {"line": 3}}, call())
+        self.assertEqual((seen[0].inner, answer["content"][0]["text"], answer["structuredContent"]),
+                         (Inner(3), "said: a.txt", {"text": "a.txt"}),
+                         "the handler gets typed values, and the answer carries the text and the structure")
+
+    def test_arguments_that_do_not_fit_are_refused_by_name(self):
+        tools = ToolRegistry()
+        tools.register(spec("io.echo", lambda given, call: Said("x")))
+        for arguments, said in (({}, "path is required"), ({"path": 3}, "path must be a str"),
+                                ({"path": "a", "size": 1}, "size is not an argument"),
+                                ({"path": "a", "quiet": 1}, "quiet must be a bool")):
+            with self.subTest(arguments=arguments):
+                with self.assertRaisesRegex(InvalidArguments, said, msg="the protocol answers -32602"):
+                    tools.call("io.echo", arguments, call())
+
+    def test_a_bug_in_a_tool_is_a_guard_error_and_in_a_hook_tool_no_decision(self):
+        def broken(given, call):
+            raise RuntimeError("bug")
+        tools = ToolRegistry()
+        tools.register(spec("io.broken", broken))
+        tools.register(spec("hook.broken", broken, given=None, said=None))
+        answer = tools.call("io.broken", {"path": "a"}, call())
+        self.assertEqual((answer["isError"], answer["structuredContent"]["code"]),
+                         (True, Code.GUARD_ERROR.value), "a tool's bug is its own error, not the server's")
+        self.assertEqual(tools.call("hook.broken", {}, call()), NO_DECISION,
+                         "a hook tool's bug lets the guarded call go on, with no hook notice")
+
+    def test_a_result_too_long_for_one_answer_is_saved_and_named(self):
+        folder = Path(tempfile.mkdtemp(prefix="ioguard-spill-"))
+        self.addCleanup(shutil.rmtree, folder, True)
+        tools = ToolRegistry()
+        tools.register(spec("io.long", lambda given, call: Said("x" * 200), max_result_chars=100))
+        answer = tools.call("io.long", {"path": "a"}, call(folder))
+        saved = Path(answer["structuredContent"]["saved"])
+        self.assertEqual((saved.read_text(), answer["structuredContent"]["chars"]),
+                         ("said: " + "x" * 200, 206), "the whole text goes to a file the answer names")
+        self.assertIn("the whole result, 206 characters, is in", answer["content"][0]["text"],
+                      "and the text says where it is")
+
+
+if __name__ == "__main__":
+    unittest.main()

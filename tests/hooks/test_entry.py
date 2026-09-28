@@ -85,12 +85,10 @@ class LiveContextsKeepOneSessionState(unittest.TestCase):
     def test_a_session_gets_one_context_per_project_and_one_state_across_them(self):
         contexts = entry.LiveContexts()
 
-        def context_for(command: str, cwd: Path) -> Context:
-            return contexts.get(Event.from_hook_json(events.bash(command, cwd), Surface.MCP_HOOK), Registry())
-
         with TemporaryProject() as first, TemporaryProject() as second, TemporaryProject() as data, \
                 mock.patch.dict(os.environ, {"IOGUARD_DATA": str(data)}):
-            one, again, other = context_for("x", first), context_for("y", first), context_for("z", second)
+            one, again = contexts.get("s1", first, Registry()), contexts.get("s1", first, Registry())
+            other = contexts.get("s1", second, Registry())
         self.assertIs(one, again, "the config loads once per session and project")
         self.assertIsNot(one, other, "another project loads its own config")
         self.assertIs(one.session, other.session, "the session's state is shared across its projects")
@@ -99,10 +97,19 @@ class LiveContextsKeepOneSessionState(unittest.TestCase):
         config = {"transport": {"rewrite_mode": {"default": "refuse"}}}
         with TemporaryProject({"config.json": json.dumps(config).encode("ascii")}) as data, \
                 TemporaryProject() as project, mock.patch.dict(os.environ, {"IOGUARD_DATA": str(data)}):
-            event = Event.from_hook_json(events.bash("x", project), Surface.MCP_HOOK)
-            ctx = entry.LiveContexts().get(event, Registry())
+            ctx = entry.LiveContexts().get("s1", project, Registry())
         self.assertEqual(ctx.config.get("transport.rewrite_mode.default"), "refuse",
                          "IOGUARD_DATA names the folder whose config.json is the user layer")
+
+    def test_a_warning_goes_out_once_across_the_sessions_processes(self):
+        with TemporaryProject() as data, TemporaryProject() as project, \
+                mock.patch.dict(os.environ, {"IOGUARD_DATA": str(data)}):
+            server = entry.LiveContexts().get("s1", project, Registry())
+            command_hook = entry.LiveContexts().get("s1", project, Registry())
+            said = [server.session.first_time("broken:x"), command_hook.session.first_time("broken:x")]
+            again = entry.LiveContexts().get("s2", project, Registry()).session.first_time("broken:x")
+        self.assertEqual((said, again), ([True, False], True),
+                         "two processes of one session share their warned keys, and another session does not")
 
 
 if __name__ == "__main__":

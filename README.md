@@ -3,13 +3,14 @@
 A Claude Code plugin that checks what an agent sends to the file and shell tools, fixes what it safely can, and
 returns a structured error for the rest. One codebase runs on Windows and macOS.
 
-**Status: in build.** The plugin installs, and its hooks answer every file and shell call. Sixteen checks run
-so far: the session probe, where a write lands, what holds a locked file, the Bash body move, the shell-write
-refusal, the quoting and dialect lint, the Git Bash path fix, the endings and BOM fix for Write, the indent fix
-for Edit, the check of each written file against the file before it, your own verify command after a write, the
-files a shell command changed, the profile line after a Read, the diagnosis of a failed file call, both after it
-fails and after Claude Code refuses it, and what a shell command's result means. The build plan is in
-`.claude/tasks/`, and this page describes the plugin the plan builds.
+**Status: in build.** The plugin installs, its io server runs the hooks and `io.read`, and its hooks answer every
+file and shell call. Seventeen checks run so far: the session probe, where a write lands, what holds a locked
+file, the Bash body move, the shell-write refusal, the quoting and dialect lint, the Git Bash path fix, the
+endings and BOM fix for Write, the indent fix for Edit, the check of each written file against the file before
+it, your own verify command after a write, the files a shell command changed, the profile line after a Read, the
+diagnosis of a failed file call, both after it fails and after Claude Code refuses it, what a shell command's
+result means, and a warning when the io server is not running. The build plan is in `.claude/tasks/`, and this
+page describes the plugin the plan builds.
 
 ## Five fixes, by example
 
@@ -111,10 +112,12 @@ tests.
 
 ### The io tools
 
-A few jobs have no safe built-in tool, so the io server adds them:
+A few jobs have no safe built-in tool, so the io server adds them. `io.read` works today, and the rest arrive with
+the tasks that build them:
 
 | Tool | Job |
 |---|---|
+| `io.read` | A file's lines exactly as the file holds them, after its line endings, BOM, encoding and indent |
 | `io.edit` | Several edits in one file, all or nothing, in the file's own endings |
 | `io.splice` | Replace the text between two unique markers |
 | `io.append` | Add to the end of a file, wrapped and dated |
@@ -146,6 +149,10 @@ Once the first release is out:
    `python`. The default is `python3`, which on Windows is often the Microsoft Store stub. When the setting
    doesn't start Python 3.14 or later, io-guard says so once at the start of each session, and checks nothing
    until it's fixed.
+
+When the io server stops, your tool calls still run, unchecked, and io-guard says so once at the start of your
+next turn. Claude Code starts a stopped server again at the next tool call. When one fails to start, Claude Code
+skips it in every session for the next 15 minutes, and io-guard names that too. `/mcp` shows why it failed.
 
 Until 1.0, installs follow the latest commit. From 1.0 on, releases are tagged.
 

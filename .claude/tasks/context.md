@@ -134,6 +134,14 @@ dash or a middot a program printed in cp1252, and 1 for the bytes of a binary as
 commands over 5 KB were well formed and 7,807 bytes or more as the budget counts them, so each lowered its
 session's budget, and none of the 27 under 5 KB did.
 
+Task 23's `live-server`, `live-server-modern` and `live-server-down` passed on both releases. The io server
+connected in 191 to 250 ms, answered the hooks, and returned `io.read` of a BOM and CRLF file in its structured
+result, which the model read as JSON with the BOM and each CR kept. Its heartbeat recorded the legacy era, or
+the modern one under `MCP_PROTOCOL_NEGOTIATION=auto`. After a test check killed it and its restart failed, the
+next turn's UserPromptSubmit hook answered `SERVER_DOWN`, and that turn's Bash call ran. The server answers
+`initialize` 141 to 158 ms after its process starts (20 starts). The UserPromptSubmit hook costs 237 to 293 ms a
+turn, of which Python's imports are about 120 ms and Git Bash starting `hook.sh` about 90.
+
 Rules through a junction, checked on 2026-09-27 with Claude Code 2.1.281 and 2.1.283:
 
 - **Claude Code loads a rule, or an `@` import, only when its real path is inside the project.** A junction's real
@@ -255,6 +263,8 @@ denied, and the rerun denied all three. Ten calls each took:
 | 30 | Which failed file calls reach a hook | `edit-refusals`, `other-refusals`, task 20 | An Edit or Write that Claude Code rejects as a `<tool_use_error>` fires no hook at all, neither PreToolUse nor PostToolUseFailure: not read yet, `String to replace not found`, `Found 2 matches`, `No changes to make` and a missing file for Edit, and not read yet for Write. A Read over 256 KB, a pattern ripgrep rejects, a Grep path and a Glob folder that do not exist all fire PreToolUse and then PostToolUseFailure. 2.1.281 and 2.1.283 |
 | 31 | `${transcript_path}` substitutes in an `mcp_tool` map, and the transcript holds a refused call | `live-diagnose`, `guard-fields`, task 20 | Yes. The transcript records the refused call's `tool_use` and a `tool_result` with `is_error` and its text in `<tool_use_error>`. At the next hook, io-guard read the end of the transcript and its diagnosis reached the model as a `hook_additional_context` attachment, for each of seven failures. 2.1.281 and 2.1.283 |
 | 32 | What a shell result brings to a hook, and what a replaced output shows | `command-output`, task 22 | A failed Bash call's PostToolUseFailure has no `tool_response`, and its `error` is `Exit code 1\nIOPROBE_OUT\nIOPROBE_ERR`: the exit code line, then stdout, then stderr. `seq 1 8000` reached PostToolUse with `stdout` cut to 30,000 characters, `persistedOutputSize` 38,893 and `persistedOutputPath` naming a file that already existed. An `updatedToolOutput` that kept those two fields was shown as the 2 KB preview inside Claude Code's `<persisted-output>` notice. Without them, a 3.8 KB replacement reached the model whole, and the model read no file. PowerShell's shape is `{stdout, stderr, interrupted, isImage}`, and its replacement works the same way. A lone `grep` that matches nothing is a success, with `returnCodeInterpretation` "No matches found". 2.1.281 and 2.1.283 |
+| 33 | A plugin server that fails to start is skipped in later sessions | `live-server-down`, task 23 | Yes. When io-guard's server died and its restart exited at once, Claude Code logged `Connection failed (CONNECTION_CLOSED)` and wrote `{"plugin:io-guard:io": {"timestamp", "id"}}` to `~/.claude/mcp-needs-auth-cache.json` in the same millisecond. Every session after that, on the CLI 2.1.283 and the desktop's 2.1.281, listed the server as `failed` without trying to start it, so every hook failed open. The binary's check keeps a stdio plugin server's entry for 900,000 ms unless the entry names its own `ttlMs`, and matches it by the server's config id. Deleting the entry restored the server at once. 2.1.281 and 2.1.283 |
+| 34 | An MCP server knows its session | `era-legacy`, task 23 | Yes. The server's environment holds `CLAUDE_CODE_SESSION_ID`, the probe session's own id, over the one the parent process had, and `CLAUDE_PROJECT_DIR`. 2.1.283 |
 
 ## Doc facts, checked on 2026-09-27
 

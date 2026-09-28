@@ -1,11 +1,16 @@
 """Adds the test checks IOGUARD_TEST_CHECKS names, comma-separated, to io-guard in a Python a test starts.
 
 Python imports sitecustomize at startup from any folder on PYTHONPATH. A test that puts this folder there runs
-hook.py or server.py as shipped, with its checks installed by tests/support/injected.py.
+hook.py or server.py as shipped, with its checks installed by tests/support/injected.py. When the file
+IOGUARD_TEST_DEAD names exists, server.py exits at once, as a server that cannot start again does.
 """
 import os
 import sys
 from pathlib import Path
+
+DEAD = os.environ.get("IOGUARD_TEST_DEAD", "")
+if DEAD and Path(DEAD).is_file() and sys.argv and sys.argv[0].endswith("server.py"):
+    os._exit(3)
 
 NAMES = os.environ.get("IOGUARD_TEST_CHECKS", "")
 if NAMES:

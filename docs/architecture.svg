@@ -251,7 +251,7 @@
       'SessionStart, and each new prompt, run the two command hooks through hook.sh.',
       'hook.py probes the platform, or checks the heartbeat, through lib.',
       "The server's watchdog writes the heartbeat every 5 seconds.",
-      'lib writes the probe and the heartbeat into the plugin data folder. A heartbeat older than 30 seconds gives one warning.'
+      'lib writes the probe and the heartbeat into the plugin data folder. A heartbeat older than 30 seconds, or a server Claude Code skipped after a failed start, gives one warning.'
     ] },
     D: { name: 'D. Telemetry and the dashboard', steps: [
       'Every check decision is one telemetry line, with no file content.',

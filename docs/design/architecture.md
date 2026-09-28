@@ -49,6 +49,7 @@ plugins/io-guard/
         text.py                    visible, snippet, head
         transcript.py              refusals: the calls Claude Code refused before any hook, from the transcript
         output.py                  exit_code, saved_path, error_lines, mojibake, excerpt: what a shell result says
+        heartbeat.py               Heartbeat, parse, skipped_since: the io server's beat, and Claude Code's skip
         rules.py                   permission rules: load, match_argv
       checks/                      policy, one module per check
         base.py                    Check, CheckMeta, Cost
@@ -70,6 +71,7 @@ plugins/io-guard/
         diagnose.py                diagnose.failure after a failed call, diagnose.refused at the next hook
         command_results.py         shell.results: EXIT_BENIGN, ERRORS_IN_OUTPUT, OUTPUT_SAVED, MOJIBAKE,
                                    STALE_BINARY, PIPE_HIDES_EXIT after the run, and the learned budget
+        heartbeat.py               server.heartbeat: SERVER_DOWN at the start of a turn
         commit_policy.py           task 29
       hooks/
         entry.py                   run_event: an event in, the answer dict out, never raising
@@ -79,9 +81,9 @@ plugins/io-guard/
         server.py                  stdio loop, threads, shutdown
         protocol.py                framing, _meta, eras, JSON-RPC errors
         toolspec.py                ToolSpec, schema generation, tools/list
-        handles.py                 HandleStore
-        elicit.py                  Elicitor, LegacyElicitor, ModernElicitor
-        progress.py                ProgressReporter, CancelToken
+        handles.py                 HandleStore, task 25
+        elicit.py                  Elicitor, LegacyElicitor, ModernElicitor, when a client shows a form
+        progress.py                CancelToken, and ProgressReporter with task 25
         tools_read.py              io.read
         tools_edit.py              io.edit, io.splice, io.append
         tools_run.py               io.run, io.status, io.read_log
@@ -260,8 +262,12 @@ class SessionState:
     tracked: MutableMapping[Path, bool]          # whether git tracks a path, asked once by shell.writes
     last_failed_build: Optional[str]             # the words of the build that last failed, task 22
     lock: RLock                                  # guards every field
+    data_dir: Optional[Path]                     # with session_id, where the warned keys are shared, task 23
+    session_id: Optional[str]
 
-    def first_time(self, key: str) -> bool: ...  # True once per key, for a once-per-session warning
+    @classmethod
+    def shared(cls, data_dir: Optional[Path], session_id: str) -> "SessionState": ...
+    def first_time(self, key: str) -> bool: ...  # True once per key in all the session's processes
     def keep_snapshot(self, tool_use_id: str, snapshot: Snapshot) -> None: ...   # the oldest past 16 goes
     def take_snapshot(self, tool_use_id: str) -> Optional[Snapshot]: ...         # handed out once
 
@@ -286,6 +292,8 @@ class Context:
     def fake(cls, files: Optional[Mapping[Path, bytes]] = None, **overrides: Any) -> "Context": ...
 
 def repository_root(git: GitPort, path: Path) -> Optional[Path]: ...   # None outside one or when git fails
+def session_file(data_dir: Path, session_id: str, kind: str) -> Path: ...  # sessions/<session>.<kind>
+def first_in_file(path: Path, data_dir: Path, key: str) -> bool: ...   # add key under file_lock, True if new
 ```
 
 `Context.live` builds the real ports and loads the probe and the config from `${CLAUDE_PLUGIN_DATA}`. `lib`
@@ -394,7 +402,8 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Read | `PATH_NOT_FOUND`, `READ_TOO_LARGE`, `PATTERN_INVALID`, `SEARCH_TOO_BROAD`, all warnings | 20, in `CODES` |
 | Output | `EXIT_BENIGN`, `OUTPUT_SAVED`, `ERRORS_IN_OUTPUT`, `MOJIBAKE`, `STALE_BINARY` | 22, in `CODES` |
 | Internal | `GUARD_ERROR`, `REWRITE_CONFLICT`, `BUDGET_EXCEEDED` | 07, in `CODES` |
-| Internal | `SERVER_DOWN`, `HANDLE_EXPIRED`, `CANCELLED` | 23 |
+| Internal | `SERVER_DOWN`, `CANCELLED` | 23, in `CODES` |
+| Internal | `HANDLE_EXPIRED`, with the first tool that makes a handle | 25 |
 | Internal | `RULE_DENIED`, `RULE_ASKED` | 25 |
 
 ### Decision and Rewrite
@@ -564,7 +573,8 @@ class Registry:
 
 CHECKS: tuple[type[Check], ...] = (SessionProbe, Location, LockHolders, ShellWrites, TransportBody, Lint,
                                    WinPaths, ConformWrite, ConformEdit, VerifyWrite, VerifyCommand, Touched,
-                                   ReadProfile, DiagnoseFailure, DiagnoseRefused, CommandResults, CommitPolicy)
+                                   ReadProfile, DiagnoseFailure, DiagnoseRefused, CommandResults, Heartbeat,
+                                   CommitPolicy)
 
 def default_registry() -> Registry:
     registry = Registry()
@@ -775,6 +785,11 @@ def head(text: str, limit: int) -> str        # cut, with the count of what was 
 # transcript.py, task 20
 def refusals(tail: bytes) -> tuple[Refusal, ...]   # the refused calls after the last call that ran
 
+# heartbeat.py, task 23
+def parse(data: bytes) -> Optional[Heartbeat]      # pid, session, era, started, beat, stopped
+def skipped_since(cache: bytes, server: str, default_ttl_s: float) -> Optional[tuple[datetime, datetime]]
+                                                   # when Claude Code gave up on server, and when it tries again
+
 # output.py, task 22
 def exit_code(error: str) -> Optional[int]                     # from a failed call's first line, Exit code N
 def saved_path(response: Mapping[str, Any]) -> Optional[str]   # persistedOutputPath, or the path its notice names
@@ -839,8 +854,9 @@ example above shows them set. Task 20 added `checks.diagnose.*.find_limit`, `par
 task 21 `skip_trees`, empty by default, and `checks.shell.touched.listed`. Task 22 added
 `checks.shell.results.error_patterns` and `benign_exits`, both merged key by key with a project's own,
 `readers`, `builds`, `runs`, `short_lines` of 50, `head_lines` and `tail_lines` of 20, `shown_errors`,
-`line_chars`, `max_bytes` of 16 MB, `code_pages` and `learn_from_bytes` of 5,000. Each other key arrives with
-its check. A key marked `project_narrows`, such as
+`line_chars`, `max_bytes` of 16 MB, `code_pages` and `learn_from_bytes` of 5,000. Task 23 added
+`io.read.max_bytes` of 16 MB and `io.read.max_chars` of 60,000, and `checks.server.heartbeat.stale_s` of 30.
+Each other key arrives with its check. A key marked `project_narrows`, such as
 the budget, takes a lower number from a project file and refuses a higher one. A key with a `shape`, such as
 `verify`, has its inner values checked too, and a wrong one drops the file like any other error.
 
@@ -976,12 +992,12 @@ takes the refusals after the last call that ran, and answers each once, before t
 `Event.from_fields`, and returns the answer JSON as the tool's text content. The harness reads that text exactly
 as it reads command-hook stdout, and a `deny` in it blocks the call. The tool never sets `isError`, because an
 error result produces a hook notice on every call. A `GUARD_ERROR` answers `{}` and warns once through
-`user_message`. Until task 23, `scripts/server.py` is a legacy-era stub that serves the three hook tools
-through the bridge and nothing else.
+`user_message`. `scripts/server.py` starts `mcp.server`, which serves the hook tools, `hook.ping` and the io
+tools (section 7).
 
-A session runs two processes: the command hook that SessionStart starts, and the server. Each keeps its own
-once-per-session keys, so a check that breaks on SessionStart and on tool events warns once in each. Task 23
-shares the keys through the plugin data folder.
+A session runs several processes: the server, and a command hook at SessionStart and at each UserPromptSubmit.
+Their `SessionState` shares its warned keys through `sessions/<session>.warned` in the plugin data folder, under
+`file_lock`, so a check that breaks on SessionStart and on tool events warns once in all of them.
 
 Task 03 checked this path live on Windows with Claude Code 2.1.283 (`context.md`, "Hooks and MCP"):
 
@@ -1089,22 +1105,32 @@ class ToolSpec:
     name: str                         # "io.edit"
     title: str
     description: str                  # what it does and when to use it, for tool search
-    input: type                       # a dataclass, fields become inputSchema
-    output: type                      # a dataclass, fields become outputSchema
+    input: Optional[type]             # a dataclass, fields become inputSchema. None for a hook tool
+    output: Optional[type]            # a dataclass, fields become outputSchema. None for a hook tool
     read_only: bool
     destructive: bool
     idempotent: bool
     handler: Callable[[Any, ToolCall], Any]
-    ui: Optional[str] = None          # "ui://io-guard/dashboard"
-    handle_lifetime: Optional[str] = None
-    max_result_chars: Optional[int] = None
+    open_world: bool = False          # io.run's openWorldHint
+    max_result_chars: int = 80_000    # past it, the whole result goes to a file the answer names
+    # ui: "ui://io-guard/dashboard" arrives with task 33, and handle_lifetime with task 25
+
+class ToolCall:                                           # the context, built on first use, and the cancel token
+    context: Context
+    cancel: CancelToken
+    cwd: Path                                             # the project, from CLAUDE_PROJECT_DIR
+    spill: Optional[Path]                                 # the folder a long result is saved in
 
 class ToolRegistry:
     def register(self, spec: ToolSpec) -> None: ...
-    def list(self) -> tuple[dict, ...]: ...              # tools/list entries, fixed order
+    def list(self) -> list[dict]: ...                    # tools/list entries, in registration order
     def call(self, name: str, arguments: Mapping[str, Any], call: ToolCall) -> dict: ...
-    def markdown(self) -> str: ...                       # the skill's tool table
+    # markdown(), the skill's tool table, arrives with task 27
 ```
+
+A hook tool takes the map an `mcp_tool` hook sends and returns its MCP result as it is. A bug in one answers
+`{}`, so the call it guards goes on with no hook notice. A bug in an io tool answers a `GUARD_ERROR` tool
+error, and arguments that do not fit the input schema get `-32602`.
 
 `toolspec.schema(dataclass)` generates JSON Schema 2020-12 from the dataclass fields and their type hints:
 `str`, `int`, `bool`, `Path` as string, `Optional`, `Sequence` and nested dataclasses. Every output schema
@@ -1140,7 +1166,8 @@ class HandleStore:
     def sweep(self) -> int: ...
 ```
 
-Handles live in memory and in `${CLAUDE_PLUGIN_DATA}/handles/<id>.json`, so a snapshot survives a server
+Task 25 builds the store with `io.run`, the first tool that hands out a handle. Handles live in memory and in
+`${CLAUDE_PLUGIN_DATA}/handles/<id>.json`, so a snapshot survives a server
 restart and a run handle does not. A run handle expires one hour after its process ends. A snapshot handle
 expires after seven days. Each tool description states the lifetime. `HandleExpired` becomes a tool execution
 error `HANDLE_EXPIRED` whose fix names the creating tool.
@@ -1167,16 +1194,17 @@ Code tab on 2.1.281 declines a legacy request without showing it, and `claude -p
 connection never answers a server-sent `elicitation/create`, so `ModernElicitor` is the only way to ask there.
 A user decision therefore goes through a PreToolUse hook on the io tool's own call: the bridge answers `ask`,
 and the harness shows its permission prompt, which the desktop does render. That covers a locked file, a restore
-over newer edits, and an ask rule matched by `io.run`. An elicitor stays for a client that shows forms, and a
-declined or cancelled answer is a refusal that names the decision.
+over newer edits, and an ask rule matched by `io.run`. No elicitor is built yet, because no tool needs one and
+no surface shows its form. It arrives with a client that shows forms, where a declined or cancelled answer is a
+refusal that names the decision.
 
 ### Progress and cancellation
 
-`ProgressReporter` sends `notifications/progress` when the request carried `progressToken`, at most twice per
-second. `CancelToken` is a `threading.Event` per request id that the reader thread sets on
-`notifications/cancelled`. Every loop in a long tool checks it, and a cancelled tool returns a result with
-`isError: true` and the code `CANCELLED`. A cancelled background run keeps running, because its handle owns
-the process.
+`CancelToken` is a `threading.Event` per request id that the reader thread sets on `notifications/cancelled`.
+Every loop in a long tool checks it, and a call cancelled before or while its tool runs answers a result with
+`isError: true` and the code `CANCELLED`. `ProgressReporter` arrives with `io.run`, the first long tool, in task
+25: it sends `notifications/progress` when the request carried `progressToken`, at most twice per second. A
+cancelled background run keeps running, because its handle owns the process.
 
 ### The ui resource
 
@@ -1195,17 +1223,20 @@ another server is safe across processes.
 
 | Thread | Does | Never does |
 |---|---|---|
-| reader | reads stdin, parses, enqueues, sets cancel and elicitation events | run a tool or a check |
+| reader | reads stdin, parses, answers every method but `tools/call` itself so their order holds, hands each `tools/call` to a worker, sets cancel events | run a tool or a check |
 | writer lock | serialises `stdout.write` and `flush` | hold the lock across a tool |
 | workers, 4 | run hook tools and io tools | block on another worker |
-| telemetry | drains a `queue.Queue` into the JSONL file, flushes every second and at exit | drop an event silently |
-| pumps, per run | copy a child's stdout and stderr into its log | parse output |
-| watchdog | writes the heartbeat file every 5 seconds, sweeps handles, refreshes the git status cache | anything on the request path |
+| pumps, per run, task 25 | copy a child's stdout and stderr into its log | parse output |
+| watchdog | writes the heartbeat file every 5 seconds, and marks it stopped at the end | anything on the request path |
 
-Locks are few and named. `paths.LockTable.lock(path)` returns one `threading.Lock` per resolved path, held
-across a read-profile-write sequence, so two subagents editing one file serialise. `SessionState` fields are
-guarded by one `RLock`. Caches carry a TTL: git status 2 seconds, a file profile until its mtime and size
-change, the probe for the session.
+Telemetry has no thread of its own. One lock in `Telemetry` serialises the appends, and each line is on disk
+before `record` returns, so a crash loses none. `sys.stdout` points at stderr inside the server, so a stray
+print cannot corrupt an answer.
+
+Locks are few and named. `paths.LockTable.lock(path)` arrives with `io.edit` in task 24: one `threading.Lock`
+per resolved path, held across a read-profile-write sequence, so two subagents editing one file serialise.
+`SessionState` fields are guarded by one `RLock`. Caches carry a TTL: git status 2 seconds, a file profile until
+its mtime and size change, the probe for the session.
 
 Across processes, three rules keep two servers from corrupting each other's work.
 
@@ -1222,12 +1253,15 @@ the pipeline budget from cached state, and a stale cache refreshes on the watchd
 call inside a hook tool has a 500 ms timeout and a cache miss counts as unknown, never as a refusal.
 
 Crash safety has four parts. `dispatch` wraps every message in the fail-open boundary, so a bug answers `{}`
-or an `isError` result and the loop continues. The reader survives a malformed line. The watchdog writes
-`${CLAUDE_PLUGIN_DATA}/sessions/<session>.alive` with the time. A `UserPromptSubmit` command hook reads that
-file once per turn and warns once when it is older than 30 seconds. Claude Code restarts a server that exited
-on the next hook call, but one that cannot start leaves every hook failing open and tells the model nothing
-(`context.md`, "Hooks and MCP", row 18). The heartbeat makes that case a visible warning rather than a silent
-gap. That hook is the only Python spawn per turn.
+or an `isError` result and the loop continues. The reader answers a malformed line with `-32700` and reads on.
+The watchdog writes `${CLAUDE_PLUGIN_DATA}/sessions/<session>.alive`, named by `CLAUDE_CODE_SESSION_ID` from
+the server's environment, with its process, era and time (`context.md`, "Hooks and MCP", row 34). The
+`server.heartbeat` check runs in a `UserPromptSubmit` command hook and warns once when the beat is older than
+30 seconds with no clean stop. Claude Code restarts a server that exited on the next hook call, but one that
+cannot start leaves every hook failing open and tells the model nothing (row 18). Worse, Claude Code then
+records the failure in `~/.claude/mcp-needs-auth-cache.json` and skips the server in every session for 15
+minutes (row 33). With no heartbeat for its session, the check reads that cache and names the skip and its
+end. That hook is the only Python spawn per turn, and costs about 250 ms.
 
 Shutdown is one ordered list: stop accepting, drain the workers with a 2 second cap, terminate background
 runs whose handles asked for it, flush telemetry, close the heartbeat.
