@@ -25,7 +25,7 @@ and `prose`.
 
 ## Layout
 
-`architecture.md`, section 1, has the tree. Three rules hold it together:
+`architecture.md`, section 1, has the tree. Four rules hold it together:
 
 1. **`lib` imports only the standard library and other `lib` modules.** It holds no config, no session and no
    decision.
@@ -33,6 +33,9 @@ and `prose`.
    exception: `mcp.tools_hook` calls `hooks.bridge`. `tests/test_layout.py` enforces all of it.
 3. **`tools/` scripts import `ioguard.cli`, or `ioguard.mcp.skill` for the skill page, and hold no logic.** A
    copy of the logic in a script tests a parallel implementation.
+4. **Every script answers `--help` with its usage, exits 0, and does nothing else.** An agent that meets an
+   unknown script runs it with `--help` before it reads the source. A hook or server script checks for `--help`
+   before it reads stdin. `EveryScriptAnswersHelp` in `tests/test_meta.py` runs each one.
 
 **A check is one class with one `run`** (`architecture.md`, section 3). It is registered by name in
 `default_registry()`, declares its codes, its config keys and its cost in `CheckMeta`, and returns a `Decision`

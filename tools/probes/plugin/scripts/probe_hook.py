@@ -2,6 +2,9 @@
 
 argv[1] names the hook form, exec or shell, so the log tells the two apart. The probe's settings are in
 probe.json at the plugin root: the mode, the nonce and the log path.
+
+tools/probes/run_probe.py copies it into each probe's plugin, whose hooks.json starts it with the event as
+JSON on stdin. It reads probe.json, so it runs only inside a plugin run_probe.py built.
 """
 import json
 import os
@@ -34,6 +37,9 @@ def write_env_file(nonce: str) -> str | None:
 
 
 def main() -> int:
+    if sys.argv[1:2] in (["-h"], ["--help"]):
+        sys.stdout.write(__doc__)
+        return 0
     started_ns = time.time_ns()
     probe = json.loads((ROOT / "probe.json").read_bytes())
     raw = sys.stdin.buffer.read()

@@ -1297,6 +1297,8 @@ def print_json(value: dict) -> None:
 
 def main(argv: list[str]) -> int:
     match argv:
+        case ["-h" | "--help"]:
+            print(__doc__)
         case ["list"]:
             for name, probe in PROBES.items():
                 print(f"{probe.item:>2} {name}")

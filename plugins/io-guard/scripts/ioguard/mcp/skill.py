@@ -5,6 +5,7 @@ A line before and a line after each table mark it, and written puts the table th
 them. A test compares the shipped page with that, so a new tool or code cannot ship without its row. The
 tables come from here rather than cli, because the tool table needs the registry, and cli never imports mcp.
 """
+import argparse
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -53,9 +54,14 @@ def written(page: str, generated: Mapping[str, str]) -> str:
 
 def main(argv: Sequence[str]) -> int:
     """Write the tables into the page, or with --check exit 1 when the page's tables are out of date."""
+    top = argparse.ArgumentParser(prog="python tools/skill.py",
+                                  description="Write the io tool and code tables into the skill page.")
+    top.add_argument("--check", action="store_true",
+                     help="write nothing, and exit 1 when the page's tables are out of date")
+    args = top.parse_args(argv)
     page = read_bytes(PAGE).decode("utf-8")
     fresh = written(page, tables())
-    if "--check" in argv:
+    if args.check:
         if fresh != page:
             print(f"{PAGE} is out of date. Run python tools/skill.py to write its tables.")
             return 1

@@ -3,7 +3,8 @@ title: Give every io-guard script a --help, and keep it so with a test
 stage: I
 area: cli
 created: 2026-09-28
-status: open
+status: done
+claimed-by: Pala Elektroniczna, session 7eeb509f
 depends-on: [28]
 findings: []
 platforms: [windows, macos]
@@ -45,3 +46,29 @@ Checked the same day with `--help` on each:
 ## Done when
 
 - Every script answers `--help` with its usage and exits 0 at once, and the meta test holds it there.
+
+## What changed
+
+- `mcp/skill.py`: `main` parses its arguments with argparse, so `tools/skill.py --help` prints its usage and
+  `--check`, and an unknown argument exits 2.
+- `hook.py` and `server.py` print their docstring for `-h` or `--help` and exit 0, before `hook.py` reads stdin.
+  `hook.py` keeps to 3.8 syntax.
+- `tools/probes/run_probe.py`: `-h` and `--help` print the docstring and exit 0. Any other unknown command still
+  prints it and exits 2.
+- `tools/probes/plugin/scripts/probe_hook.py` and `probe_server.py` do the same before they read `probe.json`,
+  and their docstrings say what starts them. The meta test's scan found them, so they're in.
+- Tests: `tests/test_meta.py`, `EveryScriptAnswersHelp` (1). A script is a `.py` file under `tools/` or the
+  plugin's `scripts/` that calls `sys.exit(main(` or checks `__main__`, which finds 12. Each runs with `--help`,
+  no stdin and a 10-second limit. It passes on exit 0 with argparse's usage or the docstring's first line in
+  stdout, and with no file in the checkout changed, ignored files included.
+- Docs: `docs/launcher.md` (`pyrun --help` is Python's, and a script's own `--help`), the `io-guard-dev` skill
+  (Layout, rule 4). No drawing, design or README change: no component, signature or setting moved.
+
+Evidence:
+
+- `python tests/run_all.py` from Git Bash ran 860 tests, all passing, up from 859.
+- HEAD's `hook.py --help` printed `{}` and exited 0, and HEAD's `run_probe.py --help` exited 2. The meta test
+  fails on both: `{}` is neither usage nor the docstring.
+- `live-empty`, which runs the shipped `hook.py` and `server.py`, and `mcp-gate`, which runs `probe_server.py`,
+  both passed on Claude Code 2.1.283 on Windows on 2026-09-28.
+- `tools/skill.py --check` exits 0.

@@ -7,4 +7,7 @@ import sys
 from ioguard.mcp.server import main
 
 if __name__ == "__main__":
+    if sys.argv[1:2] in (["-h"], ["--help"]):
+        sys.stdout.write(__doc__)
+        sys.exit(0)
     sys.exit(main())

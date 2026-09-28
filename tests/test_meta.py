@@ -1,6 +1,9 @@
 """Checks that keep the suite honest: unique test names, and fixtures that still hold their recorded bytes."""
 import ast
+import os
 import subprocess
+import sys
+import tempfile
 import unittest
 from collections import defaultdict
 from pathlib import Path
@@ -110,6 +113,50 @@ class PythonLinesStopAt110(unittest.TestCase):
                 for number, line in enumerate(path.read_bytes().decode("utf-8").splitlines(), 1)
                 if len(line) > 110]
         self.assertEqual(long, [], "D17: code and comments stop at 110 characters")
+
+
+def scripts() -> list[Path]:
+    """Every file under tools/ and the plugin's scripts/ that runs as a program: it calls main or checks
+    __main__. The ioguard package is modules, not scripts."""
+    found = [*(REPO / "tools").rglob("*.py"), *(REPO / "plugins" / "io-guard" / "scripts").glob("*.py")]
+    marks = (b'__name__ == "__main__"', b"sys.exit(main(")
+    return sorted(path for path in found if "__pycache__" not in path.parts
+                  and any(mark in path.read_bytes() for mark in marks))
+
+
+def stats() -> dict[str, tuple[int, int]]:
+    """Each file git tracks or sees in the checkout, ignored ones too, with its modification time and size."""
+    listed = subprocess.run(["git", "-c", "core.quotepath=false", "ls-files", "-z", "--cached", "--others"],
+                            cwd=REPO, capture_output=True, check=True, timeout=60).stdout
+    found = {}
+    for name in {name.decode("utf-8") for name in listed.split(b"\0") if name}:
+        try:
+            stat = (REPO / name).stat()
+        except OSError:
+            continue
+        found[name] = (stat.st_mtime_ns, stat.st_size)
+    return found
+
+
+class EveryScriptAnswersHelp(unittest.TestCase):
+    def test_every_script_prints_its_usage_for_help_and_does_nothing_else(self):
+        found = scripts()
+        self.assertGreaterEqual(len(found), 12,
+                                "the scan finds the tools, the probes and the plugin's scripts")
+        with tempfile.TemporaryDirectory(prefix="ioguard-help-") as home:
+            env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "IOGUARD_HOME": home}
+            before = stats()
+            for path in found:
+                with self.subTest(script=path.relative_to(REPO).as_posix()):
+                    done = subprocess.run([sys.executable, str(path), "--help"], cwd=REPO, env=env,
+                                          stdin=subprocess.DEVNULL, capture_output=True, timeout=10)
+                    doc = ast.get_docstring(ast.parse(path.read_bytes())) or ""
+                    said = done.stdout.decode("utf-8", "replace")
+                    self.assertEqual(done.returncode, 0, f"--help exits 0: {done.stderr[-400:]!r}")
+                    self.assertTrue("usage:" in said or (doc and doc.splitlines()[0] in said),
+                                    f"--help prints argparse's usage or the docstring: {said[:200]!r}")
+            changed = sorted(name for name, stat in stats().items() if before.get(name) != stat)
+        self.assertEqual(changed, [], "--help writes no file in the checkout")
 
 
 if __name__ == "__main__":

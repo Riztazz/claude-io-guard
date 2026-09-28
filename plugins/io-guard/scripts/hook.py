@@ -39,6 +39,9 @@ def guard(raw):
 
 def main():
     event_name = sys.argv[1] if len(sys.argv) > 1 else ""
+    if event_name in ("-h", "--help"):
+        sys.stdout.write(__doc__)
+        return 0
     raw = sys.stdin.buffer.read()
     reply = {}
     if sys.version_info[:2] >= MINIMUM:

@@ -24,6 +24,9 @@ The server's command is `${CLAUDE_PLUGIN_ROOT}/scripts/pyrun`. On Windows, Claud
 `sh pyrun` on both, under Git Bash on Windows. `pyrun.cmd` looks commands up on your `PATH` only, never in the
 project folder the server starts in, so a `python.bat` in a repository you clone never runs.
 
+`pyrun` hands every argument to the Python it picks, so `pyrun --help` prints Python's own help. To see what a
+script does, run it with `--help` instead: `pyrun hook.py --help` or `pyrun server.py --help`.
+
 ## Name your Python
 
 Set `IOGUARD_PYTHON` to the full path of your interpreter when the list above doesn't find Python 3.14. The

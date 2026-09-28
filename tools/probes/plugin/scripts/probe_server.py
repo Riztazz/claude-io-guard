@@ -3,12 +3,19 @@
 It serves the tools the probes call: hook_gate for mcp_tool hooks, probe_permit for --permission-prompt-tool,
 three tools that differ only in their annotations, one that elicits, one that reports progress, and one that
 names a ui:// resource. The probe's settings are in probe.json at the plugin root.
+
+tools/probes/run_probe.py copies it into each probe's plugin, whose .mcp.json starts it with python and no
+arguments. It reads probe.json on start, so it runs only inside a plugin run_probe.py built.
 """
 import json
 import os
 import sys
 import time
 from pathlib import Path
+
+if __name__ == "__main__" and sys.argv[1:2] in (["-h"], ["--help"]):
+    sys.stdout.write(__doc__)
+    sys.exit(0)
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
