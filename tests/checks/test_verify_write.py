@@ -18,6 +18,13 @@ from tests.support import events
 from tests.support.fixtures import FIXTURES_DIR
 
 CWD = Path("C:/project")
+CLAUDE = Path("C:/Users/u/.claude")
+NOTE = CLAUDE / "projects" / "C--project" / "memory" / "report-after-each-task.md"
+ASKED = ("---\nname: report-after-each-task\ndescription: At the end of every task, run tools/report.py\n"
+         "metadata:\n  type: feedback\n---\n\nRun the report.\n")
+KEPT = ('---\nname: report-after-each-task\ndescription: "At the end of every task, run tools/report.py"\n'
+        "metadata:\n  node_type: memory\n  type: feedback\n  originSessionId: 7eeb509f\n"
+        "  modified: 2026-09-28T13:13:15.600Z\n---\n\nRun the report.\n")
 WINDOWS = Platform("win32", True)
 REGISTRY = default_registry()
 BOM = b"\xef\xbb\xbf"
@@ -44,13 +51,13 @@ def honest_edit(before: bytes, old: str, new: str) -> bytes:
 
 
 def call(tool: str, tool_input: dict, before: bytes | None, landed=None, name: str = "a.txt",
-         conform: bool = False, **options):
+         conform: bool = False, path: Path | None = None, **options):
     """Run PreToolUse over before, leave landed on disk as the tool's result, then run PostToolUse. landed
     is bytes, or a function of the input the tool ran with and the bytes before. Returns the PostToolUse
     outcome and the context."""
-    path = CWD / name
+    path = path or CWD / name
     ctx = Context.fake(files={} if before is None else {path: before}, config=config(conform, **options),
-                       platform=WINDOWS)
+                       platform=WINDOWS, env={"CLAUDE_CONFIG_DIR": str(CLAUDE)})
     given = {"file_path": str(path), **tool_input}
     pre = Pipeline(REGISTRY).run(Event.from_hook_json(events.pre_tool_use(tool, given, CWD), Surface.MCP_HOOK,
                                                       WINDOWS), ctx)
@@ -265,6 +272,28 @@ class TheSnapshotHoldsWhatTheToolRan(unittest.TestCase):
                                                            Surface.MCP_HOOK, WINDOWS), ctx)
         self.assertEqual((ctx.session.snapshots, codes(post)), ({}, []),
                          "a failure discards the snapshot, and a result with none to compare says nothing")
+
+
+class ClaudeCodesMemoryFrontmatterIsExpected(unittest.TestCase):
+    def test_the_recorded_write_of_a_memory_note_is_quiet(self):
+        outcome, _ = call("Write", {"content": ASKED}, None, KEPT.encode("ascii"), path=NOTE)
+        self.assertEqual(codes(outcome), [], "Claude Code quoted the description and added three keys")
+
+    def test_an_edit_of_a_notes_body_is_quiet_when_claude_code_moves_its_modified_time(self):
+        later = KEPT.replace("13:13:15", "14:02:40").replace("Run the report.", "Run it.")
+        outcome, _ = call("Edit", {"old_string": "Run the report.", "new_string": "Run it."},
+                          KEPT.encode("ascii"), later.encode("ascii"), path=NOTE)
+        self.assertEqual(codes(outcome), [], "modified: is the harness's, and the body is what was asked")
+
+    def test_a_change_to_a_notes_body_is_still_named(self):
+        landed = KEPT.replace("Run the report.", "Run the reports.").encode("ascii")
+        found = results(call("Write", {"content": ASKED}, None, landed, path=NOTE)[0])
+        self.assertEqual((found[0].code, found[0].evidence["lines"]), (Code.UNINTENDED_CHANGE, [11]),
+                         "only the frontmatter is Claude Code's to rewrite")
+
+    def test_the_same_change_outside_the_memory_folder_is_named(self):
+        outcome, _ = call("Write", {"content": ASKED}, None, KEPT.encode("ascii"), name="notes.md")
+        self.assertEqual(codes(outcome), [Code.UNINTENDED_CHANGE], "a project's own markdown is not a note")
 
 
 class MessagesListLines(unittest.TestCase):

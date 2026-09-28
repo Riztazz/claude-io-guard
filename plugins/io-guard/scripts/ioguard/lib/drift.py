@@ -51,6 +51,15 @@ def lines(text: str) -> list[str]:
     return LINE_BREAK.split(text.removeprefix(BOM_CHAR))
 
 
+def frontmatter_end(text: str) -> int:
+    """The last line, counted from 1, of the frontmatter a text opens with: a line of ---, then lines up to
+    the next line of ---. 0 when the text opens with none."""
+    found = lines(text)
+    if not found or found[0] != "---":
+        return 0
+    return next((number for number, line in enumerate(found[1:], 2) if line == "---"), 0)
+
+
 @dataclass(frozen=True)
 class Edited:
     text: str                        # the whole file after the edit, every ending read as LF

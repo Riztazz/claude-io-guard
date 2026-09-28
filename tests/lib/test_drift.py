@@ -1,7 +1,7 @@
 """lib.drift compares a file after a write with the file before it and with the text the call asked for."""
 import unittest
 
-from ioguard.lib.drift import changed_lines, drift, edited, restored, would_collapse
+from ioguard.lib.drift import changed_lines, drift, edited, frontmatter_end, restored, would_collapse
 from ioguard.lib.profile import Bom, Eol, profile
 
 BOM = b"\xef\xbb\xbf"
@@ -60,6 +60,15 @@ class ChangedLinesAreCountedFromOne(unittest.TestCase):
             with self.subTest(name):
                 self.assertEqual(changed_lines(expected, actual), lines,
                                  "only lines whose text differs count, never their endings")
+
+
+class FrontmatterEndsAtItsSecondRule(unittest.TestCase):
+    def test_the_last_line_of_a_leading_block_or_zero(self):
+        cases = {"block": ("---\na: 1\n---\nbody\n", 3), "crlf": ("---\r\na: 1\r\n---\r\n", 3),
+                 "unclosed": ("---\na: 1\n", 0), "not first": ("body\n---\na\n---\n", 0), "empty": ("", 0)}
+        for name, (text, end) in cases.items():
+            with self.subTest(name):
+                self.assertEqual(frontmatter_end(text), end, "a --- line opens it and the next one closes it")
 
 
 class ACollapseIsUnderThePercent(unittest.TestCase):

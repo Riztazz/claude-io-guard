@@ -8,8 +8,10 @@ agent to read the file before the next Edit. The rest is reported and left as it
 UTF-8 or gain U+FFFD, new control bytes, non-ASCII in a file the project keeps ASCII, a new character the
 Read tool shows as nothing, such as the U+FEFF a JSON escape in the call turns into, a new indent style, a
 file far smaller than the call should have left, and lines outside the edit that differ from what the call
-asked for. The pre-commit script runs the same comparison on the staged diff. A file the agent has read keeps
-its new profile in the session, so shell.touched blames a later shell command only for what that command did.
+asked for. A note of Claude Code's memory leaves its frontmatter out of that last comparison, because the
+desktop app rewrites it after every write. The pre-commit script runs the same comparison on the staged diff.
+A file the agent has read keeps its new profile in the session, so shell.touched blames a later shell command
+only for what that command did.
 """
 import re
 from dataclasses import dataclass
@@ -17,10 +19,10 @@ from pathlib import Path
 
 from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.lib.config import ConfigKey
-from ioguard.lib.context import Context, Snapshot
+from ioguard.lib.context import Context, Snapshot, memory_file
 from ioguard.lib.decisions import Decision, Verdict
-from ioguard.lib.drift import (CONTROL, NON_ASCII, REPLACEMENT, Edited, changed_lines, drift, edited, lines,
-                               lines_holding, restored, text_of, would_collapse)
+from ioguard.lib.drift import (CONTROL, NON_ASCII, REPLACEMENT, Edited, changed_lines, drift, edited,
+                               frontmatter_end, lines, lines_holding, restored, text_of, would_collapse)
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.profile import Bom, IndentKind, Profile, profile
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity, spec
@@ -43,6 +45,7 @@ class Written:
     expected: Edited | None          # the whole text the call asked for, when it is known
     ascii_only: bool
     allowed: frozenset[str] | None = None   # invisible characters, as U+XXXX, that pass; None checks none
+    rewritten: int = 0               # lines at the top Claude Code rewrites after the write, never unasked
 
 
 def listed(numbers: tuple[int, ...]) -> str:
@@ -113,7 +116,7 @@ def compare(written: Written, tool: str, platform: str, collapse_percent: int) -
         wanted, got = "\n".join(lines(written.expected.text)), "\n".join(lines(text))
         size = (len(wanted.encode("utf-8")), len(got.encode("utf-8")))
         unasked = tuple(number for number in changed_lines(written.expected.text, text)
-                        if number not in written.expected.lines)
+                        if number not in written.expected.lines and number > written.rewritten)
         if would_collapse(*size, collapse_percent):
             add(Code.SIZE_COLLAPSED, f"{name} holds {size[1]:,} bytes after {subject}, where the call should "
                                      f"have left {size[0]:,}.", expected=size[0], actual=size[1])
@@ -172,10 +175,11 @@ class VerifyWrite(Check):
             if snapshot.path in ctx.session.read_profiles:
                 ctx.session.read_profiles[snapshot.path] = profile(data)
         kept = {extension.lower() for extension in self.options["ascii_only"]}
+        rewritten = frontmatter_end(text_of(data)) if memory_file(snapshot.path, ctx.env) else 0
         written = Written(snapshot.path, f"This {event.tool_name}", before,
                           None if snapshot.data is None else text_of(snapshot.data), data,
                           self.expected(snapshot, event), snapshot.path.suffix.lower() in kept,
-                          frozenset(ctx.config.get("invisible_allowed")))
+                          frozenset(ctx.config.get("invisible_allowed")), rewritten)
         found = (() if repaired is None else (repaired[0],)) + \
             compare(written, event.tool_name, ctx.platform.os, self.options["collapse_percent"])
         if not found:

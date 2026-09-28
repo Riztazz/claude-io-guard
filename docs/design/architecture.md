@@ -323,7 +323,9 @@ class Context:
     def fake(cls, files: Optional[Mapping[Path, bytes]] = None, **overrides: Any) -> "Context": ...
 
 def repository_root(git: GitPort, path: Path) -> Optional[Path]: ...   # None outside one or when git fails
+def claude_folder(env: Mapping[str, str]) -> Path: ...  # CLAUDE_CONFIG_DIR, ~/.claude
 def home_folder(env: Mapping[str, str]) -> Path: ...  # IOGUARD_HOME, CLAUDE_CONFIG_DIR/io-guard, ~/.claude/io-guard
+def memory_file(path: Path, env: Mapping[str, str]) -> bool: ...  # projects/*/memory/*.md in Claude's folder
 def session_file(data_dir: Path, session_id: str, kind: str) -> Path: ...  # sessions/<session>.<kind>
 def first_in_file(path: Path, data_dir: Path, key: str) -> bool: ...   # add key under file_lock, True if new
 ```
@@ -713,6 +715,7 @@ def write_atomic(path: Path, data: bytes, retries: int = 5) -> WriteReport
 def drift(before: Profile, after: Profile) -> Drift         # endings, BOM, encoding and odd bytes that changed
 def edited(before: str, old: str, new: str, replace_all: bool) -> Optional[Edited]   # the text and new lines
 def changed_lines(expected: str, actual: str) -> tuple[int, ...]   # endings read as LF, BOM dropped
+def frontmatter_end(text: str) -> int                        # task 50: the last line of a --- block, or 0
 def lines_holding(text: str, pattern: Pattern, among: Optional[tuple[int, ...]] = None) -> tuple[int, ...]
 def would_collapse(expected: int, actual: int, percent: int) -> bool
 def restored(data: bytes, eol: Optional[Eol], bom: Bom) -> Optional[bytes]   # None when data is not UTF-8

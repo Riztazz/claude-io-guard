@@ -7,7 +7,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ioguard.lib.context import SNAPSHOTS_KEPT, Context, LiveFs, Probe, SessionState, Snapshot, home_folder
+from ioguard.lib.context import (SNAPSHOTS_KEPT, Context, LiveFs, Probe, SessionState, Snapshot,
+                                 claude_folder, home_folder, memory_file)
 from ioguard.lib.fakes import FakeClock, FakeFs
 from ioguard.lib.git import Git
 from ioguard.lib.platform import detect
@@ -72,6 +73,21 @@ class IoGuardsFolderIsOnePerUser(unittest.TestCase):
     def test_the_suite_never_uses_the_users_own_folder(self):
         self.assertTrue(home_folder(os.environ).is_relative_to(tempfile.gettempdir()),
                         "tests/__init__ points IOGUARD_HOME at a temporary folder for every test")
+
+
+class AMemoryNoteLivesInClaudeCodesFolder(unittest.TestCase):
+    def test_only_a_markdown_file_in_a_projects_memory_folder_is_a_note(self):
+        env, projects = {"CLAUDE_CONFIG_DIR": "C:/config"}, Path("C:/config/projects")
+        found = [memory_file(path, env) for path in (
+            projects / "C--game" / "memory" / "rule.md", projects / "C--game" / "memory" / "rule.txt",
+            projects / "C--game" / "rule.md", Path("C:/game/memory/rule.md"),
+            Path.home() / ".claude" / "projects" / "C--game" / "memory" / "rule.md")]
+        self.assertEqual(found, [True, False, False, False, False],
+                         "a note is projects/<project>/memory/<name>.md in CLAUDE_CONFIG_DIR, and no other")
+
+    def test_claude_codes_folder_follows_claude_config_dir(self):
+        self.assertEqual((claude_folder({"CLAUDE_CONFIG_DIR": "C:/config"}), claude_folder({})),
+                         (Path("C:/config"), Path.home() / ".claude"), "CLAUDE_CONFIG_DIR, then ~/.claude")
 
 
 class LiveContexts(unittest.TestCase):

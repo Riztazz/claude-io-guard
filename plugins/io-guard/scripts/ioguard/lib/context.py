@@ -315,15 +315,26 @@ def repository_root(git: GitPort, path: Path) -> Path | None:
         return None
 
 
+def claude_folder(env: Mapping[str, str]) -> Path:
+    """Claude Code's own folder: CLAUDE_CONFIG_DIR, then ~/.claude."""
+    return Path(env["CLAUDE_CONFIG_DIR"]) if env.get("CLAUDE_CONFIG_DIR") else Path.home() / ".claude"
+
+
 def home_folder(env: Mapping[str, str]) -> Path:
     """io-guard's folder, which every copy of the plugin on the machine shares, whatever id Claude Code gives
-    it: IOGUARD_HOME, then io-guard in CLAUDE_CONFIG_DIR, then ~/.claude/io-guard. It holds the user's
-    config.json, the file locks, the telemetry and the session files."""
-    if env.get("IOGUARD_HOME"):
-        return Path(env["IOGUARD_HOME"])
-    if env.get("CLAUDE_CONFIG_DIR"):
-        return Path(env["CLAUDE_CONFIG_DIR"]) / "io-guard"
-    return Path.home() / ".claude" / "io-guard"
+    it: IOGUARD_HOME, then io-guard in Claude Code's own folder. It holds the user's config.json, the file
+    locks, the telemetry and the session files."""
+    return Path(env["IOGUARD_HOME"]) if env.get("IOGUARD_HOME") else claude_folder(env) / "io-guard"
+
+
+def memory_file(path: Path, env: Mapping[str, str]) -> bool:
+    """Whether path is a note of Claude Code's memory, projects/<project>/memory/<name>.md in its folder,
+    whose frontmatter the desktop app rewrites after every write (context.md, "Hooks and MCP", row 39)."""
+    try:
+        parts = path.relative_to(claude_folder(env) / "projects").parts
+    except ValueError:
+        return False
+    return len(parts) == 3 and parts[1] == "memory" and path.suffix.lower() == ".md"
 
 
 def load_probe(data_dir: Path | None, platform: Platform) -> Probe:
