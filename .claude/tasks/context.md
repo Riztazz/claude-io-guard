@@ -223,7 +223,8 @@ in the MCP log. Through `pyrun`, `live-empty`, `live-server`, `live-server-down`
 both, the server connecting in 395 to 411 ms by `py -3`, against 231 to 248 ms with `IOGUARD_PYTHON` naming
 `python.exe`, and no server process outlived its session. `launch-pyrun` timed 275.0 ms at p50, of which
 `hook.py` alone is 197 ms started directly, 156 ms of it imports. `launch-mcp` timed 37.9 ms at p50 twice on
-2.1.283, where it had timed 1.2 ms on 2026-09-27, which task 43 looks into.
+2.1.283, where it had timed 1.2 ms on 2026-09-27, which task 43 looks into. The renaming is upstream's
+anthropics/claude-code#92427, open since the desktop's 2.1.260 on macOS, and task 42 adds this evidence to it.
 
 Rules through a junction, checked on 2026-09-27 with Claude Code 2.1.281 and 2.1.283:
 
