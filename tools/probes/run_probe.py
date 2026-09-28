@@ -145,8 +145,7 @@ DIAGNOSE_CPP = b"void f()\r\n{\r\n\tint a = 1;\r\n\tint b = 2;\r\n\tint a = 1;\r
 DIAGNOSED = ("ANCHOR_NOT_FOUND: old_string of the refused Edit matches line 4 of a.cpp",
              "ANCHOR_AMBIGUOUS: ", "PATH_NOT_FOUND: missing.txt does not exist",
              "READ_TOO_LARGE: big.txt holds",
-             "PATTERN_INVALID: ripgrep rejected the pattern", "STALE_VIEW: old_string and new_string",
-             "PATH_NOT_FOUND: missing-dir does not exist")
+             "PATTERN_INVALID: ripgrep rejected the pattern", "PATH_NOT_FOUND: missing-dir does not exist")
 TOUCHED = ("Do these in order, one tool call each, and never retry. 1. Read a.cpp. 2. Read conv.txt. 3. Run "
            "the Bash command: clang-format -i a.cpp 4. Run the Bash command: python conv.py Then reply DONE.")
 TOUCHED_FILES = {"a.cpp": b"int   main( ){return 0;}\n", "conv.txt": b"one\r\ntwo\r\n",
@@ -1020,6 +1019,12 @@ def calls(name: str) -> list[dict]:
     return made
 
 
+def no_op_left_alone(name: str) -> bool:
+    """Claude Code refused an Edit that changes nothing, and io-guard added nothing about it."""
+    refused = any(call["error"] and "No changes to make" in call["text"] for call in calls(name))
+    return refused and not context_reached(name, "old_string and new_string")
+
+
 def retries_after_refusals(name: str) -> dict[str, int | None]:
     """For each turn's code, the calls in that turn it took to get the job done after the refusal: those up to
     and including the first that ran without an error, lookups such as Read and Skill left out. None when
@@ -1139,7 +1144,8 @@ VERDICTS = {
     and "READ_ONLY: Hero.uasset is read-only. Lock it with git lfs lock Hero.uasset" in seen(s),
     "live-locked": lambda s, n: s["files"]["keep.txt"] == "alpha\n"
     and context_reached(n, "FILE_LOCKED: Python (process"),
-    "live-diagnose": lambda s, n: all(context_reached(n, needle) for needle in DIAGNOSED),
+    "live-diagnose": lambda s, n: all(context_reached(n, needle) for needle in DIAGNOSED)
+    and no_op_left_alone(n),
     "live-touched": lambda s, n: all(context_reached(n, needle) for needle in (
         "TOUCHED_BY_SHELL: This command changed a.cpp, read before it",
         "EOL_MISMATCH: This command changed conv.txt from CRLF to LF line endings.")),

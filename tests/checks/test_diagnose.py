@@ -83,10 +83,15 @@ class ARefusedEditIsAnsweredAtTheNextHook(unittest.TestCase):
                          (Code.ANCHOR_AMBIGUOUS, [3, 5], "\tint a = 1;\n\tint b = 2;"),
                          "each place, and the line below that makes the first one unique")
 
-    def test_identical_strings_show_the_text_already_there(self):
+    def test_identical_strings_get_only_claude_codes_own_error(self):
         found, _ = refused_edit("\tint b = 2;", "No changes to make: old_string and new_string are exactly "
                                                 "the same.", new="\tint b = 2;")
-        self.assertEqual(found[0].code, Code.STALE_VIEW, "the change the call wants is already in the file")
+        self.assertEqual(found, [], "Claude Code's error already says there is nothing to change")
+
+    def test_an_edit_refused_after_the_file_changed_shows_the_lines_as_they_are_now(self):
+        found, _ = refused_edit("\tint b = 2;", "File has been modified since read, either by the user or by "
+                                                "a linter. Read it again before attempting to write it.")
+        self.assertEqual(found[0].code, Code.STALE_VIEW, "the file changed after the Read")
         self.assertIn("Line 4 read now", found[0].message, "the lines as they are now follow")
 
     def test_a_refusal_is_answered_once(self):

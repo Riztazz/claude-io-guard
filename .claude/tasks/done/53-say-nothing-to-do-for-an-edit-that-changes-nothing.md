@@ -3,7 +3,8 @@ title: Say nothing about an Edit that changes nothing
 stage: I
 area: stale
 created: 2026-09-28
-status: open
+status: done
+claimed-by: Pala Elektroniczna, session 7eeb509f
 depends-on: [20]
 findings: []
 platforms: [windows, macos]
@@ -35,3 +36,21 @@ own error already says the whole of it: "No changes to make: old_string and new_
 ## Done when
 
 - An Edit with equal strings gets Claude Code's error and nothing from io-guard.
+
+## What changed
+
+- `checks/diagnose.py`: the `IDENTICAL` constant, the `identical` flag of `stale` and its message are gone. No
+  branch of `Diagnosis.results` matches "No changes to make", so it answers with no result. The module docstring
+  says so.
+- `tests/checks/test_diagnose.py`: `test_identical_strings_get_only_claude_codes_own_error` replaces the old test.
+  `test_an_edit_refused_after_the_file_changed_shows_the_lines_as_they_are_now` covers `stale`, which the old test
+  was the only one in the file to reach.
+- `tools/probes/run_probe.py`: `live-diagnose` no longer expects `STALE_VIEW` from its step 8, the no-op Edit.
+  `no_op_left_alone` passes only when Claude Code refused that Edit and no io-guard context about it reached the
+  model.
+- Docs: `docs/live-checks.md`, whose `live-diagnose` row is split in two and dated. No other doc named the no-op
+  diagnosis.
+- Evidence: `python tests/run_all.py` ran 811 tests, all passing, up from 810 by the one new test.
+  `live-diagnose` passes on 2.1.281, the desktop app's own, and on 2.1.283, the CLI.
+- Checked on Windows on 2026-09-28. The macOS live check waits in task 36.
+- The report after the task named two more bugs, filed as tasks 56 and 57.

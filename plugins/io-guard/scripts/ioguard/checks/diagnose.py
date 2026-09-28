@@ -7,12 +7,13 @@ the session's next hook, and answers once per refused call, before the model tri
 
 An old_string that is not in the file gets the lines it matches once spaces and tabs are ignored, with the
 corrected old_string, or else the lines most like it, numbered and with tabs and trailing spaces marked. One
-found more than once gets each place and the shortest old_string that names the first. An Edit with the same
-old_string and new_string, and a call refused because the file changed after the Read, get the lines the call
-aimed at as they are now. A missing file gets the files of the same name nearby: from git in a repository,
-otherwise from a bounded walk of the nearest folder that exists. A missing search folder gets the nearest
-folder that exists. A Read past the limit gets parts that fit, a pattern ripgrep rejects gets its reason and a
-literal pattern, and a search that timed out gets narrowed. A lock is write.locks' to name.
+found more than once gets each place and the shortest old_string that names the first. A call refused because
+the file changed after the Read gets the lines the call aimed at as they are now. An Edit with the same
+old_string and new_string gets nothing, because Claude Code's own error already says there is nothing to
+change. A missing file gets the files of the same name nearby: from git in a repository, otherwise from a
+bounded walk of the nearest folder that exists. A missing search folder gets the nearest folder that exists.
+A Read past the limit gets parts that fit, a pattern ripgrep rejects gets its reason and a literal pattern,
+and a search that timed out gets narrowed. A lock is write.locks' to name.
 """
 import json
 import re
@@ -37,7 +38,6 @@ PATTERN = re.compile(r"ripgrep rejected the pattern")
 TIMED_OUT = re.compile(r"timed out after (\d+) seconds")
 AMBIGUOUS = re.compile(r"^Found \d+ matches of the string to replace")
 NOT_FOUND = "String to replace not found"
-IDENTICAL = "No changes to make: old_string and new_string are exactly the same"
 CHANGED = "has been modified since read"
 LOOK_AROUND = re.compile(r"look-around|backreference", re.I)
 RG_META = re.compile(r"([\\.+*?()|\[\]{}^$])")
@@ -109,8 +109,8 @@ class Diagnosis:
             return self.anchor_missing()
         if AMBIGUOUS.search(error):
             return self.anchor_ambiguous()
-        if IDENTICAL in error or CHANGED in error:
-            return self.stale(identical=IDENTICAL in error)
+        if CHANGED in error:
+            return self.stale()
         return ()
 
     def file(self) -> tuple[str, bytes] | None:
@@ -188,7 +188,7 @@ class Diagnosis:
         return (self.result(Code.ANCHOR_AMBIGUOUS, message, fix,
                             lines=[match.first_line for match in matches]),)
 
-    def stale(self, identical: bool) -> tuple[Result, ...]:
+    def stale(self) -> tuple[Result, ...]:
         found, old = self.file(), self.old_string()
         if found is None:
             return ()
@@ -199,11 +199,7 @@ class Diagnosis:
             match = matches[0]
             lines = text.snippet(body, match.first_line, match.last_line)
             view = f" {span(match).capitalize()} read now:\n{lines}"
-        if identical:
-            message = (f"old_string and new_string of the refused Edit are the same, so {name} needs no "
-                       f"change there.{view}")
-        else:
-            message = f"{name} changed after the last Read, so the {self.failed.tool} was refused.{view}"
+        message = f"{name} changed after the last Read, so the {self.failed.tool} was refused.{view}"
         return (self.result(Code.STALE_VIEW, message),)
 
     def missing(self) -> tuple[Result, ...]:
