@@ -7,7 +7,9 @@ each file the agent has read or written. After it, a read file whose size or tim
 to read it again, and verify.write's comparison with its last profile names what the command did to its
 endings, BOM, encoding or indent. New untracked files are named (GIT-2), and so are tracked files the command
 changed or deleted. A bashEditDiff in the tool's response, which Claude Code sends only with
-bashEditDiffEnabled, adds its files. Changes under the skip_trees globs are left out.
+bashEditDiffEnabled, adds its files. Changes under the skip_trees globs are left out. So is a change to git's
+index alone: a listed file whose status moved while its size and time did not, as git add, git commit and git
+reset leave one, and a file git removed from the index that is still on disk.
 """
 import fnmatch
 from pathlib import Path
@@ -67,7 +69,9 @@ class Touched(Check):
             root = repository_root(ctx.git, event.cwd)
             with ctx.session.lock:
                 read = list(ctx.session.read_profiles)
-            snapshot = ShellSnapshot(root, status(ctx, root), {path: ctx.fs.stat(path) for path in read})
+            found = status(ctx, root)
+            listed = {} if found is None else {root / name: ctx.fs.stat(root / name) for name, _ in found}
+            snapshot = ShellSnapshot(root, found, {path: ctx.fs.stat(path) for path in read}, listed)
             ctx.session.keep_snapshot(event.tool_use_id, snapshot)
             return Decision.observe(self.meta.id)
         before = ctx.session.take_snapshot(event.tool_use_id)
@@ -93,9 +97,12 @@ class Touched(Check):
         created, changed = [], []
         after = status(ctx, before.root)
         if before.status is not None and after is not None:
+            unindexed = {name for name, code in after if code[0] == "D" and ctx.fs.exists(before.root / name)}
             for name, code in sorted(after - before.status):
                 path = before.root / name
-                if not kept(path) or path in read or path in deleted:
+                if not kept(path) or path in read or path in deleted or name in unindexed:
+                    continue
+                if path in before.listed and ctx.fs.stat(path) == before.listed[path]:
                     continue
                 (created if code == "??" else deleted if "D" in code else changed).append(path)
         limit, cwd = self.options["listed"], event.cwd

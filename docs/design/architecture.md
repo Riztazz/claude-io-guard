@@ -281,6 +281,8 @@ class ShellSnapshot:                             # task 21, before a Bash or Pow
     root: Optional[Path]                         # the session's repository, None outside one
     status: Optional[frozenset[tuple[str, str]]] # (path from root, XY) from git status, None when git fails
     stats: Mapping[Path, Optional[FileStat]]     # each read file's size and time
+    listed: Mapping[Path, Optional[FileStat]]    # task 46: each file status listed, so an index-only change
+                                                 # such as git add is told from a write
 
 class SessionState:
     read_profiles: MutableMapping[Path, Profile] # the bytes the agent last read, or wrote through verify.write

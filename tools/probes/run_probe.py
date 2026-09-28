@@ -173,6 +173,9 @@ PIPE_TWICE = ("Do these in order, one tool call each, and never retry. 1. Run th
               "python -m unittest discover -s . 2>&1 | tail -3 2. Run the same Bash command again. Then "
               "reply DONE.")
 PIPE_WARNED = "PIPE_HIDES_EXIT: This command pipes python -m unittest into tail"
+INDEX_ONLY = ("Do these in order, one tool call each, and never retry. 1. Run the Bash command: python -c "
+              "\"open('n.txt', 'w').write('x')\" 2. Run the Bash command: git add n.txt 3. Run the Bash "
+              "command: git reset -q n.txt Then reply DONE.")
 IO_READ = "mcp__plugin_io-guard_io__io_read"
 SERVER_READ = (f"Do these in order, one tool call each. 1. Run the Bash command: echo hi 2. Load {IO_READ} "
                f"with the ToolSearch tool, with the query select:{IO_READ} 3. Call {IO_READ} with path "
@@ -456,6 +459,8 @@ PROBES = {
     "live-touched": Probe(0, "", guard="", allowed=("Read", "Bash"), git=True, prompt=TOUCHED,
                           check=("a.cpp", "conv.txt"), setup=TOUCHED_FILES),
     "live-pipe-once": Probe(0, "", guard="", allowed=("Bash",), prompt=PIPE_TWICE, max_turns=6),
+    "live-touched-index": Probe(0, "", guard="", allowed=("Bash",), git=True, prompt=INDEX_ONLY, max_turns=8,
+                                setup={"a.txt": b"a\n"}),
     "live-results": Probe(0, "", guard="", allowed=("Bash", "PowerShell"), prompt=RESULTS, max_turns=10,
                           setup={"s.txt": b"one\ntwo\n"}),
     "live-server": Probe(0, "", guard="", allowed=("Bash", "ToolSearch", IO_READ), prompt=SERVER_READ,
@@ -830,6 +835,13 @@ def context_count(name: str, needle: str) -> int:
                and needle in json.dumps(attachment))
 
 
+def index_left_alone(summary: dict, name: str) -> bool:
+    """The three commands ran, the one that created n.txt was named, and git add and git reset were not."""
+    ran = [call for call in calls(name) if call["name"] == "Bash" and not call["error"]]
+    return (len(ran) == 3 and context_count(name, "TOUCHED_BY_SHELL") == 1
+            and context_reached(name, "TOUCHED_BY_SHELL: This command created n.txt"))
+
+
 def piped_twice_warned_once(summary: dict, name: str) -> bool:
     """Both piped runs happened, and the warning before a run reached the model once."""
     runs = [call for call in calls(name) if call["name"] == "Bash" and "unittest" in str(call["input"])]
@@ -1187,6 +1199,7 @@ VERDICTS = {
         "EOL_MISMATCH: This command changed conv.txt from CRLF to LF line endings.")),
     "live-results": results_shown,
     "live-pipe-once": piped_twice_warned_once,
+    "live-touched-index": index_left_alone,
     "live-server": lambda s, n: served(s, n, "legacy"),
     "live-server-modern": lambda s, n: served(s, n, "modern"),
     "live-server-down": down_named,

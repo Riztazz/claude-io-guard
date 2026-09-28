@@ -136,11 +136,12 @@ class Snapshot:
 
 @dataclass(frozen=True)
 class ShellSnapshot:
-    """A repository's changes, and the size and time of each file the agent has read, just before a shell
-    command."""
+    """A repository's changes, and the size and time of each file the agent has read and of each file git
+    status listed, just before a shell command."""
     root: Path | None                                  # None outside a repository
     status: frozenset[tuple[str, str]] | None          # (path from root, XY), None when git could not say
     stats: Mapping[Path, FileStat | None]
+    listed: Mapping[Path, FileStat | None] = field(default_factory=dict)
 
 
 SNAPSHOTS_KEPT = 16     # a call the user refuses leaves its snapshot, so the oldest one past this goes

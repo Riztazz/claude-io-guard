@@ -67,6 +67,29 @@ class TheCommandsChangesAreNamed(unittest.TestCase):
         self.assertEqual(found[0].message, "This command changed b.cpp, created tmp.py and deleted gone.h.",
                          "what git status gained is named, and what it already showed is not")
 
+    def test_a_change_to_gits_index_alone_names_nothing(self):
+        cases = {"git add": ((entry("a.txt", " M"), entry("new.txt", "??")), (entry("a.txt", "M "),
+                                                                             entry("new.txt", "A "))),
+                 "git commit": ((entry("a.txt", "MM"),), (entry("a.txt", " M"),)),
+                 "git reset": ((entry("a.txt", "M "),), (entry("a.txt", " M"),)),
+                 "git rm --cached": ((), (entry("kept.txt", "D "), entry("kept.txt", "??")))}
+        for name, (before, after) in cases.items():
+            with self.subTest(name):
+                session = Session(before=before)
+                for each in {*before, *after}:
+                    session.fs.files.setdefault(CWD / each.path, b"x\n")
+                session.run(events.bash(name, CWD))
+                session.git.current_status = GitStatus(after)
+                self.assertEqual(session.after(), [], "the files' bytes did not move, so nothing is named")
+
+    def test_a_listed_file_whose_bytes_moved_is_still_named(self):
+        session = Session(before=(entry("a.txt", " M"),))
+        session.fs.files[CWD / "a.txt"] = b"x\n"
+        session.run(events.bash("make", CWD))
+        session.fs.write_atomic(CWD / "a.txt", b"y\n")
+        session.git.current_status = GitStatus((entry("a.txt", "MM"),))
+        self.assertIn("changed a.txt", session.after()[0].message, "a write to the file is a change")
+
     def test_skip_trees_leave_changes_out(self):
         session = Session(skip=["Content/**"])
         session.git.current_status = GitStatus((entry("Content/Hero.uasset", " M"),
