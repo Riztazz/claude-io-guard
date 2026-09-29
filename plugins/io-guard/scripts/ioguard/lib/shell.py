@@ -334,7 +334,7 @@ SEPARATORS = ";&|\n()"
 RESERVED = {"if", "then", "else", "elif", "fi", "do", "done", "while", "until", "for", "case", "esac", "in",
             "{", "}", "!", "time", "exec", "command", "builtin", "nohup", "sudo"}
 ASSIGNMENT = re.compile(r"^[A-Za-z_]\w*=")
-REDIRECT = re.compile(r"(\d*|&)(>>?|>\||<>?)")
+REDIRECT = re.compile(r"(\d*|&)(>\||>>?|<>?)")
 
 
 def commands(command: str, found: Scan | None = None) -> tuple[SimpleCommand, ...]:
@@ -370,16 +370,18 @@ def commands(command: str, found: Scan | None = None) -> tuple[SimpleCommand, ..
             at += 2
         elif match:
             at = match.end()
-            if text.startswith("&", at):          # 2>&1, >&2: a duplicated stream, not a file
-                at = word_end(text, states, at + 1)
+            duplicated = text.startswith("&", at)
+            if duplicated and re.match(r"&(?:\d+|-)(?=[\s;&|()<>]|$)", text[at:]):
+                at = word_end(text, states, at + 1)       # 2>&1, >&2, >&-: a stream, not a file
                 continue
+            at += duplicated                               # >&file writes both streams to the file
             while at < len(text) and text[at] in " \t":
                 at += 1
             end = word_end(text, states, at)
             target = unquote(text, states, at, end)
             operator = match[2]
             if operator.startswith(">"):
-                fd = None if match[1] == "&" else int(match[1] or 1)
+                fd = None if match[1] == "&" or duplicated else int(match[1] or 1)
                 redirects.append(Redirect(target, operator == ">>", fd))
             else:
                 inputs.append(target)
@@ -392,6 +394,25 @@ def commands(command: str, found: Scan | None = None) -> tuple[SimpleCommand, ..
             at = end
     finish(len(text))
     return tuple(parsed)
+
+
+def subshells(command: str, states: bytes | bytearray) -> tuple[list[int], dict[int, int]]:
+    """The subshell each offset runs in, by an id counted from 1 in the order each ( opens, 0 for the
+    command's own shell, and each subshell's parent. A $( substitution and (( arithmetic open none."""
+    group_of, parent, open_groups, current = [], {}, [], 0
+    for at, char in enumerate(command):
+        if states[at] == NORMAL and char == "(":
+            if at > 0 and command[at - 1] == "$":
+                open_groups.append(None)
+            else:
+                opened = len(parent) + 1
+                parent[opened], current = current, opened
+                open_groups.append(opened)
+        elif states[at] == NORMAL and char == ")" and open_groups:
+            if open_groups.pop() is not None:
+                current = parent[current]
+        group_of.append(current)
+    return group_of, parent
 
 
 def word_end(text: str, states: bytes | bytearray, at: int) -> int:
@@ -432,7 +453,8 @@ def unquote(text: str, states: bytes | bytearray, start: int, end: int) -> str:
     out, at = [], start
     while at < end:
         char, state = text[at], states[at]
-        if state == NORMAL and char in "'\"":
+        if state == NORMAL and (char in "'\"" or (char == "$" and text[at + 1:at + 2] in ("'", '"')
+                                                   and at + 1 < end)):
             at += 1
         elif char == "\\" and at + 1 < end and (state == NORMAL or (state == DOUBLE
                                                                    and text[at + 1] in ESCAPED_IN_DOUBLE)):

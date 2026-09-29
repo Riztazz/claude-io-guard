@@ -244,7 +244,9 @@ class Touched(Check):
         runs = [run for simple in simples if (run := shell.script_run(simple))]
         if not runs:
             return ()
-        by_git = [git_changes(simple, cwd, ctx) for simple, cwd in located(simples, event, ctx)]
+        command = event.command or ""
+        by_git = [git_changes(simple, cwd, ctx)
+                  for simple, cwd in located(command, shell.scan(command), event.cwd, ctx)]
         if None in by_git:
             return ()
         named_by_git = frozenset().union(*by_git)

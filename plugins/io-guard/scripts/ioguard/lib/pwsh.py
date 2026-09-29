@@ -10,8 +10,10 @@ import re
 from ioguard.lib.shell import Redirect, SimpleCommand
 
 REDIRECT = re.compile(r"(\d|\*)?(>>?)(&\d)?")
-FILE_CALL = re.compile(r"\[(?:System\.)?IO\.File\]::(?:WriteAll\w*|AppendAll\w*|Create|Open\w*)\(\s*(['\"])"
-                       r"(?P<path>[^'\"]+)\1", re.I)
+FILE_CALL = re.compile(r"\[(?:System\.)?IO\.File\]::(?:WriteAll\w*|AppendAll\w*|Create|Open\w*)\(\s*"
+                       r"(?:(['\"])(?P<path>[^'\"]+)\1"
+                       r"|\(\s*(?:Resolve-Path|Convert-Path|Get-Item)\s+(?:-(?:Literal)?Path\s+)?(['\"]?)"
+                       r"(?P<resolved>[^'\")\s]+)\3\s*\))", re.I)
 
 
 def quoted_end(text: str, at: int) -> int:
@@ -70,7 +72,7 @@ def commands(command: str) -> tuple[SimpleCommand, ...]:
             start = at
         elif char in " \t\r":
             at += 1
-        elif (match := REDIRECT.match(text, at)) and (at == 0 or text[at - 1] in " \t"):
+        elif (match := REDIRECT.match(text, at)) and (at == 0 or text[at - 1] in " \t" or text[at] == ">"):
             at = match.end()
             if match[3]:
                 continue
@@ -103,7 +105,7 @@ def word_at(text: str, at: int) -> int:
             if depth == 0:
                 return at
             depth -= 1
-        elif depth == 0 and (char in " \t\r\n;|" or text.startswith("&&", at)):
+        elif depth == 0 and (char in " \t\r\n;|>" or text.startswith("&&", at)):
             return at
         at += 1
     return at
@@ -148,4 +150,4 @@ def script_blocks(command: str) -> tuple[str, ...]:
 
 def file_calls(command: str) -> tuple[str, ...]:
     """The literal paths [IO.File] write calls name."""
-    return tuple(match["path"] for match in FILE_CALL.finditer(command))
+    return tuple(match["path"] or match["resolved"] for match in FILE_CALL.finditer(command))

@@ -1,12 +1,15 @@
 """Refuse a shell command that writes a file git tracks, and name the tool that writes it safely.
 
 A write through the shell skips io-guard's byte checks and Claude Code's checkpoints (SHW-1). The check finds
-each write a command makes: a > or >> redirect, sed -i and perl -i, tee, cp and mv, a heredoc or python -c
-body that opens a file for writing, a body transport.body moved into a file, a script file an interpreter
-runs, and PowerShell's Set-Content,
-Add-Content, Out-File, Copy-Item, Move-Item, Tee-Object and [IO.File] calls. The check refuses a write only
-when git tracks its target, and the refusal of an in-place edit, such as sed -i or a script body, names
-io.edit, which makes several changes in one call. A write to the scratchpad, to a device, or outside any
+each write a command makes: a >, >>, >| or >&file redirect, an in-place edit by sed, gsed, perl, ruby or awk
+-i inplace, alone, after env, or run by find -exec or xargs on the files of a folder, tee, cp and mv, a
+string bash -c or pwsh -Command runs, a heredoc, python -c or node -e body that opens a file for writing, a
+body transport.body moved into a file, a script file an interpreter runs, and PowerShell's Set-Content,
+Add-Content, Clear-Content, Out-File, New-Item with -Value or -Force, Copy-Item, Move-Item, Tee-Object and
+[IO.File] calls. A * or ? in a target's last name is matched against its folder, as the shell expands it. A
+cd inside ( ) holds for that subshell, and popd goes back to the folder pushd left. The check refuses a
+write only when git tracks its target, and the refusal of an in-place edit, such as sed -i or a script body,
+names io.edit, which makes several changes in one call. A write to the scratchpad, to a device, or outside any
 repository passes. A target built from a variable, or named after a cd the check cannot follow, passes too.
 A script file that writes to a path it does not spell out, given a tracked file, gets a warning that names
 io.edit, or io.format when it runs a formatter. A script file the shell creates inside a repository gets a
@@ -14,12 +17,13 @@ warning that points at the scratchpad (GIT-1). A
 stream redirect such as 2>&1 writes no file (SHW-8). A command's words inside a script body's string are
 data, not a write (GRD-1).
 """
+import fnmatch
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from ioguard.checks.base import Check, CheckMeta, Cost
-from ioguard.lib import paths, pwsh, shell
+from ioguard.lib import paths, pwsh, rules, shell
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
@@ -40,9 +44,13 @@ SCRIPT_WRITE = re.compile(
 PS_WRITERS = {"set-content": ("-path", "-literalpath"), "sc": ("-path", "-literalpath"),
               "add-content": ("-path", "-literalpath"), "ac": ("-path", "-literalpath"),
               "out-file": ("-filepath", "-literalpath", "-path"), "tee-object": ("-filepath", "-path"),
-              "tee": ("-filepath", "-path")}
+              "tee": ("-filepath", "-path"), "clear-content": ("-path", "-literalpath"),
+              "clc": ("-path", "-literalpath")}
+PS_CREATORS = {"new-item", "ni"}          # a writer when it gives -Value, or -Force, which empties a file
 PS_MOVERS = {"copy-item", "move-item", "copy", "move", "cpi", "mi", "cp", "mv"}
-IN_PLACE = {"sed -i", "perl -i", "a script body", "a script file"}   # writes that change a file in places
+IN_PLACE = {"a script body", "a script file"}   # with every ... -i, writes that change a file in places
+XARGS_VALUED = {"-n", "-I", "-d", "-P", "-L", "-s", "-E", "-a"}
+ASSIGNMENT = re.compile(r"^[A-Za-z_]\w*=")
 
 
 @dataclass(frozen=True)
@@ -53,6 +61,8 @@ class Write:
 
 
 CHANGE_DIRECTORY = {"cd", "pushd", "set-location", "sl", "push-location", "chdir"}
+PUSH_DIRECTORY = {"pushd", "push-location"}
+POP_DIRECTORY = {"popd", "pop-location"}
 
 
 def moved_to(simple: shell.SimpleCommand, cwd: Path | None, ctx: Context) -> Path | None:
@@ -72,22 +82,37 @@ class Script:
     cwd: Path | None
 
 
-def located(simples: tuple[shell.SimpleCommand, ...], event: Event,
+def located(command: str, found: shell.Scan, start: Path | None,
             ctx: Context) -> list[tuple[shell.SimpleCommand, Path | None]]:
-    """Each simple command with the folder it runs in, following each cd, and leaving the cds out."""
-    found, cwd = [], event.cwd
-    for simple in simples:
-        if simple.name in CHANGE_DIRECTORY:
-            cwd = moved_to(simple, cwd, ctx)
+    """Each simple command with the folder it runs in, following each cd, pushd and popd, and leaving them
+    out. A cd inside ( ) holds for that subshell only."""
+    group_of, parent = shell.subshells(command, found.states)
+    cwd_of: dict[int, Path | None] = {0: start}
+    pushed: list[Path | None] = []
+    placed = []
+    for simple in shell.commands(command, found):
+        group = group_of[simple.span[0]] if simple.span[0] < len(group_of) else 0
+        if group not in cwd_of:
+            chain = [group]
+            while chain[-1] not in cwd_of:
+                chain.append(parent[chain[-1]])
+            for each in reversed(chain[:-1]):
+                cwd_of[each] = cwd_of[parent[each]]
+        if simple.name in POP_DIRECTORY:
+            cwd_of[group] = pushed.pop() if pushed else None
+        elif simple.name in CHANGE_DIRECTORY:
+            if simple.name in PUSH_DIRECTORY:
+                pushed.append(cwd_of[group])
+            cwd_of[group] = moved_to(simple, cwd_of[group], ctx)
         else:
-            found.append((simple, cwd))
-    return found
+            placed.append((simple, cwd_of[group]))
+    return placed
 
 
 def script_files(command: str, event: Event, ctx: Context) -> list[Script]:
     """The script files the command's interpreters run, up to SCRIPT_BYTES each, that can be read."""
     scripts = []
-    for simple, cwd in located(shell.commands(command), event, ctx):
+    for simple, cwd in located(command, shell.scan(command), event.cwd, ctx):
         run = shell.script_run(simple)
         path = None if run is None else resolve(run.script, cwd, ctx)
         if path is None:
@@ -101,31 +126,113 @@ def script_files(command: str, event: Event, ctx: Context) -> list[Script]:
     return scripts
 
 
-def bash_writes(command: str, event: Event, ctx: Context) -> list[Write]:
+def bash_writes(command: str, event: Event, ctx: Context, start: Path | None = None, depth: int = 0,
+                scripts: list[Script] | None = None) -> list[Write]:
+    """Every write the Bash command makes. scripts are its script files when the caller read them already."""
     found = shell.scan(command)
     writes = []
-    interpreter, script_cwd = False, event.cwd
-    for simple, cwd in located(shell.commands(command, found), event, ctx):
+    interpreter, script_cwd = False, start or event.cwd
+    bodies: list[str] = []
+    for simple, cwd in located(command, found, start or event.cwd, ctx):
         writes += [Write(redirect.target, "a > redirect", cwd) for redirect in simple.redirects]
-        arguments = [word for word in simple.words[1:] if not word.startswith("-")]
-        if simple.name in ("sed", "perl") and any(re.match(r"^-[a-zA-Z]*i|^--in-place", word)
-                                                  for word in simple.words[1:]):
-            files = sed_files(simple.words[1:]) if simple.name == "sed" else arguments[1:]
-            writes += [Write(target, f"{simple.name} -i", cwd) for target in files]
-        elif simple.name == "tee":
-            writes += [Write(target, "tee", cwd) for target in arguments]
-        elif simple.name in ("cp", "mv"):
-            writes += [Write(target, simple.name, cwd) for target in landed(simple.words[1:], cwd, ctx)]
-        elif shell.INTERPRETERS.match(simple.name) and not interpreter:
+        under = delegated(without_env(list(simple.words)))
+        words = rules.unwrapped(without_env(list(simple.words)))
+        name = shell.SimpleCommand(tuple(words), (), (), simple.span).name if words else ""
+        arguments = [word for word in words[1:] if not word.startswith("-")]
+        edited = None if under is not None else in_place(words)
+        wrapped = rules.wrapped(words)
+        if shell.INTERPRETERS.match(name) and not interpreter:
             interpreter, script_cwd = True, cwd
-    bodies = [heredoc.body for heredoc in found.heredocs] if interpreter else []
+        if edited is not None:
+            writes += [Write(target, edited[0], cwd) for target in edited[1]]
+        elif under is not None:
+            inner, roots, how = under
+            if (edited := in_place(inner)) is not None:
+                files = [target for target in edited[1] if target != "{}"]
+                writes += [Write(target, f"{edited[0]} under {how}", cwd) for target in files or roots]
+        elif name == "tee":
+            writes += [Write(target, "tee", cwd) for target in arguments]
+        elif name in ("cp", "mv"):
+            writes += [Write(target, name, cwd) for target in landed(words[1:], cwd, ctx)]
+        elif wrapped is not None and wrapped.text is not None and depth < rules.NESTED:
+            reader = bash_writes if wrapped.dialect == "bash" else powershell_writes
+            writes += reader(wrapped.text, event, ctx, cwd, depth + 1)
+        elif wrapped is not None and wrapped.text is None and wrapped.raw:
+            writes += [Write(target, "a script body", cwd) for target in script_targets(wrapped.raw)]
+    bodies += [heredoc.body for heredoc in found.heredocs] if interpreter else []
     bodies += [body.body for body in found.bodies]
     bodies += moved_bodies(command, ctx)
     writes += [Write(target, "a script body", script_cwd)
                for body in bodies for target in script_targets(body)]
+    scripts = script_files(command, event, ctx) if scripts is None else scripts
     writes += [Write(target, "a script file", script.cwd)
-               for script in script_files(command, event, ctx) for target in script_targets(script.body)]
+               for script in scripts for target in script_targets(script.body)]
     return writes
+
+
+def without_env(words: list[str]) -> list[str]:
+    """words without a leading env and its options and settings."""
+    if words[:1] == ["env"]:
+        words = words[1:]
+        while words and (words[0].startswith("-") or ASSIGNMENT.match(words[0])):
+            words = words[1:]
+    return words
+
+
+def in_place(words: list[str]) -> tuple[str, list[str]] | None:
+    """How words edit files in place, such as sed -i, and the files they edit, or None when they do not."""
+    if not words:
+        return None
+    name, flags = words[0].rsplit("/", 1)[-1].lower().removesuffix(".exe"), words[1:]
+    if name in ("sed", "gsed") and any(re.match(r"^-[a-zA-Z]*[iI]|^--in-place", word) for word in flags):
+        return f"{name} -i", sed_files(flags)
+    if name in ("perl", "ruby") and any(re.match(r"^-[a-zA-Z0-9]*i", word) for word in flags):
+        return f"{name} -i", code_files(flags)
+    if name in ("awk", "gawk") and ("inplace" in flags or "--include=inplace" in flags):
+        rest = [word for word in flags if word not in ("-i", "inplace", "--include=inplace")]
+        return f"{name} -i inplace", [word for word in rest if not word.startswith("-")][1:]
+    return None
+
+
+def code_files(flags: list[str]) -> list[str]:
+    """The files a perl or ruby -i edits: its operands, less the code an -e gave or the first operand."""
+    files, code_given, skip = [], False, False
+    for word in flags:
+        if skip:
+            skip = False
+        elif word == "-e":
+            code_given, skip = True, True
+        elif not word.startswith("-"):
+            files.append(word)
+    return files if code_given else files[1:]
+
+
+def delegated(words: list[str]) -> tuple[list[str], list[str], str] | None:
+    """The command find -exec or xargs runs on each file, the folders the files come from, and which of the
+    two it is. None for any other command. xargs reads its files from stdin, so its folder is ".", the one it
+    runs in."""
+    name = words[0].rsplit("/", 1)[-1].lower() if words else ""
+    if name == "find":
+        at = next((index for index, word in enumerate(words) if word in ("-exec", "-execdir", "-ok")), None)
+        if at is None:
+            return None
+        roots = []
+        for word in words[1:]:
+            if word.startswith(("-", "(", "!")):
+                break
+            roots.append(word)
+        inner = []
+        for word in words[at + 1:]:
+            if word in (";", "+", "\\;"):
+                break
+            inner.append(word)
+        return inner, roots or ["."], "find -exec"
+    if name == "xargs":
+        rest, index = words[1:], 0
+        while index < len(rest) and rest[index].startswith("-"):
+            index += 2 if rest[index] in XARGS_VALUED else 1
+        return rest[index:], ["."], "xargs"
+    return None
 
 
 def landed(words: list[str], cwd: Path | None, ctx: Context) -> list[str]:
@@ -192,16 +299,25 @@ def script_targets(body: str) -> list[str]:
     return [match["open"] or match["path"] or match["node"] for match in SCRIPT_WRITE.finditer(body)]
 
 
-def powershell_writes(command: str, event: Event, ctx: Context) -> list[Write]:
-    writes, cwd = [Write(target, "[IO.File]", event.cwd) for target in pwsh.file_calls(command)], event.cwd
+def powershell_writes(command: str, event: Event, ctx: Context, start: Path | None = None,
+                      depth: int = 0) -> list[Write]:
+    cwd = start or event.cwd
+    writes, pushed = [Write(target, "[IO.File]", cwd) for target in pwsh.file_calls(command)], []
     for simple in pwsh.commands(command):
         name, arguments = simple.name, list(simple.words[1:])
+        if name in POP_DIRECTORY:
+            cwd = pushed.pop() if pushed else None
+            continue
         if name in CHANGE_DIRECTORY:
+            if name in PUSH_DIRECTORY:
+                pushed.append(cwd)
             cwd = moved_to(simple, cwd, ctx)
             continue
         writes += [Write(redirect.target, "a > redirect", cwd) for redirect in simple.redirects]
-        if name in PS_WRITERS:
-            target = named(arguments, PS_WRITERS[name]) or positional(arguments)
+        lowered = [word.lower().split(":", 1)[0] for word in arguments]
+        creates = name in PS_CREATORS and ("-value" in lowered or "-force" in lowered)
+        if name in PS_WRITERS or creates:
+            target = named(arguments, PS_WRITERS.get(name, ("-path",))) or positional(arguments)
             if target:
                 writes.append(Write(target, simple.words[0], cwd))
         elif name in PS_MOVERS:
@@ -217,9 +333,14 @@ def powershell_writes(command: str, event: Event, ctx: Context) -> list[Write]:
 
 
 def named(arguments: list[str], names: tuple[str, ...]) -> str | None:
-    for index, word in enumerate(arguments[:-1]):
-        if word.lower() in names:
-            return arguments[index + 1]
+    """The value of the first of names among arguments, given as -Path value or as -Path:value."""
+    for index, word in enumerate(arguments):
+        flag, colon, value = word.partition(":")
+        if flag.lower() in names:
+            if colon:
+                return value
+            if index + 1 < len(arguments):
+                return arguments[index + 1]
     return None
 
 
@@ -252,6 +373,22 @@ def resolve(raw: str, cwd: Path | None, ctx: Context) -> Path | None:
     if cwd is None and not absolute:
         return None
     return paths.normalise(raw, cwd or Path("/"), ctx.platform)
+
+
+def targets(write: Write, ctx: Context) -> list[Path]:
+    """The files a write lands on: its target, or each file in the target's folder that a * or ? in its last
+    name matches, as the shell expands it."""
+    raw = write.target.strip()
+    folder, _, name = raw.replace("\\", "/").rpartition("/")
+    if not re.search(r"[*?]", name) or re.search(r"[$`*?%]", folder):
+        path = resolve(raw, write.cwd, ctx)
+        return [] if path is None else [path]
+    base = resolve(folder or ".", write.cwd, ctx)
+    if base is None:
+        return []
+    fold = ctx.platform.case_insensitive
+    return [path for path in ctx.fs.list_dir(base)
+            if fnmatch.fnmatchcase(path.name.lower() if fold else path.name, name.lower() if fold else name)]
 
 
 def tracked(path: Path, ctx: Context) -> bool | None:
@@ -288,20 +425,22 @@ class ShellWrites(Check):
 
     def run(self, event: Event, ctx: Context) -> Decision:
         command = event.command or ""
-        writer = powershell_writes if event.tool is Tool.POWERSHELL else bash_writes
+        bash = event.tool is not Tool.POWERSHELL
+        scripts = script_files(command, event, ctx) if bash else []
+        found = (bash_writes(command, event, ctx, scripts=scripts) if bash
+                 else powershell_writes(command, event, ctx))
         refusals, warnings = [], []
-        for write in writer(command, event, ctx):
-            path = resolve(write.target, write.cwd, ctx)
-            if path is None or inside(path, event.scratchpad):
-                continue
-            state = tracked(path, ctx)
-            if state:
-                refusals.append(self.refusal(write, path, event, ctx))
-            elif state is False and path.suffix.lower() in SCRIPT_SUFFIXES and self.in_repository(path, ctx):
-                warnings.append(self.warning(path, event, ctx))
-        if event.tool is not Tool.POWERSHELL:
-            warnings += [found for script in script_files(command, event, ctx)
-                         if (found := self.given(script, event, ctx)) is not None]
+        for write in found:
+            for path in targets(write, ctx):
+                if inside(path, event.scratchpad):
+                    continue
+                state = tracked(path, ctx)
+                if state:
+                    refusals.append(self.refusal(write, path, event, ctx))
+                elif (state is False and path.suffix.lower() in SCRIPT_SUFFIXES
+                      and self.in_repository(path, ctx)):
+                    warnings.append(self.warning(path, event, ctx))
+        warnings += [warning for script in scripts if (warning := self.given(script, event, ctx)) is not None]
         if refusals:
             return Decision(self.meta.id, Verdict.DENY, results=tuple(refusals[:1]) + tuple(warnings))
         if warnings:
@@ -317,7 +456,7 @@ class ShellWrites(Check):
 
     @staticmethod
     def refusal(write: Write, path: Path, event: Event, ctx: Context) -> Result:
-        if write.how in IN_PLACE:
+        if write.how in IN_PLACE or " -i" in write.how:
             batch = callable_name("io.edit")
             fix = Fix(batch, {"path": path.as_posix()}, f"Use {batch} to make several changes in one call, "
                                                         "the Edit tool for one, or the Write tool to replace "

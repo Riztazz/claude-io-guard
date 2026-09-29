@@ -82,6 +82,47 @@ class EveryWriteFormIsFound(unittest.TestCase):
                 self.assertTrue(refused(command, "PowerShell"),
                                 "the write is found and its target is tracked")
 
+    def test_the_forms_the_review_found_missed(self):
+        on_disk = {ROOT / "README.md": b"x", ROOT / "notes.txt": b"y"}
+        for command in ("perl -0pi -e 's/a/b/' README.md", "gsed -i s/a/b/ README.md",
+                        "sed -I '' s/a/b/ README.md", "ruby -pi -e 'x' README.md",
+                        "awk -i inplace '{print}' README.md",
+                        "env LC_ALL=C sed -i s/a/b/ README.md", "sed -i s/a/b/ *.md",
+                        "bash -c 'echo x > README.md'", "echo x >| README.md", "echo x >& README.md",
+                        "echo x > $'README.md'", "(cd src && ls); sed -i 's/a/b/' README.md",
+                        "pushd src; popd; sed -i s/a/b/ README.md",
+                        "node -e \"require('fs').writeFileSync('README.md', 'x')\""):
+            with self.subTest(command=command):
+                self.assertTrue(refused(command, files=on_disk), "each form writes the tracked README.md")
+
+    def test_a_writer_under_find_or_xargs_is_found(self):
+        for command in ("find . -name README.md -exec sed -i s/a/b/ {} +",
+                        "git ls-files | xargs sed -i s/a/b/",
+                        "find src -type f -exec perl -pi -e 's/a/b/' {} \\;"):
+            with self.subTest(command=command):
+                self.assertTrue(refused(command, git=FolderGit(root=ROOT, tracked=TRACKED)),
+                                "the writer edits files under a folder git tracks files in")
+        self.assertFalse(refused("find /tmp/scratch -exec sed -i s/a/b/ {} +",
+                                 git=FolderGit(root=ROOT, tracked=TRACKED)),
+                         "a folder with no tracked file is left alone")
+
+    def test_powershell_forms_the_review_found_missed(self):
+        for command in ("Set-Content -Path:README.md -Value x", "Clear-Content README.md",
+                        "New-Item README.md -Value x -Force", "echo hi>README.md",
+                        "[IO.File]::WriteAllText((Resolve-Path README.md), 'x')"):
+            with self.subTest(command=command):
+                self.assertTrue(refused(command, "PowerShell"), "each form writes the tracked README.md")
+
+    def test_a_code_string_writes_from_the_folder_its_command_runs_in(self):
+        self.assertFalse(run(f"cd {SCRATCH.as_posix()} && python -c \"open('t1.py', 'w').write('x')\"")[0]
+                         .decisions[0].results, "a script body run in the scratchpad writes there")
+        self.assertTrue(refused("cd src && python -c \"open('a.py', 'w').write('x')\""),
+                        "a body run in src writes src/a.py, which git tracks")
+
+    def test_a_cd_in_a_subshell_does_not_move_the_commands_after_it(self):
+        self.assertFalse(refused("(cd src && sed -i s/a/b/ README.md)"),
+                         "inside the subshell the cd holds, and src/README.md is not tracked")
+
     def test_a_body_task_11_moved_is_read_from_its_file(self):
         body = SCRATCH / "io-guard" / "body-0123456789abcdef.txt"
         command = f'python - < "{body.as_posix()}"'

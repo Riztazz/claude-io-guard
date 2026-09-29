@@ -82,7 +82,8 @@ plugins/io-guard/
         location.py                write.location: RESERVED_NAME, READ_ONLY, LINKED_PATH, dirty files.
                                    write.locks: FILE_LOCKED after a failed write
         transport_body.py          BODY_MOVED_TO_FILE, TRANSPORT_BUDGET, BACKSLASH_TRANSPORT
-        shell_writes.py            SHELL_WRITE, scratch script warning, a script file's writes read first
+        shell_writes.py            SHELL_WRITE, scratch script warning, a script file's writes read first, the
+                                   in-place editors under find -exec and xargs, bash -c strings
         lint.py                    shell.lint: quoting, escapes, dialect, Python bodies, PIPE_HIDES_EXIT once,
                                    STOPS_BY_MATCH
         win_paths.py               win.paths: MSYS_PATH for slash arguments and cmd /c, RESERVED_NAME for nul
@@ -822,7 +823,10 @@ def exec_file(path: str) -> str             # the python -c argument that runs a
 def commands(command: str, found: Optional[Scan] = None) -> tuple[SimpleCommand, ...]
                                             # split at ; & | ( ) and newlines outside quotes, bodies, comments
 class SimpleCommand: words, redirects, inputs, span, name  # words unquoted, leading assignments dropped
-class Redirect: target, append, fd                          # a file only: 2>&1 and >&2 are never one
+class Redirect: target, append, fd                          # a file only: 2>&1 and >&2 are never one, and
+                                                            # >| and >&file are (task 103)
+def subshells(command: str, states: bytes) -> tuple[list[int], dict[int, int]]   # task 103: the ( ) group
+                                                            # of each offset, and each group's parent
 # shell.py, task 13
 Scan.backticks, Scan.unterminated           # unescaped backticks in double quotes, a quote left open at the end
 def call_operators(command: str, states: bytes) -> tuple[int, ...]   # an & that starts a command
@@ -840,7 +844,8 @@ def exit_candidates(command: str) -> tuple[SimpleCommand, ...]  # those that can
 
 # pwsh.py, task 12
 def commands(command: str) -> tuple[SimpleCommand, ...]     # split at ; | && || and newlines, here-strings whole
-def file_calls(command: str) -> tuple[str, ...]             # the literal paths [IO.File] write calls name
+def file_calls(command: str) -> tuple[str, ...]             # the literal paths [IO.File] write calls name,
+                                                            # and a (Resolve-Path x) given as one, task 103
 # pwsh.py, task 13
 def blanked(command: str) -> str                            # strings and comments as spaces, code left
 # pwsh.py, task 97
