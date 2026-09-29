@@ -407,8 +407,12 @@ def repository_root(git: GitPort, path: Path) -> Path | None:
 
 
 def claude_folder(env: Mapping[str, str]) -> Path:
-    """Claude Code's own folder: CLAUDE_CONFIG_DIR, then ~/.claude."""
-    return Path(env["CLAUDE_CONFIG_DIR"]) if env.get("CLAUDE_CONFIG_DIR") else Path.home() / ".claude"
+    """Claude Code's own folder: CLAUDE_CONFIG_DIR, then .claude in the home folder env names, USERPROFILE
+    or HOME, then in the process's own home folder."""
+    if env.get("CLAUDE_CONFIG_DIR"):
+        return Path(env["CLAUDE_CONFIG_DIR"])
+    home = env.get("USERPROFILE") or env.get("HOME")
+    return (Path(home) if home else Path.home()) / ".claude"
 
 
 def home_folder(env: Mapping[str, str]) -> Path:

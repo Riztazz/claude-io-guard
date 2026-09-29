@@ -69,11 +69,11 @@ class LayersMerge(ConfigFiles):
         self.assertEqual((report.config.get("pipeline.soft_ms"), report.config.get("pipeline.hard_ms")),
                          (100, 900), "the project sets one key, and the user's other key stays")
 
-    def test_a_list_ending_in_extra_appends(self):
+    def test_every_list_replaces(self):
         merged = config.merge({"write_roots.extra": ["a"], "skip": ["x"]},
                               {"write_roots.extra": ["b"], "skip": ["y"]})
-        self.assertEqual((merged["write_roots.extra"], merged["skip"]), (["a", "b"], ["y"]),
-                         "a list key ending in extra appends, and any other list replaces")
+        self.assertEqual((merged["write_roots.extra"], merged["skip"]), (["b"], ["y"]),
+                         "a later layer's list replaces the one before, whatever its key is called")
 
     def test_a_dict_value_merges_into_the_base_dict(self):
         merged = config.merge({"verify": {".py": ["a"]}}, {"verify": {".js": ["b"]}})

@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePath
 
 from ioguard.lib import pwsh, shell, wildcard
+from ioguard.lib.context import claude_folder
 from ioguard.lib.platform import Platform
 
 RULE = re.compile(r"^(Bash|PowerShell)(?:\((.*)\))?$", re.S)
@@ -92,10 +93,8 @@ class Wrapped:
 
 def settings_files(env: Mapping[str, str], project: Path, platform: Platform) -> tuple[Path, ...]:
     """The settings files Claude Code reads permission rules from, the managed one first."""
-    home = env.get("USERPROFILE") or env.get("HOME") or str(Path.home())
-    config = Path(env["CLAUDE_CONFIG_DIR"]) if env.get("CLAUDE_CONFIG_DIR") else Path(home) / ".claude"
     managed = (MANAGED[platform.os],) if platform.os in MANAGED else ()
-    return (*managed, config / "settings.json", project / ".claude" / "settings.json",
+    return (*managed, claude_folder(env) / "settings.json", project / ".claude" / "settings.json",
             project / ".claude" / "settings.local.json")
 
 

@@ -3,7 +3,7 @@ title: Delete the code nothing reads, and the copies of one helper
 stage: I
 area: runtime
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: []
 platforms: [windows, macos]
@@ -36,3 +36,22 @@ The code review of 2026-09-29: slice A item 23 and slice B item 17.
 ## Done when
 
 - The tests pass, and a grep finds no caller of what was deleted.
+
+## What changed
+
+- `checks/pipeline.py`: `Pipeline.order` is gone, and `run` calls the module's `order`, which does the
+  sorting.
+- `lib/config.py`: `merge` has no `extra` branch, and the module's docstring says lists replace.
+- `lib/context.py`: `claude_folder` reads `CLAUDE_CONFIG_DIR`, then `USERPROFILE` or `HOME` from the
+  environment it is given, then the process's own home. `checks/heartbeat.py` and `lib/rules.py` call it, and
+  their copies are gone. The heartbeat's copy answered None with no home named, and it now reads the process's
+  home, where a missing cache file is the same `OSError` as before.
+- Tests, each failing first: a list key ending in `extra` replaces, which replaced the test that it appends
+  (`tests/lib/test_config.py`); `claude_folder` follows `USERPROFILE` and `HOME` from the given environment
+  (`tests/lib/test_context.py`). The suite of 1,045 passes on Windows, 2 skipped.
+- A grep of `plugins`, `tests`, `tools`, `docs` and the skill finds no `.order(`, no `extra` merge and no
+  second `claude_folder`.
+- Docs: `docs/design/architecture.md` (`Pipeline`, the merge sentence).
+- `live-server-down` passed on the CLI 2.1.283, with the heartbeat reading Claude Code's cache through the
+  one `claude_folder`.
+- Checked on Windows on 2026-09-29.

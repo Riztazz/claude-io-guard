@@ -8,12 +8,11 @@ server never started this session, and Claude Code's own cache says when it gave
 that failed to start is skipped in every session for 15 minutes (row 33).
 """
 from datetime import datetime
-from pathlib import Path
 
 from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.lib import heartbeat
 from ioguard.lib.config import ConfigKey
-from ioguard.lib.context import Context, session_file
+from ioguard.lib.context import Context, claude_folder, session_file
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity, render
@@ -55,9 +54,8 @@ class Heartbeat(Check):
 
     def skipped(self, event: Event, ctx: Context) -> Decision:
         """The server never wrote a heartbeat this session. Claude Code's cache says whether it skipped it."""
-        folder = claude_folder(ctx)
         try:
-            cache = ctx.fs.read_bytes(folder / "mcp-needs-auth-cache.json") if folder else b""
+            cache = ctx.fs.read_bytes(claude_folder(ctx.env) / "mcp-needs-auth-cache.json")
         except OSError:
             return Decision.observe(self.meta.id)
         found = heartbeat.skipped_since(cache, SERVER, SKIP_S)
@@ -76,10 +74,3 @@ class Heartbeat(Check):
         return Decision(self.meta.id, Verdict.ALLOW, results=(result,), user_message=render(result))
 
 
-def claude_folder(ctx: Context) -> Path | None:
-    """Claude Code's own folder: CLAUDE_CONFIG_DIR, or .claude in the user's home. None with neither."""
-    named = ctx.env.get("CLAUDE_CONFIG_DIR")
-    home = ctx.env.get("USERPROFILE") or ctx.env.get("HOME")
-    if named:
-        return Path(named)
-    return Path(home) / ".claude" if home else None

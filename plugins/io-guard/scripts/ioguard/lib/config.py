@@ -1,12 +1,11 @@
 """io-guard's policy, in three layers: defaults in code, the user's config.json, and the project's two files.
 
 Every policy value is a key with its default in code (D16). A later layer overrides an earlier one key by
-key. Dictionaries merge, lists replace, and a list key that ends in "extra" appends. A project file overrides
-the user's file for that project, with two limits. A key marked project_may_set=False reaches every project,
-or approves a command in Claude Code's place as a rewrite mode of allow does, so only the user's file sets
-it. A regex in a key marked project_regex that lib.patterns finds could stall
-drops the file, since io-guard runs it on every line of output. A file with any error is dropped whole, and
-the guard runs on the layers that loaded.
+key. Dictionaries merge, and lists replace. A project file overrides the user's file for that project, with
+two limits. A key marked project_may_set=False reaches every project, or approves a command in Claude Code's
+place as a rewrite mode of allow does, so only the user's file sets it. A regex in a key marked
+project_regex that lib.patterns finds could stall drops the file, since io-guard runs it on every line of
+output. A file with any error is dropped whole, and the guard runs on the layers that loaded.
 """
 import difflib
 import json
@@ -272,13 +271,11 @@ def unbounded(value: Any) -> str | None:
 
 
 def merge(base: Mapping[str, Any], over: Mapping[str, Any]) -> dict[str, Any]:
-    """over's keys win, except that a dict merges into the base dict and a list ending in "extra" appends."""
+    """over's keys win, except that a dict merges into the base dict."""
     merged = dict(base)
     for key, value in over.items():
         if isinstance(value, dict) and isinstance(merged.get(key), dict):
             merged[key] = {**merged[key], **value}
-        elif isinstance(value, list) and key.endswith("extra") and isinstance(merged.get(key), list):
-            merged[key] = [*merged[key], *value]
         else:
             merged[key] = value
     return merged

@@ -196,15 +196,12 @@ class Pipeline:
         self.registry = registry
         self.budget = budget
 
-    def order(self, checks: tuple[Check, ...]) -> tuple[Check, ...]:
-        return order(checks)
-
     def run(self, event: Event, ctx: Context) -> Outcome:
         budget = self.budget or Budget.from_config(ctx.config)
         ctx = replace(ctx, git=ctx.git.within(budget.hard_ms / 1000))
         run = Run(event, ctx)
         started = ctx.clock.monotonic()
-        for check in self.order(self.registry.select(event, ctx)):
+        for check in order(self.registry.select(event, ctx)):
             if not run.step(check, budget, started):
                 break
         outcome = run.outcome()

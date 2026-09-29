@@ -95,6 +95,15 @@ class IoGuardsFolderIsOnePerUser(unittest.TestCase):
         self.assertEqual(home_folder({"CLAUDE_CONFIG_DIR": "C:/config"}), Path("C:/config") / "io-guard",
                          "a user who moved ~/.claude gets io-guard's folder inside the moved one")
 
+    def test_claude_code_s_folder_follows_the_home_folder_the_environment_names(self):
+        for env, expected in (({"USERPROFILE": "C:/Users/u"}, Path("C:/Users/u/.claude")),
+                              ({"HOME": "/Users/u"}, Path("/Users/u/.claude")),
+                              ({"CLAUDE_CONFIG_DIR": "D:/cfg", "HOME": "/Users/u"}, Path("D:/cfg"))):
+            with self.subTest(env=env):
+                self.assertEqual(claude_folder(env), expected,
+                                 "the environment a caller gives decides, so a test or a hook's own "
+                                 "environment sets it")
+
     def test_with_neither_the_folder_is_io_guard_in_dot_claude(self):
         self.assertEqual(home_folder({}), Path.home() / ".claude" / "io-guard",
                          "the default is ~/.claude/io-guard, whatever id Claude Code gives the plugin")

@@ -721,7 +721,8 @@ class Outcome:
 class Pipeline:
     def __init__(self, registry: Registry, budget: Budget) -> None: ...
     def run(self, event: Event, ctx: Context) -> Outcome: ...
-    def order(self, checks: tuple[Check, ...]) -> tuple[Check, ...]: ...
+
+def order(checks: tuple[Check, ...]) -> tuple[Check, ...]   # by layer, cost and id, each after its after set
 ```
 
 `run` does these steps in order.
@@ -1114,8 +1115,7 @@ Loading happens once per process and fails loudly. `validate` reports an unknown
 and the nearest known key, a type mismatch with the expected type, and a scope violation with the layer that
 may set it. A file over `FILE_LIMIT`, 256 KB, is an error without being read (task 87). A file with errors is
 dropped whole, the guard runs with the layers that loaded, and one
-`user_message` names the file and the first error. Dictionaries deep-merge, lists replace, and a list key that
-ends in `extra` appends.
+`user_message` names the file and the first error. Dictionaries merge, and lists replace.
 
 ## 6. Run the hooks
 
