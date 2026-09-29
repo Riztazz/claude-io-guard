@@ -3,7 +3,7 @@ title: Answer a dropped settings page request without a traceback
 stage: I
 area: mcp
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: []
 platforms: [windows, macos]
@@ -41,3 +41,18 @@ server's log, where it reads like a failure.
 ## Done when
 
 - A full test run prints no traceback, and the test passes.
+
+## What changed
+
+- `mcp/dashboard_http.py`: the page runs on `PageServer`, a `ThreadingHTTPServer` whose `handle_error` lets a
+  `ConnectionError`, a reset or a broken pipe, go with one debug line, and passes any other error to the
+  standard handler. That covers a read as well as a write, so it replaces the task's plan of catching in
+  `answer` alone.
+- Test, failing first on the printed traceback: `handle_error` with a `ConnectionResetError` and a
+  `BrokenPipeError` prints nothing (`tests/mcp/test_tools_dashboard.py`). The setup keeps the page it takes
+  out of `BOARDS`, so the test can reach its server. The suite of 1,055 passes on Windows, 2 skipped, and the
+  run printed no traceback. The two tracebacks came from some runs and not others, so one clean run is not
+  proof they are gone.
+- `live-dashboard` passed on the CLI 2.1.283.
+- Docs: none describe the page server's error handling.
+- Checked on Windows on 2026-09-29.

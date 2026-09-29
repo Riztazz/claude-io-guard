@@ -1,6 +1,8 @@
 """io.config reads one setting, writes it into the user's or the project's config file as the loader would
 accept it, refuses what the file may not hold, and the next hook call runs with it."""
+import contextlib
 import http.client
+import io
 import json
 import os
 import re
@@ -201,7 +203,8 @@ class ThePageServerAnswersOnlyItsOwnPage(ConfigTest):
         call = ToolCall(lambda: self.ctx, CancelToken(), self.root, None)
         self.done = dashboard(DashboardInput(), call)
         self.again = dashboard(DashboardInput(), call)
-        self.addCleanup(BOARDS.pop(project_root(self.root)).stop)
+        self.board = BOARDS.pop(project_root(self.root))
+        self.addCleanup(self.board.stop)
         self.port = urlsplit(self.done.url).port
         self.token = parse_qs(urlsplit(self.done.url).query)["token"][0]
 
@@ -260,6 +263,18 @@ class ThePageServerAnswersOnlyItsOwnPage(ConfigTest):
         self.assertEqual(cases, {"query token": 403, "page, no token": 200, "page, another host": 403},
                          "a token in an address, a history or a log opens nothing, and the page holds no "
                          "setting")
+
+    def test_a_connection_the_client_closed_ends_without_a_traceback(self):
+        server = self.board.server
+        for error in (ConnectionResetError(10054, "closed by the remote host"), BrokenPipeError(32, "pipe")):
+            with self.subTest(error=type(error).__name__):
+                printed = io.StringIO()
+                try:
+                    raise error
+                except ConnectionError:
+                    with contextlib.redirect_stderr(printed):
+                        server.handle_error(None, ("127.0.0.1", 50000))
+                self.assertEqual(printed.getvalue(), "", "a page that left needs no answer and no traceback")
 
     def test_a_body_with_no_length_a_negative_one_or_too_long_is_refused(self):
         answers = {}

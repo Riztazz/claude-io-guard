@@ -21,7 +21,9 @@ The server stops once no request came for io.dashboard.idle_minutes, and the nex
 """
 import hmac
 import json
+import logging
 import secrets
+import sys
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -29,6 +31,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
+
+log = logging.getLogger("ioguard.mcp.dashboard")
 
 PAGE = Path(__file__).resolve().parents[3] / "ui" / "dashboard.html"
 BODY_LIMIT = 64 * 1024
@@ -47,6 +51,17 @@ class Rejected(Exception):
     def __init__(self, answer: dict) -> None:
         super().__init__(answer.get("message", ""))
         self.answer = answer
+
+
+class PageServer(ThreadingHTTPServer):
+    """The page's HTTP server. A page closed while its request was answered needs no answer, so the closed
+    connection is one debug line, not a traceback on the io server's error stream."""
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        if isinstance(sys.exc_info()[1], ConnectionError):
+            log.debug("The settings page closed its connection before io-guard answered it.")
+            return
+        super().handle_error(request, client_address)
 
 
 class Dashboard:
@@ -78,7 +93,7 @@ class Dashboard:
         with self.lock:
             self.last = time.monotonic()
             if self.server is None:
-                self.server = ThreadingHTTPServer(("127.0.0.1", 0), handler_for(self))
+                self.server = PageServer(("127.0.0.1", 0), handler_for(self))
                 self.server.daemon_threads = True
                 threading.Thread(target=self.server.serve_forever, name="io-guard dashboard",
                                  daemon=True).start()
