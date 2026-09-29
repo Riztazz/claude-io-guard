@@ -70,7 +70,8 @@ plugins/io-guard/
         portable.py                bash4, gnu_only: what bash 3.2 and macOS's BSD tools lack or read otherwise
         commit_message.py          subcommand, sources, problems: where a git commit's message comes from, and
                                    what in it a policy forbids
-        snapshots.py               take, find, pending, sweep: files' bytes kept under a tag for seven days
+        snapshots.py               take, find, pending, sweep: files' bytes kept under a tag for seven days,
+                                   swept at each server start, a folder with no manifest after a day
         journal.py                 changed, record, entries: each write's lines and task tag, as line keys
         code_tokens.py             code_tokens, split_includes, compare: a file's code without comments
         hunks.py                   parse, patch, owned: one file's git diff -U0 hunks, and whose they are

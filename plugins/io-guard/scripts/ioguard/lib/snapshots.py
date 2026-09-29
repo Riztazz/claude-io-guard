@@ -18,6 +18,7 @@ from pathlib import Path
 from ioguard.lib import bytesio
 
 TTL = timedelta(days=7)
+ABANDONED = timedelta(days=1)      # a folder with no manifest this old is no snapshot still being written
 MANIFEST = "snapshot.json"
 
 
@@ -132,8 +133,14 @@ def pending(snapshot: Snapshot, wanted: Sequence[Path] | None, read: Callable[[P
 
 
 def sweep(home: Path, now: datetime) -> int:
-    """Delete every expired snapshot, and say how many went."""
-    gone = [snapshot for snapshot in every(home) if snapshot.expires <= now]
-    for snapshot in gone:
-        shutil.rmtree(snapshot.folder, ignore_errors=True)
+    """Delete every expired snapshot, and every folder with no manifest whose newest file is more than
+    ABANDONED old, which a crash left before its manifest was written. How many went."""
+    gone = [snapshot.folder for snapshot in every(home) if snapshot.expires <= now]
+    root = folder_of(home)
+    if root.is_dir():
+        cutoff = (now - ABANDONED).timestamp()
+        gone += [child for child in root.iterdir() if child.is_dir() and read(child) is None
+                 and max((entry.stat().st_mtime for entry in (child, *child.iterdir())), default=0) < cutoff]
+    for folder in gone:
+        shutil.rmtree(folder, ignore_errors=True)
     return len(gone)

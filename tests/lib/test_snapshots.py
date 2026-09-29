@@ -1,5 +1,6 @@
 """A snapshot keeps files' bytes under a tag for seven days, is found by its id or by its newest tag in the
 project, and says which files a restore would replace."""
+import os
 import shutil
 import tempfile
 import unittest
@@ -43,6 +44,18 @@ class ASnapshotKeepsBytes(SnapshotTest):
         self.assertIsNone(snapshots.find(self.home, kept.id, PROJECT, later), "past seven days it is gone")
         self.assertEqual((snapshots.sweep(self.home, later), kept.folder.exists()), (1, False),
                          "sweep deletes the expired snapshot's folder")
+
+    def test_sweep_deletes_a_snapshot_cut_short_once_it_is_a_day_old(self):
+        old, new = self.taken(), self.taken()
+        for kept in (old, new):
+            (kept.folder / snapshots.MANIFEST).unlink()
+        stamp = (datetime.now(timezone.utc) - timedelta(days=2)).timestamp()
+        for path in (old.folder, *old.folder.iterdir()):
+            os.utime(path, (stamp, stamp))
+        snapshots.sweep(self.home, datetime.now(timezone.utc))
+        self.assertEqual((old.folder.exists(), new.folder.exists()), (False, True),
+                         "a folder with no manifest is a crash's leftover, gone after a day, and a fresh one "
+                         "may still be being written")
 
     def test_a_snapshot_with_no_manifest_is_never_found(self):
         kept = self.taken()

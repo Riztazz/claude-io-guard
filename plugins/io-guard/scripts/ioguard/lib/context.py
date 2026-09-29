@@ -11,7 +11,7 @@ import stat as stat_module
 import sys
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -71,8 +71,9 @@ class FsPort(Protocol):
     def link_target(self, path: Path) -> Path | None: ...      # where a path through a link really is
     def find_named(self, root: Path, name: str, limit: int) -> tuple[Path, ...]: ...
                                                                # files named name under root, in limit entries
-    def files_under(self, root: Path, limit: int) -> tuple[Path, ...]: ...
-                                                               # sorted, outside .git, at most limit + 1
+    def files_under(self, root: Path, limit: int,
+                    keep: Callable[[Path], bool] | None = None) -> tuple[Path, ...]: ...
+                                                               # sorted, outside .git, at most limit + 1 kept
 
 
 class Clock(Protocol):
@@ -319,13 +320,15 @@ class LiveFs:
                 break
         return tuple(found)
 
-    def files_under(self, root: Path, limit: int) -> tuple[Path, ...]:
-        """Every file under root, outside .git folders, sorted. A walk stops once it holds more than limit,
-        so a caller sees that the folder holds more."""
+    def files_under(self, root: Path, limit: int,
+                    keep: Callable[[Path], bool] | None = None) -> tuple[Path, ...]:
+        """Every file under root that keep takes, or every file, outside .git folders, sorted. A walk stops
+        once it holds more than limit, so a caller sees that the folder holds more."""
         found: list[Path] = []
         for folder, folders, files in os.walk(root):
             folders[:] = sorted(child for child in folders if child != ".git")
-            found += [Path(folder) / file for file in files]
+            walked = [Path(folder) / file for file in files]
+            found += walked if keep is None else [path for path in walked if keep(path)]
             if len(found) > limit:
                 break
         return tuple(sorted(found)[:limit + 1])

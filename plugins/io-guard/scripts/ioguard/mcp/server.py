@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 from ioguard import PLUGIN_VERSION
-from ioguard.lib import bytesio, retention, telemetry
+from ioguard.lib import bytesio, retention, snapshots, telemetry
 from ioguard.lib.context import Context, home_folder, session_file
 from ioguard.lib.heartbeat import Heartbeat
 from ioguard.mcp import (tools_dashboard, tools_edit, tools_format, tools_history, tools_hook, tools_read,
@@ -181,6 +181,9 @@ def expire(data: Path, context: Callable[[], Context], now: datetime) -> list[Pa
         shrunk = telemetry.shrink_heads(data, config.get("telemetry.cmd_head_days"), now)
         if shrunk:
             log.info("io-guard cut the command heads of %d telemetry files to their programs", len(shrunk))
+        swept = snapshots.sweep(data, now)
+        if swept:
+            log.info("io-guard deleted %d snapshots past their seven days", swept)
         days = config.get("io.saved_days")
         if days > 0:
             cutoff = now - timedelta(days=days)

@@ -47,9 +47,11 @@ with it. A background run's handle lasts an hour past the program's end.
 ## Undoing a task
 
 `io.snapshot` keeps its copies in io-guard's folder, up to 5,000 files and 512 MB each, and deletes them after
-seven days. `io.restore` undoes a task file by file, where `git checkout` would throw away every other edit
-of the file too. It writes back only the files that changed since the snapshot, and Claude Code's own
-permission prompt asks you first, naming the files whose edits you'd lose.
+seven days. A glob keeps every file it matches, and a name that exists as written, such as `[id].tsx`, is
+that file. `io.restore` undoes a task file by file, where `git checkout` would throw away every other edit
+of the file too. It writes back only the files that changed since the snapshot, into their folders even when
+a folder was deleted, and Claude Code's own permission prompt asks you first, naming the files whose edits
+you'd lose.
 
 ## Splitting work into commits
 

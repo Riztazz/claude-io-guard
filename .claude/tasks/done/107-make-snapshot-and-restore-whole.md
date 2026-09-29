@@ -3,7 +3,7 @@ title: Make io.snapshot keep every file it matches, and io.restore put back a de
 stage: I
 area: mcp
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: [GIT-6]
 platforms: [windows, macos]
@@ -42,3 +42,22 @@ The code review of 2026-09-29, slice C items 1, 2 and 7.
 ## Done when
 
 - The three cases above behave as built, and `live-restore` still passes.
+
+## What changed
+
+- `lib/context.py` and `lib/fakes.py`: `files_under` takes `keep`, a test on each file, and counts only the
+  files it keeps against `limit`.
+- `mcp/tools_history.py`: `gathered` matches a glob inside the walk, so only matches count against
+  `max_files`, and takes a name that exists as written, a file or a folder, before it reads it as a glob.
+  `restore` makes a file's folder before it writes it, and a failed write names the file and the files
+  restored before it.
+- `lib/snapshots.py`: `sweep` also deletes a folder with no manifest once its newest entry is `ABANDONED`,
+  a day, old. `mcp/server.py` `expire` runs `sweep` at each server start.
+- Tests, each failing first: 30 `.txt` and 4 `.py` files under `max_files` 10 keep all four `.py`, and
+  `[id].tsx` is kept as itself (`tests/mcp/test_tools_history.py`); a restore into a deleted folder on the
+  real file system brings both files back; a manifest-less folder two days old goes and a fresh one stays
+  (`tests/lib/test_snapshots.py`); an expired snapshot goes at the server's start (`tests/mcp/test_server.py`).
+  The suite of 1,005 passes on Windows, 2 skipped.
+- `live-restore` passed on the CLI 2.1.283.
+- Docs: `docs/tools.md` (the snapshot paragraph), `docs/design/architecture.md` (the package tree).
+- Checked on Windows on 2026-09-29.

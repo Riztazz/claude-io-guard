@@ -115,13 +115,12 @@ def gathered(raw: list[str], cwd: Path, ctx: Context, limit: int, tool: str) -> 
     """Every file raw names, sorted, at most limit + 1 so a caller sees when there are more."""
     found: set[Path] = set()
     for each in raw:
-        if GLOB & set(each):
+        path = paths.normalise(each, cwd, ctx.platform)
+        if GLOB & set(each) and not ctx.fs.stat(path) and not ctx.fs.is_dir(path):
             pattern, sensitive = each.replace("\\", "/"), not ctx.platform.case_insensitive
-            matched = [path for path in ctx.fs.files_under(cwd, limit)
-                       if PurePosixPath(path.relative_to(cwd).as_posix()).full_match(
-                           pattern, case_sensitive=sensitive)]
+            matched = list(ctx.fs.files_under(cwd, limit, lambda file: PurePosixPath(
+                file.relative_to(cwd).as_posix()).full_match(pattern, case_sensitive=sensitive)))
         else:
-            path = paths.normalise(each, cwd, ctx.platform)
             matched = list(ctx.fs.files_under(path, limit)) or ([path] if ctx.fs.stat(path) else [])
         if not matched:
             first = Fix("Glob", {"pattern": each}, "Glob for the files to keep first.")
@@ -198,12 +197,16 @@ def restore(given: RestoreInput, call: ToolCall) -> RestoreOutput:
     restored = []
     for kept in plan.changed:
         with held(kept.path, ctx, tool):
+            done = f" It had restored {', '.join(restored)}." if restored else ""
             try:
+                ctx.fs.make_folders(kept.path.parent)
                 ctx.fs.write_atomic(kept.path, found.blob(kept))
             except PermissionError:
-                done = f" It had restored {', '.join(restored)}." if restored else ""
                 raise refused(Code.FILE_LOCKED, f"Another program holds {kept.path.name} open, so {tool} "
                               f"could not replace it.{done}", tool, kept.path, ctx) from None
+            except OSError as error:
+                raise refused(Code.PATH_NOT_FOUND, f"{tool} could not write {kept.path.as_posix()}: "
+                              f"{error.strerror or error}.{done}", tool, kept.path, ctx) from None
         restored.append(kept.path.as_posix())
     return RestoreOutput(found.id, restored, [kept.path.as_posix() for kept in plan.same], NOTE)
 

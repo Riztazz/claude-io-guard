@@ -1,6 +1,6 @@
 """In-memory ports for tests: a file system of path to bytes, a git that answers what it was given, and a
 clock that moves only when told. Context.fake builds them."""
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -85,9 +85,11 @@ class FakeFs:
         return tuple(sorted(file for file in self.files
                             if file.name.casefold() == name.casefold() and root in file.parents))[:limit]
 
-    def files_under(self, root: Path, limit: int) -> tuple[Path, ...]:
+    def files_under(self, root: Path, limit: int,
+                    keep: Callable[[Path], bool] | None = None) -> tuple[Path, ...]:
         under = sorted(file for file in self.files
-                       if root in file.parents and ".git" not in file.relative_to(root).parts)
+                       if root in file.parents and ".git" not in file.relative_to(root).parts
+                       and (keep is None or keep(file)))
         return tuple(under[:limit + 1])
 
     def link_target(self, path: Path) -> Path | None:

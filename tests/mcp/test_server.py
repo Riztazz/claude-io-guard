@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from ioguard.lib import snapshots
 from ioguard.lib.config import Config, Scope, all_keys, defaults, validate
 from ioguard.lib.context import Context
 from ioguard.lib.heartbeat import parse
@@ -137,6 +138,16 @@ class TheServerKeepsAHeartbeat(ServerTest):
         beat = parse((self.data / "sessions" / f"{SESSION}.alive").read_bytes())
         self.assertEqual((beat.session, beat.era, beat.stopped is not None), (SESSION, "legacy", True),
                          "a server that stopped at the end of stdin says so, so no hook warns about it")
+
+
+class TheServerDeletesOldSnapshots(unittest.TestCase):
+    def test_an_expired_snapshot_goes_at_the_servers_start(self):
+        data = Path(tempfile.mkdtemp(prefix="ioguard-retention-"))
+        self.addCleanup(shutil.rmtree, data, True)
+        now = datetime.now(timezone.utc)
+        kept = snapshots.take(data, "pass", REPO, [(REPO / "a.txt", b"x")], now - timedelta(days=8))
+        expire(data, lambda: Context.fake(config=defaults(), data_dir=data), now)
+        self.assertFalse(kept.folder.exists(), "a snapshot past its seven days goes with no new io.snapshot")
 
 
 class TheServerDeletesOldTelemetry(unittest.TestCase):

@@ -77,6 +77,16 @@ class SnapshotKeepsTheFilesNamed(HistoryTest):
                 result = self.refusal(snapshot, SnapshotInput(["src", "notes.md"], "pass"), ctx)
                 self.assertEqual(result.code, Code.SNAPSHOT_TOO_LARGE, "past a limit, nothing is kept")
 
+    def test_a_glob_meets_every_matching_file_however_many_others_the_walk_passes(self):
+        files = {**{CWD / "a" / f"n{number:03d}.txt": b"x" for number in range(30)},
+                 CWD / "a" / "one.py": b"1", CWD / "a" / "two.py": b"2", CWD / "z" / "three.py": b"3",
+                 CWD / "z" / "four.py": b"4", CWD / "[id].tsx": b"page"}
+        ctx = self.context(files, **{"io.snapshot.max_files": 10})
+        self.assertEqual(self.call(snapshot, SnapshotInput(["**/*.py"], "pass"), ctx).files, 4,
+                         "only matches count against max_files, so the four .py files are all kept")
+        self.assertEqual(self.call(snapshot, SnapshotInput(["[id].tsx"], "page"), ctx).files, 1,
+                         "a name that exists as written is that file, before it is read as a glob")
+
     def test_an_empty_tag_is_not_one_call(self):
         with self.assertRaises(InvalidArguments):
             self.call(snapshot, SnapshotInput(["notes.md"], " "), self.context(self.FILES))
@@ -131,6 +141,19 @@ class RestoreWritesBackOnlyWhatChangedAndOnlyWhenAsked(HistoryTest):
         self.assertEqual(self.asked(ctx, {"tag": "pass"}).verdict, Verdict.OBSERVE,
                          "a restore that writes nothing asks nothing")
         self.assertEqual(self.call(restore, RestoreInput("pass"), ctx).restored, [], "and it writes nothing")
+
+    def test_a_restore_puts_back_a_folder_that_was_deleted(self):
+        project = self.home / "project"
+        (project / "sub").mkdir(parents=True)
+        for name in ("a.txt", "b.txt"):
+            (project / "sub" / name).write_bytes(name.encode())
+        ctx = Context.fake(config=defaults(), platform=detect(), fs=LiveFs(), data_dir=self.home / "data")
+        self.call(snapshot, SnapshotInput(["sub"], "pass"), ctx, project)
+        shutil.rmtree(project / "sub")
+        self.asked(ctx, {"tag": "pass"}, project)
+        done = self.call(restore, RestoreInput("pass"), ctx, project)
+        self.assertEqual((len(done.restored), (project / "sub" / "b.txt").read_bytes()), (2, b"b.txt"),
+                         "the folder is made again and both files come back")
 
     def test_a_tag_no_snapshot_holds_is_expired(self):
         result = self.refusal(restore, RestoreInput("never"), self.context({}))
