@@ -53,6 +53,18 @@ class HeredocsAreFound(unittest.TestCase):
                 self.assertEqual(shell.scan(command).heredocs, (), "quotes, arithmetic, here-strings and "
                                                                    "comments hold no heredoc")
 
+    def test_a_shift_inside_an_arithmetic_command_is_not_a_heredoc(self):
+        for command in ("(( 1 << 2 ))\nsed -i s/a/b/ f", "for (( i = 1 << 2; i < 9; i++ )); do ls; done"):
+            with self.subTest(command=command):
+                self.assertEqual(shell.scan(command).heredocs, (), "bash reads (( )) as arithmetic")
+
+    def test_a_dollar_quoted_delimiter_is_read_as_bash_reads_it(self):
+        for operator in ("<<$'EOF'", '<<$"EOF"'):
+            with self.subTest(operator=operator):
+                heredoc = only_heredoc(f"cat {operator}\nx\nEOF\nls")
+                self.assertEqual((heredoc.delimiter, heredoc.terminated, heredoc.body), ("EOF", True, "x\n"),
+                                 "the $ of $'...' is quoting, not part of the delimiter")
+
     def test_a_body_with_no_delimiter_line_is_unterminated(self):
         self.assertFalse(only_heredoc("cat <<'EOF'\none\n").terminated, "a missing delimiter is marked")
 
@@ -132,6 +144,13 @@ class SimpleCommandsAreSplitOut(unittest.TestCase):
         found = shell.commands("cat <<'EOF' | wc -l\nrm -rf /\nEOF\n# echo x > y")
         self.assertEqual([command.words for command in found], [("cat",), ("wc", "-l")],
                          "the body's text and the comment are not commands")
+
+    def test_a_backslash_before_a_newline_joins_the_lines(self):
+        for command, words in (("git \\\npush origin", ("git", "push", "origin")),
+                               ("gi\\\nt push", ("git", "push")), ('echo "a\\\nb"', ("echo", "ab"))):
+            with self.subTest(command=command):
+                self.assertEqual([found.words for found in shell.commands(command)], [words],
+                                 "bash drops a backslash and the newline after it, outside single quotes")
 
     def test_a_command_substitution_stays_in_its_word(self):
         found = shell.commands('echo "$(date; ls > x)" > out.txt')

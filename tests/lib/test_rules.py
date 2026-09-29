@@ -111,6 +111,41 @@ class AShellStringIsReadAsTheCommandsItRuns(unittest.TestCase):
                 self.assertEqual(rules.match_command(found, argv).decision, decision,
                                  "a wrapped command meets the rules as if it ran on its own")
 
+    def test_a_command_spelled_the_way_only_the_shell_reads_it_meets_the_rule(self):
+        found = loaded(deny=["Bash(git push *)", "PowerShell(git push *)"])
+        cases = {("bash", "-c", "git \\\npush origin"): "a backslash before a newline joins the lines",
+                 ("bash", "-c", "gi\\\nt push origin"): "even inside a word",
+                 ("bash", "-c", "(( 1 << 2 ))\ngit push origin"): "<< inside (( )) is a shift",
+                 ("bash", "-c", "for (( i = 1 << 2; i < 9; i++ )); do git push origin; done"): "and in a for",
+                 ("bash", "-c", "cat <<$'EOF'\nx\nEOF\ngit push origin"): "a $'...' delimiter is EOF",
+                 ("pwsh", "-Command", "& { git push }"): "a script block runs its commands",
+                 ("pwsh", "-Command", "if ($true) { git push }"): "so does an if body",
+                 ("pwsh", "-Command", "1 | ForEach-Object { git push }"): "and a ForEach-Object block"}
+        for argv, why in cases.items():
+            with self.subTest(argv=argv):
+                self.assertEqual(rules.match_command(found, argv).decision, "deny", why)
+
+    def test_a_powershell_expression_runs_nothing_and_an_assignment_runs_its_command(self):
+        found = loaded(deny=["PowerShell(git push *)"])
+        cases = {"git status | ForEach-Object { $_.Line }": "none",
+                 "$count = 3; git status": "none",
+                 "$out = git push origin": "deny",
+                 "$out = & git push origin": "deny",
+                 "$tool = 'git'; & $tool push": "unread",
+                 "git log; & ($name) push": "unread"}
+        for text, decision in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(rules.match_command(found, ("pwsh", "-Command", text)).decision, decision,
+                                 "a statement that starts with a variable is an expression or an assignment, "
+                                 "and only & or . calls through one")
+
+    def test_a_heredoc_that_never_ends_leaves_the_string_unread(self):
+        found = loaded(deny=["Bash(git push *)"])
+        argv = ("bash", "-c", "cat <<EOF\nx\ngit push origin")
+        self.assertEqual(rules.match_command(found, argv).decision, "unread",
+                         "a heredoc io-guard finds no end of may end where bash reads one, so the string is "
+                         "unread")
+
     def test_a_rules_program_is_named_only_as_a_whole_word(self):
         found = loaded(deny=["Bash(git push *)"], ask=["PowerShell(Remove-Item:*)"])
         cases = {"subprocess.run(['git', 'push'])": "Bash(git push *)", "x = 'legit'": None,

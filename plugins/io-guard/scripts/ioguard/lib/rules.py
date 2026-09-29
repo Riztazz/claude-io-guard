@@ -15,8 +15,10 @@ to Claude Code, which prompts for io.run as for any MCP tool.
 
 A shell given a command string, such as bash -c "git push", pwsh -Command "git push" or an -EncodedCommand,
 runs the commands in that string, so match_command matches each of them too, through nested shells up to
-NESTED deep. A string io-guard cannot read, such as one with a command substitution or an eval, a cmd /c line
-or an interpreter's code string such as python -c, gives the decision "unread" when it names the program of a
+NESTED deep. The string is read as the shell reads it: a backslash before a newline joins the lines, (( ))
+is arithmetic, and a PowerShell script block runs its own commands. A string io-guard cannot read, such as
+one with a command substitution, an eval or a heredoc with no end, a cmd /c line or an interpreter's code
+string such as python -c, gives the decision "unread" when it names the program of a
 deny or ask rule as a word, such as git for Bash(git push *), and the caller weighs it. Code can build a
 program's name from parts, so a string that names none can still run one.
 """
@@ -48,8 +50,12 @@ CODE_FLAGS = {"python": ("-c",), "py": ("-c",), "node": ("-e", "-p", "--eval", "
               "bun": ("-e", "--eval")}
 CODE_VALUED = frozenset({"-X", "-W", "-r", "--require", "--import", "--loader"})
 UNREAD_BASH =("$(", "`", "<(", ">(")
+ARITHMETIC = re.compile(r"\(\(.*\)\)", re.S)     # bash's (( ... )), which runs no command
+PWSH_ASSIGNS = frozenset({"=", "+=", "-=", "*=", "/=", "%=", "??="})
+PWSH_ASSIGNMENT = re.compile(r"^\$[\w:]+(?:\+|-|\*|/|%|\?\?)?=(.*)$", re.S)   # $x=value, written as one word
 READS_TEXT = frozenset({"eval", "source", ".", "iex", "invoke-expression", "invoke-command"})
 NESTED = 4
+BLOCKS = 16                                      # script blocks inside script blocks read before unread
 MANAGED = {"win32":Path("C:/Program Files/ClaudeCode/managed-settings.json"),
            "darwin": Path("/Library/Application Support/ClaudeCode/managed-settings.json")}
 
@@ -262,21 +268,57 @@ def rule_named(rules: Rules, text: str) -> Rule | None:
 
 def inner(found: Wrapped) -> list[list[str]] | None:
     """The simple commands the string a shell is given runs, or None when io-guard cannot read all of them:
-    a command substitution, a process substitution, eval or source, or a call through a variable."""
+    a command substitution, a process substitution, eval or source, a call through a variable, or a heredoc
+    whose end io-guard does not find, which bash may find elsewhere."""
     if found.text is None:
         return None
     if found.dialect == "bash":
         if any(mark in found.text for mark in UNREAD_BASH):
             return None
-        parts = [list(simple.words) for simple in shell.commands(found.text)]
+        if any(not heredoc.terminated for heredoc in shell.scan(found.text).heredocs):
+            return None
+        parts = [list(simple.words) for simple in shell.commands(found.text)
+                 if not (simple.words and ARITHMETIC.fullmatch(simple.words[0]))]
     else:
         if "$(" in found.text:
             return None
-        parts = [list(simple.words) for simple in pwsh.commands(found.text)]
-        parts = [part[1:] if part[:1] in (["&"], ["."]) and len(part) > 1 else part for part in parts]
+        parts = powershell_parts(found.text, 0)
+        if parts is None:
+            return None
     if any(part and (part[0].lower() in READS_TEXT or part[0].startswith(("$", "("))) for part in parts):
         return None
     return parts
+
+
+def powershell_parts(text: str, depth: int) -> list[list[str]] | None:
+    """The simple commands of a PowerShell string, with those of each script block inside it, or None past
+    BLOCKS deep."""
+    if depth > BLOCKS:
+        return None
+    parts = [statement(list(simple.words)) for simple in pwsh.commands(text)]
+    for block in pwsh.script_blocks(text):
+        inside = powershell_parts(block, depth + 1)
+        if inside is None:
+            return None
+        parts += inside
+    return parts
+
+
+def statement(words: list[str]) -> list[str]:
+    """The command a PowerShell statement runs: the right side of an assignment, a call through & or . with
+    the operator dropped, and nothing for an expression such as $_.Line. A call through a variable keeps the
+    variable first, which inner reads as unread."""
+    if words and words[0].startswith("$"):
+        joined = PWSH_ASSIGNMENT.match(words[0])
+        if joined:
+            words = [joined[1], *words[1:]] if joined[1] else words[1:]
+        elif words[1:2] and words[1] in PWSH_ASSIGNS:
+            words = words[2:]
+        else:
+            return []
+    if words[:1] in (["&"], ["."]) and len(words) > 1:
+        words = words[1:]
+    return words
 
 
 def match_command(rules: Rules, argv: Sequence[str], depth: int = 0) -> RuleMatch:

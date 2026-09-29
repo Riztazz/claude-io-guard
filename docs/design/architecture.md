@@ -837,6 +837,8 @@ def commands(command: str) -> tuple[SimpleCommand, ...]     # split at ; | && ||
 def file_calls(command: str) -> tuple[str, ...]             # the literal paths [IO.File] write calls name
 # pwsh.py, task 13
 def blanked(command: str) -> str                            # strings and comments as spaces, code left
+# pwsh.py, task 97
+def script_blocks(command: str) -> tuple[str, ...]          # the text of each outermost { }, strings left out
 
 # python_source.py, task 13
 def compile_report(source: str) -> Optional[CompileReport]  # the SyntaxError, or the SyntaxWarnings
@@ -953,6 +955,8 @@ def rule_named(rules: Rules, text: str) -> Optional[Rule]   # the rule whose pro
 def command_text(words: Sequence[str]) -> str               # a word with a space or quote in single quotes
 def unwrapped(words: Sequence[str]) -> list[str]            # timeout, nohup, NAME=value and the rest stripped
 def named(words: Sequence[str]) -> list[str]                # the program by its bare name
+def statement(words: list[str]) -> list[str]                # task 97: the command a PowerShell statement runs,
+                                                            # none for an expression such as $_.Line
 ```
 
 ## 5. Configure the policy
@@ -1385,9 +1389,11 @@ io.read_log(path, since_line = None) -> LogOutput(path, first_line, last_line, t
   surface shows its form (section 7, "Elicitation in both eras").
 - **A shell string is read too (task 83, D41).** `rules.match_command` also matches each command a shell in
   the argv is given, such as `bash -c "git push"`, `pwsh -Command`, a decoded `-EncodedCommand`, or a bare
-  command to Windows PowerShell, through nested shells. A string io-guard cannot read, such as one with a
-  command substitution or an `eval`, a `cmd /c` line, an interpreter's code string such as `python -c`, or a
-  `code` body, asks with `RULE_ASKED` when it names the program of a deny or ask rule as a word, since the
+  command to Windows PowerShell, through nested shells. The string is read as the shell reads it: a
+  backslash before a newline joins the lines, `(( ))` is arithmetic, a `$'EOF'` delimiter is `EOF`, and a
+  PowerShell script block, an `if` body or a `ForEach-Object` block runs its own commands (task 97). A
+  string io-guard cannot read, such as one with a command substitution or an `eval`, a heredoc with no end,
+  a `cmd /c` line, an interpreter's code string such as `python -c`, or a `code` body, asks with `RULE_ASKED` when it names the program of a deny or ask rule as a word, since the
   rule cannot see what the code does. Code can build a program's name from parts, and a script file an argv
   runs is not read at all, as Claude Code's own Bash matching reads neither.
 - **No shell.** `argv` runs as given. A `code` body is written byte for byte to `runs/<id>/body.<ext>` in the

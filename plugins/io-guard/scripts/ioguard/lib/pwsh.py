@@ -130,6 +130,22 @@ def blanked(command: str) -> str:
     return "".join(out)
 
 
+def script_blocks(command: str) -> tuple[str, ...]:
+    """The text inside each outermost { } of the command, outside strings and comments: the script blocks
+    of & { }, an if or foreach body, and a ForEach-Object block, each of which runs its own commands."""
+    code, found, depth, start = blanked(command), [], 0, 0
+    for at, char in enumerate(code):
+        if char == "{":
+            if depth == 0:
+                start = at + 1
+            depth += 1
+        elif char == "}" and depth:
+            depth -= 1
+            if depth == 0:
+                found.append(command[start:at])
+    return tuple(found)
+
+
 def file_calls(command: str) -> tuple[str, ...]:
     """The literal paths [IO.File] write calls name."""
     return tuple(match["path"] for match in FILE_CALL.finditer(command))

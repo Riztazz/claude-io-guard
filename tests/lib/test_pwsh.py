@@ -40,6 +40,11 @@ class PowerShellCommands(unittest.TestCase):
         found = pwsh.file_calls("[System.IO.File]::WriteAllText(\"C:/p/a.txt\", $x)")
         self.assertEqual(found, ("C:/p/a.txt",), "the literal path of a write call is found")
 
+    def test_a_script_block_is_found_outside_strings_and_comments(self):
+        command = "'{no}' | ForEach-Object { if ($_) { git push } } # {not}\n& { ls }"
+        self.assertEqual(pwsh.script_blocks(command), (" if ($_) { git push } ", " ls "),
+                         "each outermost block, with a brace in a string or a comment left out")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -95,7 +95,9 @@ class Scanner:
             elif char == '"':
                 at = self.double(at + 1)
             elif text.startswith("$((", at):
-                at = self.arithmetic(at)
+                at = self.arithmetic(at, at + 1)
+            elif text.startswith("((", at) and self.command_position(at):
+                at = self.arithmetic(at, at)
             elif text.startswith("$'", at):
                 at = self.ansi(at + 2)
             elif text.startswith("$(", at):
@@ -140,7 +142,7 @@ class Scanner:
                 self.mark(at, at + 2, DOUBLE)
                 at += 2
             elif text.startswith("$((", at):
-                at = self.arithmetic(at)
+                at = self.arithmetic(at, at + 1)
             elif text.startswith("$(", at):
                 at = self.normal(at + 2, stop=")")
             else:
@@ -165,8 +167,19 @@ class Scanner:
         self.unclosed = self.unclosed or at >= len(text)
         return at + 1
 
-    def arithmetic(self, at: int) -> int:
-        depth, end = 0, at + 1
+    def command_position(self, at: int) -> bool:
+        """Whether at starts a command, where bash reads (( as arithmetic: after nothing, an operator, a
+        newline or for."""
+        text, back = self.text, at
+        while back > 0 and text[back - 1] in " \t":
+            back -= 1
+        return (back == 0 or text[back - 1] in ";&|(\n"
+                or (back >= 3 and text.startswith("for", back - 3)
+                    and (back == 3 or text[back - 4] in " \t\n;&|(")))
+
+    def arithmetic(self, at: int, opening: int) -> int:
+        """$(( ... )) or (( ... )) from at, whose first parenthesis is at opening. The offset after it."""
+        depth, end = 0, opening
         while end < len(self.text):
             if self.text[end] == "(":
                 depth += 1
@@ -189,7 +202,9 @@ class Scanner:
         word, quoted, start = [], False, end
         while end < len(text) and text[end] not in WORD_END:
             char = text[end]
-            if char in "'\"":
+            if char == "$" and text[end + 1:end + 2] in ("'", '"'):
+                end += 1
+            elif char in "'\"":
                 close = text.find(char, end + 1)
                 close = len(text) if close < 0 else close
                 word.append(text[end + 1:close])
@@ -336,6 +351,8 @@ def commands(command: str, found: Scan | None = None) -> tuple[SimpleCommand, ..
             start = at
         elif (normal and char in " \t") or states[at] in (COMMENT, BODY):
             at += 1
+        elif normal and text.startswith("\\\n", at):
+            at += 2
         elif match:
             at = match.end()
             if text.startswith("&", at):          # 2>&1, >&2: a duplicated stream, not a file
@@ -395,17 +412,16 @@ def heredoc_word_end(text: str, at: int) -> int:
 
 
 def unquote(text: str, states: bytes | bytearray, start: int, end: int) -> str:
-    """The word as bash passes it, for the plain cases: quotes dropped, escapes applied, expansions kept."""
+    """The word as bash passes it, for the plain cases: quotes dropped, escapes applied, expansions kept. A
+    backslash before a newline joins the lines, so both go."""
     out, at = [], start
     while at < end:
         char, state = text[at], states[at]
         if state == NORMAL and char in "'\"":
             at += 1
-        elif state == NORMAL and char == "\\" and at + 1 < end:
-            out.append(text[at + 1])
-            at += 2
-        elif state == DOUBLE and char == "\\" and at + 1 < end and text[at + 1] in ESCAPED_IN_DOUBLE:
-            out.append(text[at + 1])
+        elif char == "\\" and at + 1 < end and (state == NORMAL or (state == DOUBLE
+                                                                   and text[at + 1] in ESCAPED_IN_DOUBLE)):
+            out.append("" if text[at + 1] == "\n" else text[at + 1])
             at += 2
         else:
             out.append(char)
