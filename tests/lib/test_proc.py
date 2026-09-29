@@ -8,6 +8,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ioguard.lib import proc
 
@@ -92,13 +93,27 @@ class OnlyAProgramOnThePathStarts(unittest.TestCase):
         self.assertEqual(Path(found).parent.name, "bin", "the skipped folder is passed over, ignoring case")
         self.assertEqual(Path(first).parent.name, "WindowsApps", "and without skip the first folder wins")
 
-    def test_an_empty_path_entry_never_means_the_current_folder(self):
+    def test_the_current_folder_is_never_searched(self):
         self.planted("repo")
         previous = Path.cwd()
         os.chdir(self.root / "repo")
         self.addCleanup(os.chdir, previous)
-        self.assertIsNone(proc.on_path("tool", {"PATH": os.pathsep + str(self.root / "empty")}),
-                          "an empty entry is skipped, where the operating system reads the current folder")
+        unguarded = {key: value for key, value in os.environ.items()
+                     if key.lower() != "nodefaultcurrentdirectoryinexepath"}
+        empty = str(self.root / "empty")
+        cases = {"no entry": empty, "an empty entry": os.pathsep + empty, "a dot": ".",
+                 "a relative folder": "repo"}
+        with mock.patch.dict(os.environ, unguarded, clear=True):
+            for name, path in cases.items():
+                with self.subTest(name):
+                    self.assertIsNone(proc.on_path("tool", {"PATH": path}),
+                                      "a program the project ships is never found in its own folder, "
+                                      "whatever NoDefaultCurrentDirectoryInExePath says")
+
+    def test_a_program_on_path_is_found_by_its_full_path(self):
+        found = proc.on_path(Path(sys.executable).stem, {"PATH": str(Path(sys.executable).parent)})
+        self.assertTrue(found and Path(found).is_absolute() and Path(found).samefile(sys.executable),
+                        "the lookup gives the file CreateProcess or execv then starts without a search")
 
     def test_a_bare_name_path_lacks_never_starts_from_the_folder_it_runs_in(self):
         self.planted("repo")

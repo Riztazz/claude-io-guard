@@ -3,10 +3,11 @@ the body is written to. The PreToolUse hook on the call and the tool itself both
 so a rule the hook asked about is the rule the tool finds.
 """
 import hashlib
-import shutil
+import os
 from collections.abc import Mapping
 from typing import Any
 
+from ioguard.lib import proc
 from ioguard.lib.context import Probe
 from ioguard.lib.platform import Platform
 from ioguard.lib.rules import command_text
@@ -22,14 +23,14 @@ def interpreter(lang: str, probe: Probe, platform: Platform) -> tuple[str, ...] 
         case "python":
             return (probe.python.path,)
         case "bash":
-            found = probe.bash.path if probe.bash else shutil.which("bash")
+            found = probe.bash.path if probe.bash else proc.on_path("bash", os.environ)
             return None if found is None else (found,)
         case "powershell":
-            found = probe.pwsh.path if probe.pwsh else shutil.which("pwsh")
-            found = found or (shutil.which("powershell") if platform.windows else None)
+            found = probe.pwsh.path if probe.pwsh else proc.on_path("pwsh", os.environ)
+            found = found or (proc.on_path("powershell", os.environ) if platform.windows else None)
             return None if found is None else (found, "-NoProfile", "-NonInteractive", "-File")
         case "node":
-            found = shutil.which("node")
+            found = proc.on_path("node", os.environ)
             return None if found is None else (found,)
     return None
 

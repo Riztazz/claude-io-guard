@@ -1,16 +1,16 @@
 """Running a program from an argument list, with no shell: to the end with a timeout, or in the background
 with its output going to a log.
 
-A program named without a folder starts only from where the environment's PATH holds it, and one PATH does not
-hold does not start. The operating system's own search can reach further, into the current folder on some
-Windows versions and through an empty PATH entry on macOS, and the current folder is the user's project.
+A program named without a folder starts only from an absolute folder on the environment's PATH, found by
+on_path and started by its full path, and one PATH does not hold does not start. Windows' CreateProcess and
+Python's shutil.which both search the current folder first unless NoDefaultCurrentDirectoryInExePath is set,
+and macOS reads an empty or relative PATH entry as the current folder, which is the user's project.
 
 A background program starts in its own process group, so stopping it stops what it started too: taskkill /T
 on Windows, and a signal to the group on macOS. Its stdin is empty, because nothing would ever answer a
 prompt, and its stdout and stderr go to one log in the order the program flushes them.
 """
 import os
-import shutil
 import signal
 import subprocess
 import sys
@@ -36,15 +36,30 @@ class RunResult:
         return self.exit_code == 0
 
 
+WINDOWS_EXTENSIONS = ".COM;.EXE;.BAT;.CMD"        # PATHEXT's default
+
+
+def names_of(name: str, env: Mapping[str, str]) -> list[str]:
+    """The file names a program name stands for: itself, or on Windows itself with each PATHEXT extension when
+    it has none of them."""
+    if sys.platform != "win32":
+        return [name]
+    extensions = [each for each in env.get("PATHEXT", WINDOWS_EXTENSIONS).split(";") if each]
+    return [name] if any(name.lower().endswith(each.lower()) for each in extensions) else \
+        [name + each for each in extensions]
+
+
 def on_path(name: str, env: Mapping[str, str], skip: Sequence[str] = ()) -> str | None:
-    """The first name on the environment's PATH whose folder names none of skip, ignoring case, or None. An
-    empty PATH entry is skipped, since the operating system would read it as the current folder."""
+    """The full path of the first file name stands for in an absolute folder on the environment's PATH whose
+    folder names none of skip, ignoring case, or None. The current folder is never searched: an empty or
+    relative entry is passed over, and shutil.which is not used, since on Windows it looks there first."""
     for folder in env.get("PATH", "").split(os.pathsep):
-        if not folder or any(part.lower() in folder.lower() for part in skip):
+        if not os.path.isabs(folder) or any(part.lower() in folder.lower() for part in skip):
             continue
-        found = shutil.which(name, path=folder)
-        if found:
-            return found
+        for each in names_of(name, env):
+            path = os.path.join(folder, each)
+            if os.path.isfile(path) and os.access(path, os.X_OK):
+                return path
     return None
 
 

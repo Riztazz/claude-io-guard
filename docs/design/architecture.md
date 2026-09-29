@@ -849,7 +849,7 @@ def file_lock(path: Path, data_dir: Path, wait_s: float = 5.0) -> ContextManager
 
 # proc.py
 def on_path(name: str, env: Mapping[str, str], skip: Sequence[str] = ()) -> Optional[str]
-                                                            # empty PATH entries skipped, never the current folder
+                                                            # absolute PATH folders only, never the current one
 def located(argv: Sequence[str], env: Optional[Mapping[str, str]]) -> Optional[tuple[str, ...]]
                                                             # task 79: a bare name only from PATH, else None
 def run(argv: Sequence[str], cwd: Path, env: Optional[Mapping[str, str]] = None,
