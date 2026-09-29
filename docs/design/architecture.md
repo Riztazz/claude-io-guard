@@ -64,7 +64,9 @@ plugins/io-guard/
         rules.py                   settings_files, load, match_argv: Claude Code's Bash and PowerShell deny and
                                    ask rules, met by an argument list
         runs.py                    interpreter, argv_of, key: what an io.run call runs
-        patterns.py                problem, nested: a project file's regex that could stall a line's match
+        patterns.py                problem, nested, open_repeats: a project file's regex that could stall a
+                                   line's match
+        wildcard.py                match: a * pattern met with one backtrack point, for permission rules
         portable.py                bash4, gnu_only: what bash 3.2 and macOS's BSD tools lack or read otherwise
         commit_message.py          subcommand, sources, problems: where a git commit's message comes from, and
                                    what in it a policy forbids
@@ -772,7 +774,8 @@ def with_final_newline(text: str, final: bool, eol: Eol) -> str
 
 # editorconfig.py, task 17
 def parse(text: str) -> tuple[bool, list[tuple[str, dict[str, str]]]]   # root = true, then the sections
-def matches(glob: str, relative: str) -> bool               # *, **, ?, [set], [!set], {a,b}
+def matches(glob: str, relative: str) -> bool               # *, **, ?, [set], [!set], {a,b}. Task 101: a
+                                                            # table of offsets, steps times path length
 def properties(path: Path, read: Callable[[Path], Optional[str]]) -> dict[str, str]
                                                             # up the folders to root = true, nearer wins
 
@@ -890,8 +893,14 @@ def argv_of(given: Mapping[str, Any], probe: Probe, platform: Platform, body: Op
 def key(given: Mapping[str, Any]) -> str                    # one per command, which run.rules records
 
 # patterns.py, task 25
-def problem(pattern: str) -> Optional[str]                  # does not compile, over 200 characters, or nested
+def problem(pattern: str) -> Optional[str]                  # does not compile, over 200 characters, nested,
+                                                            # or over 2 open repeats, task 101
 def nested(pattern: str) -> bool                            # a quantified group whose text holds a quantifier
+                                                            # or a | choice
+def open_repeats(pattern: str) -> int                       # the *, + and {n,} outside classes
+
+# wildcard.py, task 101
+def match(pattern: str, text: str, fold: bool = False) -> bool   # * for any text, one backtrack point
 
 # results.py
 def spec(code: Code) -> CodeSpec

@@ -25,8 +25,9 @@ The code review of 2026-09-29, slice B items 12 and 13. Rerun on Windows on 2026
 
 ## What to build
 
-- A glob that does not compile matches nothing, with a debug line. A BOM at the start of `.editorconfig` is
-  dropped. `indent_size` takes ASCII digits only.
+- Task 101 replaced the glob's regex with a matcher of its own, so `*.{py`, `a[]b` and `[z-a]` no longer
+  raise: an open brace is a plain character, and an empty or backward class holds nothing. What is left: a
+  BOM at the start of `.editorconfig` is dropped, and `indent_size` takes ASCII digits only.
 - `python_tokens` catches every exception the tokenizer raises, and the file compares as text, with a note.
 - A test per input.
 

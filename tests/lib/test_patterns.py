@@ -15,6 +15,15 @@ class ARepeatedGroupThatRepeatsIsRefused(unittest.TestCase):
                 self.assertEqual(patterns.nested(pattern), nested,
                                  "a quantified group whose text holds *, + or a count past one")
 
+    def test_overlapping_choices_or_many_open_repeats_are_refused(self):
+        for pattern, refused in (("(a|aa)+b", True), ("(?:x|y)*z", True),
+                                 ("\\d+\\d+\\d+\\d+\\d+\\d+X", True), (".*a.*a.*a.*b", True),
+                                 ("^Log\\w+: Error: .*", False),
+                                 ("^(?:warning|error) C\\d+:", False)):
+            with self.subTest(pattern=pattern):
+                self.assertEqual(patterns.problem(pattern) is not None, refused,
+                                 "a repeated choice, or over two open repeats, can backtrack for seconds")
+
     def test_the_problem_names_why(self):
         for pattern, words in (("(a+)+", "repeats a group"), ("(", "does not compile"),
                                ("a" * 201, "longer than 200")):

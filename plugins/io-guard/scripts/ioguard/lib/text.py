@@ -12,7 +12,6 @@ import re
 from collections import Counter
 
 PRIVATE_USE = re.compile(f"[{chr(0xE000)}-{chr(0xF8FF)}{chr(0xF0000)}-{chr(0x10FFFD)}]")
-TRAILING = re.compile(r"[ \t]+$", re.M)
 MARKERS = {"\t": "[TAB]", "\r": "[CR]", chr(0xFEFF): "[BOM]"}
 FORMAT_RANGES = ((0xAD, 0xAD), (0x600, 0x605), (0x61C, 0x61C), (0x6DD, 0x6DD), (0x70F, 0x70F), (0x890, 0x891),
                  (0x8E2, 0x8E2), (0x180E, 0x180E), (0x200B, 0x200F), (0x202A, 0x202E), (0x2060, 0x2064),
@@ -47,9 +46,16 @@ def quoted(word: str) -> str:
 
 def visible(text: str) -> str:
     """text with each tab, CR, BOM and private-use glyph as a marker, and each trailing space as [SP]."""
-    text = TRAILING.sub(lambda run: run[0].replace(" ", "[SP]"), text)
+    text = "\n".join(trailing_marked(line) for line in text.split("\n"))
     text = PRIVATE_USE.sub(lambda glyph: f"[U+{ord(glyph[0]):04X}]", text)
     return "".join(MARKERS.get(char, char) for char in text)
+
+
+def trailing_marked(line: str) -> str:
+    """line with each space of its trailing spaces and tabs as [SP]. A strip, not a regex, so a long run of
+    spaces before text costs one pass."""
+    body = line.rstrip(" \t")
+    return body + line[len(body):].replace(" ", "[SP]")
 
 
 def snippet(text: str, first: int, last: int, around: int = 2) -> str:

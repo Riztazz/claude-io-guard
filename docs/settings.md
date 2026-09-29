@@ -121,8 +121,9 @@ build made gets a warning. `checks.shell.results.builds` and `runs` name those c
 
 **Log noise:** `io.read_log` leaves out the lines a regular expression in `noise_patterns` matches, such as
 `["^LogTemp: Display:"]`. A project file's pattern in `noise_patterns` or `error_patterns` must compile, stay
-under 200 characters, and never repeat a group that repeats inside it, such as `(a+)+`, because one such pattern
-can stall on a single line of output. Your own `config.json` may set any pattern.
+under 200 characters, never repeat a group that repeats or chooses inside it, such as `(a+)+` or `(a|aa)+`,
+and hold at most two open repeats such as `.*` or `\d+`, because one such pattern can stall on a single line
+of output. Your own `config.json` may set any pattern.
 
 **Runs:** `io.run.timeout_s`, 120 by default, is how long a run to its end may take when the call names no
 timeout. `io.run.handle_ttl_s` is how long a background run's handle lasts after the program ends, an hour.

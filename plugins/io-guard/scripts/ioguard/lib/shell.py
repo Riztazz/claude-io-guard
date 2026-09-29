@@ -481,7 +481,8 @@ def moved(command: str, heredocs: dict[Heredoc, str], bodies: dict[InlineBody, s
     return command
 
 
-BODY_FILE = re.compile(r"[^\s'\"<>]*(?:io-guard|bodies)/body-[0-9a-f]{16}\.(?:txt|py)")
+# A match starts only where a token starts, so a long token is scanned once, not once from each character
+BODY_FILE = re.compile(r"(?<![^\s'\"<>])[^\s'\"<>]*(?:io-guard|bodies)/body-[0-9a-f]{16}\.(?:txt|py)")
 PYTHON = re.compile(rf"^{PYTHON_NAME}$", re.I)
 INTERPRETERS = re.compile(r"^(?:python[\d.]*|py|node|perl|ruby)$")
 INLINE = {"-c", "-m", "-", "-e", "--eval", "-p", "--print"}   # the flags that run no script file

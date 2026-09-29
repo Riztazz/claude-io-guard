@@ -2,6 +2,7 @@
 io.run is no way around it (D14)."""
 import base64
 import json
+import time
 import unittest
 from pathlib import Path
 
@@ -51,6 +52,12 @@ class ARuleMeetsTheCommandItNames(unittest.TestCase):
                                  "a wrapped command, or the program by its bare name, meets the rule")
         self.assertEqual(decision("Bash(git push *)", ["git", "-C", ".", "push"]), "none",
                          "a push written another way is not the command the rule names, as in Claude Code")
+
+    def test_a_rule_of_many_stars_takes_linear_time(self):
+        started = time.perf_counter()
+        met = decision("Bash(a*a*a*a*a*a*a*a*b)", ["a" * 5000])
+        self.assertEqual((met, time.perf_counter() - started < 0.5), ("none", True),
+                         "a rule from a project's settings cannot stall io.run on a long command")
 
     def test_a_powershell_rule_ignores_case_and_a_bash_rule_does_not(self):
         self.assertEqual((decision("PowerShell(remove-item *)", ["Remove-Item", "x"]),

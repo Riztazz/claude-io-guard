@@ -1,4 +1,5 @@
 """lib.text shows the characters the Read tool hides, and numbers lines as the Read tool does."""
+import time
 import unicodedata
 import unittest
 
@@ -13,6 +14,12 @@ class HiddenCharactersBecomeMarkers(unittest.TestCase):
 
     def test_inner_spaces_stay_spaces(self):
         self.assertEqual(visible("a b"), "a b", "only a space at the end of a line is marked")
+
+    def test_a_long_run_of_spaces_before_text_takes_linear_time(self):
+        started = time.perf_counter()
+        shown = visible(" " * 100_000 + "x\nend \t \n")
+        self.assertEqual((shown.endswith("x\nend[SP][TAB][SP]\n"), time.perf_counter() - started < 0.5),
+                         (True, True), "spaces before text stay, and a file's line cannot stall the server")
 
 
 class LinesAreNumberedAsReadNumbersThem(unittest.TestCase):

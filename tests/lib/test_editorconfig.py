@@ -1,4 +1,5 @@
 """lib.editorconfig gives the properties that apply to a file, from the .editorconfig files above it."""
+import time
 import unittest
 from pathlib import Path
 
@@ -16,6 +17,21 @@ class GlobsMatchAsTheFormatSays(unittest.TestCase):
                  ("src/**.md", "src/x/a.md"): True, ("**/*.md", "a.md"): True,
                  ("[Mm]akefile", "Makefile"): True, ("a?.txt", "ab.txt"): True,
                  ("[!a]*.txt", "a1.txt"): False}
+        for (glob, relative), expected in cases.items():
+            with self.subTest(glob=glob, path=relative):
+                self.assertEqual(editorconfig.matches(glob, relative), expected,
+                                 "the glob covers what it names")
+
+
+    def test_a_glob_of_many_stars_takes_linear_time(self):
+        started = time.perf_counter()
+        found = editorconfig.matches("*a*a*a*a*a*a*a*b", "a" * 250)
+        self.assertEqual((found, time.perf_counter() - started < 0.5), (False, True),
+                         "a glob from a repository cannot stall the server on a long file name")
+
+    def test_braces_nest_and_a_double_star_crosses_folders(self):
+        cases = {("{src,lib}/**/*.{c,h}", "lib/x/y/z.h"): True, ("{src,lib}/**/*.{c,h}", "doc/z.h"): False,
+                 ("**/*.md", "a/b/c.md"): True, ("a/**/b", "a/b"): True, ("*.{a,{b,c}}", "x.c"): True}
         for (glob, relative), expected in cases.items():
             with self.subTest(glob=glob, path=relative):
                 self.assertEqual(editorconfig.matches(glob, relative), expected,

@@ -29,7 +29,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePath
 
-from ioguard.lib import pwsh, shell
+from ioguard.lib import pwsh, shell, wildcard
 from ioguard.lib.platform import Platform
 
 RULE = re.compile(r"^(Bash|PowerShell)(?:\((.*)\))?$", re.S)
@@ -173,12 +173,10 @@ def matches(rule: Rule, command: str) -> bool:
     if rule.pattern is None:
         return True
     pattern = rule.pattern[:-2] + " *" if rule.pattern.endswith(":*") else rule.pattern
+    fold = rule.tool == "PowerShell"
     if pattern.endswith(" *") and pattern.count("*") == 1:
-        regex = re.escape(pattern[:-2]) + "(?: .*)?"
-    else:
-        regex = ".*".join(re.escape(part) for part in pattern.split("*"))
-    flags = re.S | (re.I if rule.tool == "PowerShell" else 0)
-    return re.fullmatch(regex, command, flags) is not None
+        return wildcard.match(pattern[:-2], command, fold) or wildcard.match(pattern, command, fold)
+    return wildcard.match(pattern, command, fold)
 
 
 def named(words: Sequence[str]) -> list[str]:

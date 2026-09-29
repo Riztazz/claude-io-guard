@@ -2,6 +2,7 @@
 halving changes what bash reads. A moved command runs the same as the original."""
 import subprocess
 import sys
+import time
 import unittest
 from pathlib import Path
 
@@ -293,6 +294,13 @@ class QuotingBashReadsDifferently(unittest.TestCase):
         command = 'python - < "C:/s/io-guard/body-0123456789abcdef.txt"; cat /tmp/body-x.txt'
         self.assertEqual(shell.body_files(command), ("C:/s/io-guard/body-0123456789abcdef.txt",),
                          "only a file the move wrote is a body file")
+
+    def test_a_long_token_is_searched_for_body_files_in_linear_time(self):
+        started = time.perf_counter()
+        found = shell.body_files("echo " + "a" * 100_000 + " x/io-guard/body-0123456789abcdef.py")
+        self.assertEqual((found, time.perf_counter() - started < 0.5),
+                         (("x/io-guard/body-0123456789abcdef.py",), True),
+                         "a base64 blob in a command cannot stall the checks that look for body files")
 
 
 def names(simples) -> list[str]:

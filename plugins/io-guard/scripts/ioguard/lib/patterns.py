@@ -3,13 +3,16 @@
 Python's re has no timeout, and a group that repeats inside another repetition, such as (a+)+, can backtrack
 for seconds on one line that almost matches. A cloned repository's project file can set such a pattern, and
 io-guard would run it in the io server on each command's output. So a pattern from a project file is refused
-when it does not compile, when it is long, or when a quantified group holds a quantifier of its own. The rule
-also refuses some patterns that are safe, such as (?:,\\d+)*, which the user's own config.json may still set.
+when it does not compile, when it is long, when a quantified group holds a quantifier or a | choice of its
+own, or when it holds more than two open repeats such as .* or \\d+, whose cost on one line grows as the
+line's length to that power. The rule also refuses some patterns that are safe, such as (?:,\\d+)*, which the
+user's own config.json may still set.
 """
 import re
 
 LONGEST = 200
 QUANTIFIERS = "*+{"
+OPEN_REPEATS = 2
 
 
 def problem(pattern: str) -> str | None:
@@ -21,14 +24,19 @@ def problem(pattern: str) -> str | None:
     if len(pattern) > LONGEST:
         return f"The pattern that starts {pattern[:40]!r} is longer than {LONGEST} characters."
     if nested(pattern):
-        return (f"The pattern {pattern!r} repeats a group that repeats inside, which can take seconds on one "
-                f"line. Set it in your own config.json if it must stay.")
+        return (f"The pattern {pattern!r} repeats a group that repeats or chooses inside, which can take "
+                f"seconds on one line. Set it in your own config.json if it must stay.")
+    if open_repeats(pattern) > OPEN_REPEATS:
+        return (f"The pattern {pattern!r} holds more than {OPEN_REPEATS} open repeats such as * or +, which "
+                f"can take seconds on one line. Set it in your own config.json if it must stay.")
     return None
 
 
 def nested(pattern: str) -> bool:
-    """A group followed by *, + or a {} count past one, whose own text holds *, + or {."""
+    """A group followed by *, + or a {} count past one, whose own text holds *, + or {, or a choice with |,
+    whose branches can match the same text in more than one way."""
     stack: list[bool] = [False]
+    choices: list[bool] = [False]
     index = 0
     while index < len(pattern):
         char = pattern[index]
@@ -40,16 +48,37 @@ def nested(pattern: str) -> bool:
             continue
         if char == "(":
             stack.append(False)
+            choices.append(False)
+        elif char == "|":
+            choices[-1] = True
         elif char == ")" and len(stack) > 1:
-            inner = stack.pop()
+            inner, choice = stack.pop(), choices.pop()
             repeated = repeats(pattern, index + 1)
-            if inner and repeated:
+            if (inner or choice) and repeated:
                 return True
             stack[-1] = stack[-1] or inner or repeated
         elif char in QUANTIFIERS and repeats(pattern, index):
             stack[-1] = True
         index += 1
     return False
+
+
+def open_repeats(pattern: str) -> int:
+    """How many *, + or {n,} the pattern holds outside character classes and escapes. Each one past the
+    second multiplies what one line that almost matches can cost."""
+    count, index = 0, 0
+    while index < len(pattern):
+        char = pattern[index]
+        if char == "\\":
+            index += 2
+            continue
+        if char == "[":
+            index = class_end(pattern, index)
+            continue
+        if char in "*+" or (char == "{" and re.match(r"\{\d*,\}", pattern[index:])):
+            count += 1
+        index += 1
+    return count
 
 
 def repeats(pattern: str, index: int) -> bool:
