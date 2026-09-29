@@ -746,7 +746,8 @@ Each module lists its public functions. Every one takes values and returns value
 # bytesio.py
 def read_bytes(path: Path, limit: Optional[int] = None) -> bytes
 def read_tail(path: Path, limit: int) -> bytes               # task 20: from the first line break it holds
-def write_atomic(path: Path, data: bytes, retries: int = 5) -> WriteReport
+def write_atomic(path: Path, data: bytes, retries: int = 5) -> WriteReport   # task 104: through a symlink
+                                                            # to its file, and on macOS with the old mode
 
 # drift.py, task 18
 def drift(before: Profile, after: Profile) -> Drift         # endings, BOM, encoding and odd bytes that changed

@@ -1,5 +1,7 @@
 """write_atomic lands exact bytes through a rename, retries a held file, and leaves no temporary behind."""
+import os
 import shutil
+import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -21,6 +23,23 @@ class AtomicWrites(unittest.TestCase):
         report = bytesio.write_atomic(self.target, data)
         self.assertEqual((self.target.read_bytes(), report.bytes_written, report.attempts),
                          (data, len(data), 1), "write_atomic lands every byte, BOM, CR and NUL included")
+
+    @unittest.skipUnless(os.name == "posix", "a mode's bits and an unprivileged symlink exist on macOS")
+    def test_a_files_mode_survives_the_write(self):
+        self.target.write_bytes(b"#!/bin/sh\n")
+        self.target.chmod(0o755)
+        bytesio.write_atomic(self.target, b"#!/bin/sh\necho hi\n")
+        self.assertEqual(stat.S_IMODE(self.target.stat().st_mode), 0o755,
+                         "an edited script keeps its executable bit, and a shared file its read bits")
+
+    @unittest.skipUnless(os.name == "posix", "a mode's bits and an unprivileged symlink exist on macOS")
+    def test_a_symlink_stays_a_link_and_its_target_changes(self):
+        real = self.folder / "real.txt"
+        real.write_bytes(b"old")
+        self.target.symlink_to(real)
+        bytesio.write_atomic(self.target, b"new")
+        self.assertEqual((self.target.is_symlink(), real.read_bytes()), (True, b"new"),
+                         "a write through a link lands in the file it points to, and the link stays")
 
     def test_an_existing_file_is_replaced_whole(self):
         self.target.write_bytes(b"old content that is longer")

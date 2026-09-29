@@ -3,7 +3,7 @@ title: Keep a file's mode and its symlink when io-guard writes it
 stage: I
 area: lib
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: [BYT-9]
 platforms: [windows, macos]
@@ -36,3 +36,17 @@ This reaches every io tool, `verify.write`'s repair, and `io.restore`.
 ## Done when
 
 - Both tests pass on the macOS runner, and the Windows suite is unchanged.
+
+## What changed
+
+- `lib/bytesio.py`: `write_atomic` writes a path that is a symlink at the file `os.path.realpath` names, so
+  the link stays, and on POSIX gives the temporary file the old file's mode with `os.chmod` before the
+  rename. The `WriteReport` names the path it was given.
+- `tests/lib/test_bytesio.py`: a 0755 file stays 0755, and a symlink stays a link while its target gets
+  the new bytes. Both run on POSIX only.
+- **Not checked yet:** both tests are skipped on Windows, where this machine cannot make a symlink without
+  admin rights (`WinError 1314`) and a file has no mode bits. So neither was seen failing before the change
+  or passing after it. The macOS CI runner runs both on the next push, and its result is the check. The
+  Windows suite is unchanged, 996 with 2 skipped.
+- Docs: `docs/design/architecture.md` (`write_atomic`).
+- Checked on Windows on 2026-09-29, where the change is inert. macOS waits for CI.

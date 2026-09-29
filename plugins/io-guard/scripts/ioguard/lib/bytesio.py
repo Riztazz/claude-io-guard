@@ -5,6 +5,7 @@ the old bytes or the new ones and never half a file. open(path, "w") truncates f
 ends up empty.
 """
 import os
+import stat
 import tempfile
 import time
 from dataclasses import dataclass
@@ -48,10 +49,21 @@ def write_atomic(path: Path, data: bytes, retries: int = 5) -> WriteReport:
     """Write data to path through a temporary file in the same folder and a rename.
 
     On Windows a rename fails with PermissionError while another process holds the target, such as a virus
-    scanner or an editor. The rename is retried with a growing wait, and the last failure is raised.
+    scanner or an editor. The rename is retried with a growing wait, and the last failure is raised. A path
+    that is a symlink is written at the file it points to, so the link stays. On macOS the new file takes the
+    old one's mode, since mkstemp makes it 0600.
     """
+    report_path = path
+    if path.is_symlink():
+        path = Path(os.path.realpath(path))
+    try:
+        mode = stat.S_IMODE(os.stat(path).st_mode) if os.name == "posix" else None
+    except FileNotFoundError:
+        mode = None
     handle, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".ioguard-tmp", dir=path.parent)
     try:
+        if mode is not None:
+            os.chmod(temporary, mode)
         with os.fdopen(handle, "wb") as out:
             out.write(data)
             out.flush()
@@ -60,7 +72,7 @@ def write_atomic(path: Path, data: bytes, retries: int = 5) -> WriteReport:
         while True:
             try:
                 os.replace(temporary, path)
-                return WriteReport(path=path, bytes_written=len(data), attempts=attempt)
+                return WriteReport(path=report_path, bytes_written=len(data), attempts=attempt)
             except PermissionError:
                 if attempt >= retries:
                     raise
