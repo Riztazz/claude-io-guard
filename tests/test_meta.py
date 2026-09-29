@@ -124,18 +124,49 @@ def scripts() -> list[Path]:
                   and any(mark in path.read_bytes() for mark in marks))
 
 
+def watched(name: str) -> bool:
+    """Whether the help check watches a file of the checkout. Other processes write the rest while it runs:
+    Python's compiled files, the probes' sessions in workbench/, and anything behind a link to another
+    repository, such as the lead's kit, which every project that links it writes into."""
+    parts = Path(name).parts
+    if "__pycache__" in parts or parts[:1] == ("workbench",):
+        return False
+    return Path(os.path.realpath(REPO / name)).is_relative_to(Path(os.path.realpath(REPO)))
+
+
 def stats() -> dict[str, tuple[int, int]]:
-    """Each file git tracks or sees in the checkout, ignored ones too, with its modification time and size."""
+    """Each file of the checkout the help check watches, git's own and ignored ones alike, with its
+    modification time and size."""
     listed = subprocess.run(["git", "-c", "core.quotepath=false", "ls-files", "-z", "--cached", "--others"],
                             cwd=REPO, capture_output=True, check=True, timeout=60).stdout
     found = {}
-    for name in {name.decode("utf-8") for name in listed.split(b"\0") if name}:
+    names = {name.decode("utf-8") for name in listed.split(b"\0") if name}
+    for name in filter(watched, names):
         try:
             stat = (REPO / name).stat()
         except OSError:
             continue
         found[name] = (stat.st_mtime_ns, stat.st_size)
     return found
+
+
+class TheHelpCheckWatchesOnlyThisRepository(unittest.TestCase):
+    def test_what_other_processes_write_is_left_out(self):
+        for name in ("plugins/io-guard/scripts/ioguard/__pycache__/shell.cpython-314.pyc",
+                     ".claude/tools/shared/__pycache__/record_window.cpython-314.pyc",
+                     "workbench/io-guard-home/sessions/a.alive"):
+            with self.subTest(name=name):
+                self.assertFalse(watched(name), "a compiled file or a probe's heartbeat is not the check's")
+        for name in ("plugins/io-guard/scripts/hook.py", "tools/report.py", "reports/replay-1.json"):
+            with self.subTest(name=name):
+                self.assertTrue(watched(name), "a file this repository's scripts could write is watched")
+
+    def test_a_file_behind_a_link_to_another_repository_is_left_out(self):
+        link = REPO / ".claude" / "tools" / "shared"
+        if not (link.is_symlink() or link.is_junction()):
+            self.skipTest("the kit's links exist only on the lead's machine")
+        self.assertFalse(watched(".claude/tools/shared/record_window.py"),
+                         "the kit's own folder is written by every project that links it")
 
 
 class EveryScriptAnswersHelp(unittest.TestCase):
