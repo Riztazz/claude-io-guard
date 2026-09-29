@@ -137,6 +137,16 @@ class APipeThatHidesAFailure(unittest.TestCase):
                                                 "3| ValueError: bad"),
                          "a short output still says the exit code is the filter's")
 
+    def test_an_exit_code_the_command_printed_before_the_pipe_hides_nothing(self):
+        output = "exit 1\nFAIL: test_x (tests.a.B.test_x)\n"
+        for command in ('python run.py > out.txt 2>&1; echo "exit $?"; grep FAIL out.txt | head',
+                        "make; printf 'code %s\\n' $?; grep error log.txt | sort -u"):
+            with self.subTest(command=command):
+                self.assertNotIn(Code.PIPE_HIDES_EXIT, codes(ran(command, output)),
+                                 "the output already holds the exit code that matters")
+        self.assertIn(Code.PIPE_HIDES_EXIT, codes(ran("echo $?; python run.py 2>&1 | tail", output)),
+                      "an echo of $? before the failing command prints another code, so the warning stays")
+
     def test_pipefail_and_a_failed_pipe_hide_nothing(self):
         output = "ValueError: bad\n"
         for raw in (ran("set -o pipefail; python build.py | tail", output),

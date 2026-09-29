@@ -197,11 +197,17 @@ class Reading:
         return result, {**kept, "stdout": stdout}
 
     def hiding_pipe(self) -> str | None:
-        """The last command of the pipe that gave a Bash command exit code 0, or None when no pipe did."""
+        """The last command of the pipe that gave a Bash command exit code 0, or None when no pipe did, or
+        when an echo or printf of $?, after some other command and before that pipe, already put that
+        command's exit code in the output."""
         if not self.bash or self.failed or "pipefail" in self.command:
             return None
         lines = shell.pipelines(self.command, self.found)
-        return lines[-1].commands[-1].name if lines and len(lines[-1].commands) > 1 else None
+        if not lines or len(lines[-1].commands) < 2:
+            return None
+        printed = any(simple.name in ("echo", "printf") and any("$?" in word for word in simple.words[1:])
+                      for line in lines[1:-1] for simple in line.commands)
+        return None if printed else lines[-1].commands[-1].name
 
     def reported(self) -> Result | None:
         """PIPE_HIDES_EXIT when a pipe gave a command that reports errors exit code 0, and ERRORS_IN_OUTPUT
