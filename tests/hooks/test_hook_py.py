@@ -40,10 +40,12 @@ class HookPyTest(unittest.TestCase):
         shutil.rmtree(self.data, ignore_errors=True)
 
     def hook(self, event: dict, checks: str = "", argument: str = "tool_event") -> dict:
-        """Run hook.py on the event with the named test checks, and return its one JSON answer."""
+        """Run hook.py on the event with the named test checks, and return its one JSON answer. It runs in
+        io-guard's empty test folder: macOS reads the recorded C:\\project as a relative path, which from the
+        repository would find this repository's own .claude/io-guard.json."""
         done = subprocess.run([sys.executable, str(HOOK_PY), argument],
                               input=json.dumps(event).encode("ascii"), capture_output=True,
-                              env={**self.env, "IOGUARD_TEST_CHECKS": checks}, timeout=60)
+                              env={**self.env, "IOGUARD_TEST_CHECKS": checks}, cwd=self.data, timeout=60)
         self.assertEqual(done.returncode, 0, f"hook.py always exits 0: {done.stderr!r}")
         self.assertTrue(done.stdout.isascii(), "hook.py writes ASCII only")
         return json.loads(done.stdout)
