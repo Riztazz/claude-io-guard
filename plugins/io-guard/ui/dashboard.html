@@ -26,9 +26,14 @@
   .group-about { color: var(--muted); font-size: 12px; margin: 0 0 8px; }
   input[type=search], input[type=number], input[type=text], textarea {
     background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px;
-    padding: 5px 8px; font: inherit; }
+    padding: 7px 10px; font: inherit; min-height: 34px; }
   input[type=search] { width: 100%; margin: 12px 0 0; }
-  textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 12px; min-height: 64px; }
+  input[type=number] { width: 10em; }
+  input[type=text] { width: 16em; max-width: 100%; }
+  textarea { display: block; width: 100%; max-width: 100%; resize: vertical; font-family: ui-monospace, monospace;
+             font-size: 12px; min-height: 110px; }
+  .wide { margin-top: 8px; }
+  .wide .actions { margin-top: 6px; }
   button { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line);
            border-radius: 999px; padding: 2px 12px; cursor: pointer; }
   button:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -195,16 +200,24 @@ function control(row, value, save, forbids) {
     chips.append(input);
     return chips;
   }
-  const box = make("textarea", {"aria-label": label(row)});
+  const box = make("textarea", {"aria-label": label(row), spellcheck: "false"});
   box.value = JSON.stringify(value, null, 2);
-  const wrap = make("div", {style: "width: 100%"}, box);
-  wrap.append(make("button", {type: "button", text: "Save", onclick: () => {
+  const wrap = make("div", {}, box);
+  wrap.append(make("div", {class: "actions"}, make("button", {type: "button", text: "Save", onclick: () => {
     try { save(JSON.parse(box.value)); }
     catch (failure) {
       wrap.closest(".card").querySelector(".err").textContent = "That is not JSON: " + failure.message;
     }
-  }}));
+  }})));
   return wrap;
+}
+
+const wide = row => row.type === "list" || row.type === "dict";
+
+function placed(row, rowNode, parent, value, save, forbids) {
+  const made = control(row, value, save, forbids);
+  if (wide(row)) parent.append(make("div", {class: "wide"}, made));
+  else rowNode.append(made);
 }
 
 function card(row) {
@@ -219,11 +232,13 @@ function card(row) {
   const source = row.user === null ? "Yours: the default" : "Yours";
   const reset = row.user === null ? null : make("button", {type: "button", text: "Reset",
     onclick: () => send(node, {key: row.key, scope: "user", remove: true})});
-  const top = make("div", {class: "row"}, make("div", {}, name, helpButton),
-    make("div", {class: "row"}, make("span", {class: "muted", text: source}), reset,
-      control(row, yours, value => send(node, {key: row.key, scope: "user", value: value}), [])));
-  node.append(top, help);
+  const right = make("div", {class: "row"}, make("span", {class: "muted", text: source}), reset);
+  const top = make("div", {class: "row"}, make("div", {}, name, helpButton), right);
+  node.append(top);
+  placed(row, right, node, yours, value => send(node, {key: row.key, scope: "user", value: value}), []);
+  node.append(help);
   const project = make("div", {class: "project row"});
+  const below = make("div", {});
   project.append(make("span", {class: "muted", text: "This project"}));
   if (!row.project_may_set) {
     project.append(make("span", {class: "muted", text: "Only your own config sets this."}));
@@ -237,15 +252,15 @@ function card(row) {
           value: row.project_forbids.some(forbidden => sameValue(forbidden, yours)) ? row.default : yours})}));
     project.append(pick);
     if (overridden) {
-      project.append(control(row, row.project,
-        value => send(node, {key: row.key, scope: "project", value: value}), row.project_forbids));
+      placed(row, project, below, row.project,
+        value => send(node, {key: row.key, scope: "project", value: value}), row.project_forbids);
     }
     if (row.project_forbids.length) {
       project.append(make("span", {class: "muted",
         text: "A project can't pick " + row.project_forbids.map(shown).join(" or ")}));
     }
   }
-  node.append(project, make("div", {class: "err", text: refusals.get(row.key) || ""}));
+  node.append(project, below, make("div", {class: "err", text: refusals.get(row.key) || ""}));
   return node;
 }
 
