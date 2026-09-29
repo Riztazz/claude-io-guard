@@ -15,6 +15,7 @@ import functools
 import hashlib
 import os
 import sys
+import tempfile
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -103,6 +104,12 @@ def restart_manager(path: Path) -> tuple[Process, ...]:
         raise OSError(f"The list of processes that hold {path} kept growing.")
     finally:
         manager.RmEndSession(session)
+
+
+def lock_folder(data_dir: Path | None) -> Path:
+    """io-guard's folder, or without one a folder in the system's temporary folder, which every io-guard
+    process without one shares."""
+    return data_dir or Path(tempfile.gettempdir()) / "io-guard"
 
 
 @contextmanager

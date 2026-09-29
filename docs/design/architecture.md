@@ -44,7 +44,7 @@ plugins/io-guard/
         python_source.py           compile_report: a Python body's syntax error or warning, without running it
         paths.py                   normalise, msys_prefix, reserved, link_target, inside, resolved, LockTable
         git.py                     Git, the GitPort implementation
-        locks.py                   holders, file_lock
+        locks.py                   holders, file_lock, lock_folder
         proc.py                    on_path, located, run, Pump, background
         results.py                 CodeSpec, CODES, Code, Result, Fix, render, callable_name, meanings
         config.py                  Config, SCHEMA, load, validate, merge
@@ -897,6 +897,7 @@ def parse_attributes(raw: bytes) -> dict[str, str]
 def holders(path: Path, platform: Platform) -> tuple[Process, ...]   # task 19: Restart Manager or lsof
 def parse_lsof(raw: bytes) -> tuple[Process, ...]
 def file_lock(path: Path, data_dir: Path, wait_s: float = 5.0) -> ContextManager[None]  # across processes
+def lock_folder(data_dir: Optional[Path]) -> Path   # io-guard's folder, else one in the system's temp folder
 
 # proc.py
 def on_path(name: str, env: Mapping[str, str], skip: Sequence[str] = ()) -> Optional[str]
@@ -1158,7 +1159,9 @@ the permission prompt show the rewritten content, BOM and CRLF, on 2.1.281 and 2
 and MCP", row 27). A check's own ASK or DENY still outranks it.
 
 `verify.write` is the one check that writes after a tool has. It puts back a BOM or line endings the write
-lost, through `write_atomic`, and its answer tells the agent to read the file again. An Edit straight after
+lost, through `write_atomic` inside `lib.locks.file_lock`, as the io tools write (D13). It gives up, and
+reports the loss instead, when the lock stays held past `REPAIR_WAIT_S`, 2 s, or when the file changed since
+the check read it (task 119). Its answer tells the agent to read the file again. An Edit straight after
 such a repair succeeded without a new Read on 2.1.281 and 2.1.283 (`context.md`, "Hooks and MCP", row 29).
 
 PostToolUse answers carry `additionalContext`, `classifierContext` and `updatedToolOutput`. An
@@ -1630,8 +1633,10 @@ in whatever moved around it. `changed` trims the common head and tail and compar
 and a middle over 4,000 lines is one change.
 
 Two writers feed it, both in the io server. `journal.write`, at PostToolUse for Edit and Write, reads the
-file against the snapshot `verify.write` kept at PreToolUse, and runs before `verify.write` takes it. A
-file too large for that snapshot to keep its bytes goes unrecorded. The io tools that change a file record
+file against the snapshot `verify.write` kept at PreToolUse, and runs before `verify.write` takes it. With
+`verify.write` off, `journal.write` keeps the same snapshot itself, through `verify_write.write_snapshot`,
+after `conform.write` and `conform.edit`, and takes it when done (task 119). A file too large for that
+snapshot to keep its bytes goes unrecorded. The io tools that change a file record
 from `mcp.in_place.write`, which holds the bytes before and after. `io.restore` records nothing, since it
 undoes. The check's own `enabled` switches both off.
 

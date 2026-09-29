@@ -14,12 +14,15 @@ A file the agent has read keeps its new profile in the session, so shell.touched
 only for what that command did.
 """
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.lib.config import ConfigKey
-from ioguard.lib.context import Context, Snapshot, memory_file
+from ioguard.lib.context import Context, Snapshot, memory_file, read_or_none
+from ioguard.lib.locks import file_lock, lock_folder
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.drift import (CONTROL, NON_ASCII, REPLACEMENT, Edited, changed_lines, drift, edited,
                                frontmatter_end, lines, lines_holding, restored, text_of, would_collapse)
@@ -32,6 +35,7 @@ SNAPSHOT_BYTES = 2 * 1024 * 1024
 MAX_BYTES = 16 * 1024 * 1024
 REREAD = "Read the file again before the next Edit, because io-guard changed it after the write."
 SHOWN = 5               # line numbers a message lists before it gives the rest as a count
+REPAIR_WAIT_S = 2.0     # seconds the repair waits for an io tool that holds the file, before it gives up
 
 
 @dataclass(frozen=True)
@@ -133,6 +137,17 @@ def compare(written: Written, tool: str, platform: str, collapse_percent: int) -
     return tuple(results)
 
 
+def write_snapshot(event: Event, ctx: Context, options: Mapping[str, Any]) -> Snapshot:
+    """The file an Edit or Write is about to change, and the input the tool runs with. verify.write keeps
+    it, and journal.write keeps it when verify.write is off. Past snapshot_bytes only the profile is kept."""
+    path = event.file_path
+    data = read_or_none(ctx.fs, path, options["max_bytes"] + 1)
+    if data is None:
+        return Snapshot(path, None, None, event.tool_input)
+    kept = data if len(data) <= options["snapshot_bytes"] else None
+    return Snapshot(path, profile(data), kept, event.tool_input)
+
+
 class VerifyWrite(Check):
     meta = CheckMeta(
         id="verify.write", layer=Layer.BYTES,
@@ -164,7 +179,7 @@ class VerifyWrite(Check):
         if event.file_path is None or event.tool_use_id is None:
             return Decision.observe(self.meta.id)
         if event.kind is HookEvent.PRE_TOOL_USE:
-            ctx.session.keep_snapshot(event.tool_use_id, self.snapshot(event, ctx))
+            ctx.session.keep_snapshot(event.tool_use_id, write_snapshot(event, ctx, self.options))
             return Decision.observe(self.meta.id)
         snapshot = ctx.session.take_snapshot(event.tool_use_id)
         if event.kind is not HookEvent.POST_TOOL_USE or not isinstance(snapshot, Snapshot):
@@ -194,15 +209,6 @@ class VerifyWrite(Check):
             return Decision.observe(self.meta.id)
         return Decision(self.meta.id, Verdict.ALLOW, results=found)
 
-    def snapshot(self, event: Event, ctx: Context) -> Snapshot:
-        path = event.file_path
-        try:
-            data = ctx.fs.read_bytes(path, self.options["max_bytes"] + 1)
-        except OSError:
-            return Snapshot(path, None, None, event.tool_input)
-        kept = data if len(data) <= self.options["snapshot_bytes"] else None
-        return Snapshot(path, profile(data), kept, event.tool_input)
-
     @staticmethod
     def expected(snapshot: Snapshot, event: Event) -> Edited | None:
         """The whole text the call asked for, and the lines of it the tool may restyle, such as its quotes:
@@ -229,7 +235,13 @@ class VerifyWrite(Check):
         fixed = restored(data, before.eol if found.eol else None, Bom.UTF8 if bom_lost else after.bom)
         if fixed is None or fixed == data:
             return None
-        ctx.fs.write_atomic(snapshot.path, fixed)
+        try:
+            with file_lock(snapshot.path, lock_folder(ctx.data_dir), REPAIR_WAIT_S):
+                if read_or_none(ctx.fs, snapshot.path, len(data) + 1) != data:
+                    return None
+                ctx.fs.write_atomic(snapshot.path, fixed)
+        except TimeoutError:
+            return None
         lost = ([f"{after.eol.value} line endings where it had {before.eol.value}"] if found.eol else []) + \
                (["no BOM"] if bom_lost else [])
         message = (f"The {event.tool_name} tool left {snapshot.path.name} with {' and '.join(lost)}, so "

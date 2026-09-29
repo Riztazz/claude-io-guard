@@ -2,14 +2,16 @@
 session's task tag, the last one io.snapshot named (GIT-4).
 
 The check reads an Edit's or a Write's file at PostToolUse against the snapshot verify.write kept at
-PreToolUse, before verify.write takes it, and the io tools call record_write from mcp.in_place for their own
-writes. A file too large for verify.write to keep its bytes goes unrecorded, since there is nothing to compare
-it with. A journal line that cannot be written is logged, and the call goes on.
+PreToolUse, before verify.write takes it. With verify.write off, the check keeps that snapshot itself, after
+conform.write and conform.edit, and takes it when it is done. The io tools call record_write from
+mcp.in_place for their own writes. A file too large to keep its bytes goes unrecorded, since there is
+nothing to compare it with. A journal line that cannot be written is logged, and the call goes on.
 """
 import logging
 from pathlib import Path
 
 from ioguard.checks.base import Check, CheckMeta, Cost
+from ioguard.checks.verify_write import write_snapshot
 from ioguard.lib import journal
 from ioguard.lib.context import Context, Snapshot, read_or_none
 from ioguard.lib.decisions import Decision
@@ -40,17 +42,24 @@ def record_write(ctx: Context, path: Path, tool: str, before: bytes | None, afte
 
 class JournalWrite(Check):
     meta = CheckMeta(
-        id="journal.write", layer=Layer.BYTES, events=frozenset({HookEvent.POST_TOOL_USE}),
+        id="journal.write", layer=Layer.BYTES,
+        events=frozenset({HookEvent.PRE_TOOL_USE, HookEvent.POST_TOOL_USE}),
         tools=frozenset({Tool.EDIT, Tool.WRITE}), platforms=frozenset({"win32", "darwin"}),
         severity=Severity.INFO, cost=Cost.MEDIUM, reads=frozenset({"file_path"}), writes=frozenset(),
-        after=frozenset(), config={}, codes=frozenset(),
+        after=frozenset({"conform.write", "conform.edit"}), config={}, codes=frozenset(),
         description="Records each Edit and Write in the edit journal, with the lines it changed and the "
                     "session's task tag.")
 
     def run(self, event: Event, ctx: Context) -> Decision:
-        if event.tool_use_id is None or not enabled(ctx):
+        if event.tool_use_id is None or event.file_path is None or not enabled(ctx):
             return Decision.observe(self.meta.id)
-        kept = ctx.session.peek_snapshot(event.tool_use_id)
+        verify = ctx.config.check_options("verify.write")
+        alone = not verify.get("enabled", True)
+        if event.kind is HookEvent.PRE_TOOL_USE:
+            if alone:
+                ctx.session.keep_snapshot(event.tool_use_id, write_snapshot(event, ctx, verify))
+            return Decision.observe(self.meta.id)
+        kept = (ctx.session.take_snapshot if alone else ctx.session.peek_snapshot)(event.tool_use_id)
         if not isinstance(kept, Snapshot) or (kept.profile is not None and kept.data is None):
             return Decision.observe(self.meta.id)
         after = read_or_none(ctx.fs, kept.path)

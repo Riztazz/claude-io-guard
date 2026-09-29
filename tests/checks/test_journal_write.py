@@ -4,6 +4,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from types import MappingProxyType
 
 from ioguard.checks.conform_edit import ConformEdit
 from ioguard.checks.conform_write import ConformWrite
@@ -12,6 +13,7 @@ from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import Registry
 from ioguard.checks.verify_write import VerifyWrite
 from ioguard.lib import journal
+from ioguard.lib.config import Config, defaults
 from ioguard.lib.context import Context, SessionState, Snapshot
 from ioguard.lib.events import Event, Surface
 from ioguard.lib.platform import Platform
@@ -68,6 +70,25 @@ class AnEditIsJournaled(JournalTest):
         [entry] = journal.entries(self.home)
         self.assertEqual((entry.changed.lines, entry.tag), (((1, 2),), None),
                          "a file the Write made is new from line 1, with no tag before any snapshot")
+
+
+class TheJournalNeedsNoVerifyWrite(JournalTest):
+    def test_with_verify_write_off_an_edit_is_still_journaled(self):
+        registry = Registry()
+        for check in (ConformWrite, ConformEdit, JournalWrite, VerifyWrite):
+            registry.register(check)
+        values = {**defaults(registry.keys()).values, "checks.verify.write.enabled": False}
+        ctx = Context.fake({PATH: b"a\nb\nc\n"}, config=Config(MappingProxyType(values)), platform=WINDOWS,
+                           data_dir=self.home, session=SessionState.shared(self.home, "s1"),
+                           env={"CLAUDE_PROJECT_DIR": str(PROJECT)})
+        tool_input = {"file_path": str(PATH), "old_string": "b", "new_string": "B"}
+        for raw in (events.edit(PATH, "b", "B", PROJECT),
+                    events.post_tool_use("Edit", tool_input, {"filePath": str(PATH)}, PROJECT)):
+            Pipeline(registry).run(Event.from_hook_json(raw, Surface.MCP_HOOK, WINDOWS), ctx)
+            ctx.fs.files[PATH] = b"a\nB\nc\n"
+        [entry] = journal.entries(self.home)
+        self.assertEqual(entry.changed.lines, ((2, 2),), "the journal keeps its own snapshot of the file")
+        self.assertIsNone(ctx.session.peek_snapshot(events.TOOL_USE_ID), "and takes it when it is done")
 
 
 if __name__ == "__main__":

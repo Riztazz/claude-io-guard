@@ -1,8 +1,10 @@
 """verify.write compares each written file with the file before the write, puts back a lost BOM or line
 endings, and reports every other byte fault the write left."""
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from types import MappingProxyType
+from unittest import mock
 
 from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import default_registry
@@ -11,6 +13,7 @@ from ioguard.lib.config import Config, defaults
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Verdict
 from ioguard.lib.events import Event, Surface
+from ioguard.lib.locks import file_lock, lock_folder
 from ioguard.lib.platform import Platform
 from ioguard.lib.profile import profile
 from ioguard.lib.results import Code, Severity
@@ -200,6 +203,35 @@ class ALostBomOrEndingIsPutBack(unittest.TestCase):
         outcome, ctx = call("Write", {"content": "one\n"}, BOM + b"one\n", b"one\n")
         self.assertEqual((codes(outcome), ctx.fs.files[CWD / "a.txt"]), ([Code.BOM_RESTORED], BOM + b"one\n"),
                          "only the BOM was lost, and only the BOM goes back")
+
+    def test_a_repair_waits_for_the_file_lock_and_leaves_a_held_file_alone(self):
+        with mock.patch("ioguard.checks.verify_write.REPAIR_WAIT_S", 0.05), \
+                file_lock(CWD / "a.txt", lock_folder(None)):
+            outcome, ctx = call("Write", {"content": "one\n"}, BOM + b"one\r\n", b"one\n")
+        self.assertEqual((codes(outcome), ctx.fs.files[CWD / "a.txt"]),
+                         ([Code.EOL_MISMATCH, Code.BOM_CHANGED], b"one\n"),
+                         "while an io tool holds the file, the repair writes nothing and the loss is "
+                         "reported")
+
+    def test_a_repair_leaves_a_file_that_changed_after_the_check_read_it(self):
+        path = CWD / "a.txt"
+        ctx = Context.fake(files={path: BOM + b"one\r\n"}, config=config(False), platform=WINDOWS,
+                           env={"CLAUDE_CONFIG_DIR": str(CLAUDE)})
+        given = {"file_path": str(path), "content": "one\n"}
+        pre = events.pre_tool_use("Write", given, CWD)
+        Pipeline(REGISTRY).run(Event.from_hook_json(pre, Surface.MCP_HOOK, WINDOWS), ctx)
+        ctx.fs.files[path] = b"one\n"
+
+        @contextmanager
+        def theirs_lands_first(*_):
+            ctx.fs.files[path] = b"theirs\n"
+            yield
+
+        with mock.patch("ioguard.checks.verify_write.file_lock", theirs_lands_first):
+            Pipeline(REGISTRY).run(Event.from_hook_json(events.post_tool_use("Write", given, {}, CWD),
+                                                        Surface.MCP_HOOK, WINDOWS), ctx)
+        self.assertEqual(ctx.fs.files[path], b"theirs\n",
+                         "a write that landed after the check read the file is not overwritten")
 
     def test_with_repair_off_the_changes_are_reported_and_left(self):
         outcome, ctx = call("Write", {"content": "one\n"}, BOM + b"one\r\n", b"one\n", repair=False)

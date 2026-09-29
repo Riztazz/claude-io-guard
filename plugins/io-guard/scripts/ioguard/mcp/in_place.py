@@ -8,7 +8,6 @@ built-in Edit.
 """
 import hashlib
 import logging
-import tempfile
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
@@ -90,18 +89,12 @@ def held(path: Path, ctx: Context, tool: str) -> Iterator[None]:
     try:
         with ExitStack() as stack:
             try:
-                stack.enter_context(locks.file_lock(path, lock_folder(ctx), wait_s))
+                stack.enter_context(locks.file_lock(path, locks.lock_folder(ctx.data_dir), wait_s))
             except TimeoutError:
                 raise busy from None
             yield
     finally:
         lock.release()
-
-
-def lock_folder(ctx: Context) -> Path:
-    """io-guard's folder, or without one a folder in the system's temporary folder, which every
-    io-guard process without one shares."""
-    return ctx.data_dir or Path(tempfile.gettempdir()) / "io-guard"
 
 
 def load(path: Path, ctx: Context, tool: str, expect_hash: str = "") -> Loaded:
