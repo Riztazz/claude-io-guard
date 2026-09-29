@@ -276,9 +276,14 @@ class Touched(Check):
         if not written:
             return ()
         batch, script = callable_name("io.edit"), runs[0].script
-        message = (f"{script} changed {named(written, event.cwd, LISTED)}, which git tracks, so those writes "
-                   f"skipped io-guard's byte checks and Claude Code's checkpoints.")
-        fix = Fix(batch, {}, f"Make the next change to them with {batch} or the Edit tool.")
+        files = named(written, event.cwd, LISTED)
+        message = (f"{script} changed {files}, which git tracks, so those writes skipped io-guard's byte "
+                   f"checks and Claude Code's checkpoints.")
+        given = {resolve(word, event.cwd, ctx) for run in runs for word in run.arguments}
+        if given.isdisjoint(written):
+            fix = Fix(script, {}, f"Change {files} by changing {script} or what it reads, then run it again.")
+        else:
+            fix = Fix(batch, {}, f"Make the next change to them with {batch} or the Edit tool.")
         return (Result.of(Code.SHELL_WRITE, message, event.tool_name, ctx.platform.os,
                           severity=Severity.WARNING, fix=fix,
                           evidence={"script": script, "files": [path.as_posix() for path in written]}),)

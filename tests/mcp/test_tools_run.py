@@ -85,6 +85,13 @@ class AProgramRunsWithNoShell(RunTest):
         self.assertEqual((raised.exit, raised.ok, [error.kind for error in raised.errors]),
                          (1, False, ["exception"]), "the lines that report errors come back with their kind")
 
+    def test_an_error_line_in_a_long_log_is_numbered_from_the_files_start(self):
+        program = "for n in range(1, 2001): print(f'step {n:04d}')\nprint('ValueError: boom')\n"
+        found = self.call(run, RunInput(lang="python", code=program),
+                          self.context(**{"checks.shell.results.max_bytes": 500}))
+        self.assertEqual([error.line for error in found.errors], [2001],
+                         "the line io.read_log gives, though only the log's last 500 bytes were read")
+
     def test_the_utf8_defaults_reach_the_program(self):
         program = "import os; print(os.environ['PYTHONUTF8'], os.environ['X'])"
         found = self.call(run, RunInput(argv=[sys.executable, "-c", program], env={"X": "given"}),

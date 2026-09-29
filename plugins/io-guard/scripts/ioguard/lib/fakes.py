@@ -49,6 +49,10 @@ class FakeFs:
         self.writes.append(path)
         return WriteReport(path=path, bytes_written=len(data), attempts=1)
 
+    def append(self, path: Path, data: bytes) -> None:
+        self.files[path] = self.files.get(path, b"") + data
+        self.writes.append(path)
+
     def stat(self, path: Path) -> FileStat | None:
         if path not in self.files:
             return None
@@ -79,7 +83,9 @@ class FakeFs:
         return tail[tail.find(b"\n") + 1:] if b"\n" in tail else b""
 
     def read_from(self, path: Path, offset: int, limit: int) -> bytes:
-        return self.read_bytes(path)[offset:offset + limit]
+        if path not in self.files:
+            raise FileNotFoundError(path)
+        return self.files[path][offset:offset + limit]
 
     def find_named(self, root: Path, name: str, limit: int) -> tuple[Path, ...]:
         return tuple(sorted(file for file in self.files

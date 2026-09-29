@@ -258,6 +258,8 @@ class FsPort(Protocol):
     def read_tail(self, path: Path, limit: int) -> bytes: ...       # the last whole lines in limit bytes
     def read_from(self, path: Path, offset: int, limit: int) -> bytes: ...   # task 25, for io.read_log
     def write_atomic(self, path: Path, data: bytes) -> WriteReport: ...
+    def append(self, path: Path, data: bytes) -> None: ...    # task 120, for CLAUDE_ENV_FILE, which others
+                                                              # append to as well
     def stat(self, path: Path) -> Optional[FileStat]: ...     # None for a path no file can have, task 106
     def exists(self, path: Path) -> bool: ...
     def is_dir(self, path: Path) -> bool: ...
@@ -1492,7 +1494,8 @@ io.append(path, text, wrap_column = None, date_prefix = False, expect_hash = "")
    after it. `io.append` adds lines after the last one, dated after any list marker when asked, and wrapped at
    `wrap_column`, or at the `.editorconfig` `max_line_length` when none is given.
 4. **Write once.** The text goes back in the file's encoding and BOM, through `write_atomic`, only when a byte
-   changed. A write another program blocks is `FILE_LOCKED`, naming the holder.
+   changed. A write another program blocks is `FILE_LOCKED`, naming the holder. A write the system refuses
+   with no holder it can name is `READ_ONLY`: the file or its folder cannot be written (task 120).
 
 A place that does not match once refuses the whole call, and nothing is written (ANC-3). The refusal is task
 20's diagnosis, through `checks.diagnose.Diagnosis` with a `Wording` that names the tool's own argument and

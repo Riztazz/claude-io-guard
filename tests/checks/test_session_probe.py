@@ -12,7 +12,7 @@ from ioguard.lib.config import Config, Scope, all_keys, defaults, validate
 from ioguard.lib import bytesio
 from ioguard.lib.context import Context, Probe, SessionState, ToolVersion
 from ioguard.lib.events import Event, Surface
-from ioguard.lib.fakes import FakeGit
+from ioguard.lib.fakes import FakeFs, FakeGit
 from ioguard.lib.git import GitError, GitStatus, StatusEntry
 from ioguard.lib.platform import Platform
 from tests.support import events
@@ -147,6 +147,18 @@ class TheShellDefaults(unittest.TestCase):
                          "another hook's line stays first, and ours follow it once")
         self.assertEqual(ctx.fs.files[ENV_FILE].count(b"PYTHONUTF8"), 1,
                          "a resumed session adds no duplicate")
+
+    def test_a_line_another_hook_adds_while_the_probe_writes_is_kept(self):
+        class Racing(FakeFs):
+            def read_bytes(self, path, limit=None):
+                data = super().read_bytes(path, limit)
+                self.files[path] += b"export LATE=1\n"
+                return data
+
+        fs = Racing({ENV_FILE: b"export OTHER=1\n"})
+        session_probe.add_lines(ENV_FILE, [b"export PYTHONUTF8=1\n"], fs)
+        self.assertEqual(fs.files[ENV_FILE], b"export OTHER=1\nexport LATE=1\nexport PYTHONUTF8=1\n",
+                         "io-guard appends its lines, so a line written after its read is never lost")
 
     def test_no_env_file_writes_only_the_probe(self):
         ctx = context(env={"CLAUDE_ENV_FILE": ""})

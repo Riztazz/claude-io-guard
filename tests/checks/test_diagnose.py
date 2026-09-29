@@ -151,6 +151,19 @@ class AFailedCallIsAnsweredAfterIt(unittest.TestCase):
         self.assertEqual((found.code, found.fix.input["limit"]), (Code.READ_TOO_LARGE, 2_000),
                          "a part of 2,000 lines of 24 bytes fits under the part size")
 
+    def test_a_read_too_large_counts_its_lines_in_blocks(self):
+        big = b"".join(b"line %06d of a big file\n" % number for number in range(20_000))
+        ctx = context({CWD / "big.log": big})
+        asked = []
+        whole, part = ctx.fs.read_bytes, ctx.fs.read_from
+        ctx.fs.read_bytes = lambda path, limit=None: asked.append((path, limit)) or whole(path, limit)
+        ctx.fs.read_from = lambda path, at, limit: asked.append((path, limit)) or part(path, at, limit)
+        outcome = failed("Read", {"file_path": str(CWD / "big.log")},
+                         "File content (480.5KB) exceeds maximum allowed size (256KB).", ctx)
+        found = results(outcome, "diagnose.failure")[0]
+        self.assertEqual(found.evidence["lines"], 20_000, "every line is counted")
+        self.assertNotIn((CWD / "big.log", None), asked, "the file is never read whole to count its lines")
+
     def test_a_rejected_pattern_gets_a_literal_one(self):
         found = results(failed("Grep", {"pattern": "f(x"}, REJECTED + "    (\nerror: unclosed group",
                                context()), "diagnose.failure")[0]

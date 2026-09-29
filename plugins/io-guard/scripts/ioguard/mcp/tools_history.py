@@ -19,7 +19,7 @@ from ioguard.lib.context import Context, read_or_none
 from ioguard.lib.git import GitError
 from ioguard.lib.journal import text_of
 from ioguard.lib.results import Code, Fix, callable_name
-from ioguard.mcp.in_place import NOTE, Place, held, places_shown, refused
+from ioguard.mcp.in_place import NOTE, Place, held, places_shown, refused, write_refused
 from ioguard.mcp.toolspec import InvalidArguments, ToolCall, ToolSpec, doc
 
 GLOB = frozenset("*?[")
@@ -202,8 +202,7 @@ def restore(given: RestoreInput, call: ToolCall) -> RestoreOutput:
                 ctx.fs.make_folders(kept.path.parent)
                 ctx.fs.write_atomic(kept.path, found.blob(kept))
             except PermissionError:
-                raise refused(Code.FILE_LOCKED, f"Another program holds {kept.path.name} open, so {tool} "
-                              f"could not replace it.{done}", tool, kept.path, ctx) from None
+                raise write_refused(kept.path, tool, ctx, done) from None
             except OSError as error:
                 raise refused(Code.PATH_NOT_FOUND, f"{tool} could not write {kept.path.as_posix()}: "
                               f"{error.strerror or error}.{done}", tool, kept.path, ctx) from None

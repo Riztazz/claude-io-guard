@@ -34,6 +34,9 @@ class DryFs(LiveFs):
         self.written[path] = data
         return bytesio.WriteReport(path=path, bytes_written=len(data), attempts=0)
 
+    def append(self, path: Path, data: bytes) -> None:
+        self.written[path] = (self.read_bytes(path) if self.exists(path) else b"") + data
+
     def exists(self, path: Path) -> bool:
         return path in self.written or super().exists(path)
 

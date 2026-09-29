@@ -103,14 +103,14 @@ def export_lines(values: Mapping[str, object]) -> tuple[list[bytes], list[str]]:
 
 
 def add_lines(path: Path, lines: list[bytes], fs: FsPort) -> None:
-    """Append the lines path lacks, keeping what another hook wrote there."""
+    """Append the lines path lacks, keeping what another hook wrote there, before or during the append."""
     existing = fs.read_bytes(path) if fs.exists(path) else b""
     have = set(existing.splitlines(keepends=True))
     missing = [line for line in lines if line not in have]
     if missing:
         separator = b"" if not existing or existing.endswith(b"\n") else b"\n"
         fs.make_folders(path.parent)
-        fs.write_atomic(path, existing + separator + b"".join(missing))
+        fs.append(path, separator + b"".join(missing))
 
 
 class SessionProbe(Check):

@@ -75,6 +75,21 @@ def refused(code: Code, message: str, tool: str, path: Path, ctx: Context, fix: 
                                  fix=fix, evidence=evidence))
 
 
+def write_refused(path: Path, tool: str, ctx: Context, done: str) -> ToolFailure:
+    """The refusal of a write the system refused: FILE_LOCKED naming the program that holds the file when
+    the platform names one, else READ_ONLY, since the file or its folder cannot be written. done says what
+    the call had written before, or that it wrote nothing."""
+    try:
+        holding = ", ".join(f"{each.name} (process {each.pid})" for each in ctx.fs.holders(path))
+    except OSError:
+        holding = ""
+    if holding:
+        return refused(Code.FILE_LOCKED, f"{holding} holds {path.name} open, so {tool} could not replace "
+                       f"it.{done}", tool, path, ctx)
+    return refused(Code.READ_ONLY, f"The system refused the write, and no program holds {path.name} open, "
+                   f"so {tool} cannot write {path.name} or its folder.{done}", tool, path, ctx)
+
+
 @contextmanager
 def held(path: Path, ctx: Context, tool: str) -> Iterator[None]:
     """path held against the process's other threads, then against every other io-guard process, for the
@@ -171,12 +186,7 @@ def write(loaded: Loaded, data: bytes, ctx: Context, tool: str) -> Written:
         try:
             ctx.fs.write_atomic(path, data)
         except PermissionError:
-            try:
-                holding = ", ".join(f"{each.name} (process {each.pid})" for each in ctx.fs.holders(path))
-            except OSError:
-                holding = ""
-            raise refused(Code.FILE_LOCKED, f"{holding or 'Another program'} holds {path.name} open, so "
-                          f"{tool} could not replace it and wrote nothing.", tool, path, ctx) from None
+            raise write_refused(path, tool, ctx, " It wrote nothing.") from None
         ctx.session.wrote(path)
         try:
             record_write(ctx, path, tool, loaded.data, data)

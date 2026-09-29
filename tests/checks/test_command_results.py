@@ -141,6 +141,12 @@ class APipeThatHidesAFailure(unittest.TestCase):
                                                 "3| ValueError: bad"),
                          "a short output still says the exit code is the filter's")
 
+    def test_a_command_that_only_lists_and_prints_files_hides_nothing(self):
+        command = "ls open; ls done | tail -5; cat done/$(ls done | grep '^96') | head -60"
+        output = "a.md\nb.md\n    self.assertEqual(long, [])\nAssertionError: Lists differ\n"
+        self.assertEqual(codes(ran(command, output)), [],
+                         "ls lists names and cat prints a file, so an error line there is quoted, not raised")
+
     def test_an_exit_code_the_command_printed_before_the_pipe_hides_nothing(self):
         output = "exit 1\nFAIL: test_x (tests.a.B.test_x)\n"
         for command in ('python run.py > out.txt 2>&1; echo "exit $?"; grep FAIL out.txt | head',

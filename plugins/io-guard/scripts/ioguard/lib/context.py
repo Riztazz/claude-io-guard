@@ -62,6 +62,7 @@ class FsPort(Protocol):
     def read_tail(self, path: Path, limit: int) -> bytes: ...  # the last whole lines within limit bytes
     def read_from(self, path: Path, offset: int, limit: int) -> bytes: ...   # limit bytes from offset on
     def write_atomic(self, path: Path, data: bytes) -> bytesio.WriteReport: ...
+    def append(self, path: Path, data: bytes) -> None: ...     # at the end, for a file others append to
     def stat(self, path: Path) -> FileStat | None: ...
     def exists(self, path: Path) -> bool: ...
     def is_dir(self, path: Path) -> bool: ...
@@ -295,6 +296,9 @@ class LiveFs:
     def write_atomic(self, path: Path, data: bytes) -> bytesio.WriteReport:
         return bytesio.write_atomic(path, data)
 
+    def append(self, path: Path, data: bytes) -> None:
+        bytesio.append(path, data)
+
     def stat(self, path: Path) -> FileStat | None:
         """path's size, time and read-only flag, or None when no file can be there: missing, through a
         file, or a name the system rejects, such as one holding ? on Windows or one too long."""
@@ -352,6 +356,20 @@ class LiveFs:
             if len(found) > limit:
                 break
         return tuple(sorted(found)[:limit + 1])
+
+
+COUNT_BLOCK = 1024 * 1024       # the bytes newlines reads at a time, so a large log is never read whole
+
+
+def newlines(fs: FsPort, path: Path, end: int) -> int:
+    """The line breaks in path's first end bytes, read in blocks. OSError when the file cannot be read."""
+    count = at = 0
+    while at < end:
+        block = fs.read_from(path, at, min(COUNT_BLOCK, end - at))
+        if not block:
+            break
+        count, at = count + block.count(b"\n"), at + len(block)
+    return count
 
 
 def read_or_none(fs: FsPort, path: Path, limit: int | None = None) -> bytes | None:

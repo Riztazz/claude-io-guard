@@ -159,6 +159,17 @@ class TheCommandsChangesAreNamed(unittest.TestCase):
         self.assertEqual([code for code, _ in found["make"]], [Code.TOUCHED_BY_SHELL],
                          "a build that changes a file is no script run")
 
+    def test_a_file_a_script_writes_unasked_is_changed_by_running_the_script_again(self):
+        session = Session()
+        session.git.tracked = frozenset({CWD / "SKILL.md"})
+        session.run(events.bash("python tools/skill.py", CWD))
+        session.git.current_status = GitStatus((entry("SKILL.md", " M"),))
+        written = [result for result in session.after(command="python tools/skill.py")
+                   if result.code is Code.SHELL_WRITE][0]
+        self.assertEqual(written.fix.text,
+                         "Change SKILL.md by changing tools/skill.py or what it reads, then run it again.",
+                         "a file a generator writes is changed through the generator, never by hand")
+
     def test_a_file_git_changed_is_not_blamed_on_the_script(self):
         blamed = {}
         for command in ("git mv a.cpp b.cpp && python check.py", "git checkout HEAD -- b.cpp; python m.py",

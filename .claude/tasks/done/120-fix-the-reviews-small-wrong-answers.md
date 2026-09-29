@@ -3,7 +3,7 @@ title: Fix the small wrong answers the code review found
 stage: I
 area: mcp
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: []
 platforms: [windows, macos]
@@ -56,3 +56,36 @@ The code review of 2026-09-29 found these, each small and each on its own:
 ## Done when
 
 - A test per item.
+
+## What changed
+
+Each item's test failed first, for the reason named.
+
+1. `mcp/dashboard_http.py`: `allowed` compares the token as bytes, so a token with U+00E9 gets 403. Before, the
+   `TypeError` dropped the connection (`tests/mcp/test_tools_dashboard.py`).
+2. `mcp/tools_run.py`: `reading` adds the line breaks before the tail it read, counted by
+   `lib.context.newlines` in 1 MB blocks. A run printing 2,000 lines, then `ValueError`, with `max_bytes` 500,
+   names the error on line 2001, where it said 45 (`tests/mcp/test_tools_run.py`).
+3. `mcp/in_place.py`: `write_refused` names a holder only when `holders()` finds one, as `FILE_LOCKED`, and
+   otherwise gives `READ_ONLY`: the system refused the write, no program holds the file, and the file or its
+   folder cannot be written. `io.restore` in `mcp/tools_history.py` made the same guess, `Another program
+   holds ... open`, and now calls it too (`tests/mcp/test_tools_edit.py`).
+4. `checks/diagnose.py`: `too_large` takes the size from `stat` and counts lines with `newlines`, never
+   reading the file whole. The test watches reads of the large file only, since `FakeFs.read_tail` reads the
+   transcript whole, and it failed on HEAD with a whole read of the file (`tests/checks/test_diagnose.py`).
+   `FakeFs.read_from` now slices its bytes rather than reading the file through `read_bytes`.
+5. `checks/session_probe.py`: `add_lines` appends through the new `FsPort.append`, `lib.bytesio.append` in one
+   write. A line another hook adds between io-guard's read and its write is kept
+   (`tests/checks/test_session_probe.py`). The offline `DryFs` keeps an append in memory.
+6. `checks/command_results.py`: `ls` and `dir` join `READERS`. The task's guess was the command substitution,
+   but `cat done/$(ls done | grep '^96')` stays one word, and the two `ls` calls were what made the command
+   more than reading. The recorded command now gets nothing (`tests/checks/test_command_results.py`).
+7. `checks/touched.py`: when no file the script changed is among its arguments, the script wrote it unasked,
+   and the fix reads `Change SKILL.md by changing tools/skill.py or what it reads, then run it again.` A
+   script given the file, such as `python fmt.py b.cpp`, keeps the io.edit advice (`tests/checks/test_touched.py`).
+
+- The suite of 1,044 passes on Windows, 2 skipped. Each run prints two `ConnectionResetError` tracebacks from
+  an older page server test, filed as task 127.
+- `live-probe`, `live-script-write` and `live-results` passed on the CLI 2.1.283.
+- Docs: `docs/design/architecture.md` (`FsPort.append`, `READ_ONLY` for a refused write with no holder).
+- Checked on Windows on 2026-09-29.

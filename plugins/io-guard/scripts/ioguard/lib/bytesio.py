@@ -2,7 +2,8 @@
 
 write_atomic writes a temporary file beside the target and renames it over the target, so a reader sees
 the old bytes or the new ones and never half a file. open(path, "w") truncates first, which is how a file
-ends up empty.
+ends up empty. append adds bytes at the end in one write, for a file other programs append to at the same
+time, such as Claude Code's CLAUDE_ENV_FILE, where a replace would drop the lines they add meanwhile.
 """
 import errno
 import os
@@ -32,6 +33,12 @@ def read_bytes(path: Path, limit: int | None = None) -> bytes:
     """The file's bytes, or its first limit bytes."""
     with open(regular(path), "rb") as source:
         return source.read() if limit is None else source.read(limit)
+
+
+def append(path: Path, data: bytes) -> None:
+    """data added at the end of path in one write, the file made when it is missing."""
+    with open(path, "ab") as target:
+        target.write(data)
 
 
 def read_from(path: Path, offset: int, limit: int) -> bytes:

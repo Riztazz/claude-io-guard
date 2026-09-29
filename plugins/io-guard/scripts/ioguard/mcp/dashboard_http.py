@@ -111,7 +111,8 @@ class Dashboard:
                 return
 
     def allowed(self, host: str | None, token: str | None) -> bool:
-        return host == f"127.0.0.1:{self.port}" and hmac.compare_digest(token or "", self.token)
+        given = (token or "").encode("utf-8", "surrogateescape")
+        return host == f"127.0.0.1:{self.port}" and hmac.compare_digest(given, self.token.encode("ascii"))
 
 
 def body_length(given: str | None) -> int | None:

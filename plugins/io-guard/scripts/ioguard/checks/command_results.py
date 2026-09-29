@@ -50,8 +50,8 @@ BENIGN_EXITS = {
     **{name: {"5": "it collects no test"} for name in ("pytest", "python -m pytest")},
     "python -m unittest": {"5": "it finds no test to run"},
 }
-READERS = ["grep", "egrep", "fgrep", "rg", "ag", "ack", "findstr", "cat", "head", "tail", "less", "more",
-           "sed", "awk", "sort", "uniq", "wc", "cut", "tr", "jq", "git grep", "git log", "git show",
+READERS = ["ls", "dir", "grep", "egrep", "fgrep", "rg", "ag", "ack", "findstr", "cat", "head", "tail", "less",
+           "more", "sed", "awk", "sort", "uniq", "wc", "cut", "tr", "jq", "git grep", "git log", "git show",
            "git diff", "select-string", "sls", "get-content", "gc", "type"]
 QUIET = frozenset({"echo", "printf", "true", ":", "cd", "pushd", "popd", "export", "unset", "set", "sleep"})
 BUILDS = ["make", "cmake --build", "ninja", "msbuild", "dotnet build", "cargo build", "go build", "gradle",

@@ -16,6 +16,7 @@ from ioguard.lib import journal
 from ioguard.lib.config import Config, defaults
 from ioguard.lib.context import Context, LiveFs
 from ioguard.lib.fakes import FakeFs
+from ioguard.lib.locks import Process
 from ioguard.lib.platform import Platform, detect
 from ioguard.lib.results import Code, Severity, callable_name
 from ioguard.mcp.in_place import NOTE
@@ -123,6 +124,27 @@ class AnIoToolWriteIsJournaled(EditTest):
         ctx = self.context({CWD / "a.txt": b"one\n"})
         self.run_tool(edit, EditInput("a.txt", (EditPair("one", "one"),)), ctx)
         self.assertEqual(list(journal.entries(self.data)), [], "no write, no journal line")
+
+
+class RefusedFs(FakeFs):
+    """A file system that refuses every write, as a locked file or a folder with no write permission does."""
+
+    def write_atomic(self, path: Path, data: bytes):
+        raise PermissionError(path)
+
+
+class AWriteTheSystemRefusesIsNamed(EditTest):
+    def test_a_holder_is_named_only_when_one_is_found(self):
+        cases = {(): ("cannot write a.txt or its folder", Code.READ_ONLY),
+                 (Process(42, "Editor"),): ("Editor (process 42) holds a.txt open", Code.FILE_LOCKED)}
+        for held, (said, code) in cases.items():
+            with self.subTest(held=held):
+                fs = RefusedFs({CWD / "a.txt": b"one\n"}, holders={CWD / "a.txt": held})
+                ctx = Context.fake(config=Config(MappingProxyType(defaults().values)), platform=WINDOWS,
+                                   fs=fs, data_dir=self.data)
+                result = self.refusal(edit, EditInput("a.txt", (EditPair("one", "two"),)), ctx)
+                self.assertEqual((result.code, said in result.message), (code, True),
+                                 "a holder is named when the system names one, and never guessed")
 
 
 class AnInvisibleCharacterIsNamed(EditTest):

@@ -249,6 +249,10 @@ class ThePageServerAnswersOnlyItsOwnPage(ConfigTest):
                                  "a form post": 415},
                          "only the page io.dashboard gave can read or change a setting")
 
+    def test_a_token_that_is_not_ascii_is_refused_with_403(self):
+        self.assertEqual(self.request("GET", "/api/settings", token=chr(0xE9) * 8)[0], 403,
+                         "a token with a byte outside ASCII gets the same answer as a wrong one")
+
     def test_the_api_takes_the_token_from_its_header_alone_and_the_page_needs_none(self):
         cases = {"query token": self.request("GET", f"/api/settings?token={self.token}")[0],
                  "page, no token": self.request("GET", "/")[0],

@@ -22,7 +22,7 @@ from pathlib import Path
 from ioguard.checks.command_results import compiled
 from ioguard.checks.run_rules import judge, said
 from ioguard.lib import output, paths, proc, rules, runs
-from ioguard.lib.context import Context
+from ioguard.lib.context import Context, newlines
 from ioguard.lib.results import Code, Fix, Result, Severity, callable_name
 from ioguard.mcp import handles
 from ioguard.mcp.toolspec import InvalidArguments, ToolCall, ToolFailure, ToolSpec, doc
@@ -146,11 +146,13 @@ def reading(pump: proc.Pump, state: str, command: str, handle: str, note: str, c
     found = ctx.fs.stat(pump.log)
     size = 0 if found is None else found.size
     limit = options["max_bytes"]
-    data = ctx.fs.read_from(pump.log, max(0, size - limit), limit) if size else b""
+    start = max(0, size - limit)
+    data = ctx.fs.read_from(pump.log, start, limit) if size else b""
+    before = newlines(ctx.fs, pump.log, start) if start else 0
     text = data.decode("utf-8", "replace")
     width = options["line_chars"]
     found_errors = output.error_lines(text, compiled(options["error_patterns"]))[:options["shown_errors"]]
-    errors = [ErrorLine(line.number, line.kind, line.text[:width]) for line in found_errors]
+    errors = [ErrorLine(before + line.number, line.kind, line.text[:width]) for line in found_errors]
     lines = text.rstrip("\r\n").split("\n") if text else []
     tail = [line.rstrip("\r")[:width] for line in lines[-options["tail_lines"]:]]
     exit_code = pump.exit_code

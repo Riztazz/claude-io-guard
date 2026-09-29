@@ -26,7 +26,7 @@ from typing import Any
 from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.lib import anchors, paths, text, transcript
 from ioguard.lib.config import ConfigKey
-from ioguard.lib.context import Context, claude_folder
+from ioguard.lib.context import Context, claude_folder, newlines
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.git import GitError
@@ -256,18 +256,24 @@ class Diagnosis:
         return path
 
     def too_large(self) -> tuple[Result, ...]:
-        found = self.file()
+        """READ_TOO_LARGE with parts that fit one Read. The lines are counted in blocks, since the file is
+        too large to read whole by definition."""
+        found = None if self.path is None else self.ctx.fs.stat(self.path)
         if found is None:
             return ()
-        data, name = found[1], self.path.name
-        lines = data.count(b"\n") + (0 if data.endswith(b"\n") else 1)
-        per_part = max(50, min(2_000, self.options["part_bytes"] * max(lines, 1) // max(len(data), 1)))
+        size, name = found.size, self.path.name
+        try:
+            last = self.ctx.fs.read_from(self.path, max(0, size - 1), 1)
+            lines = newlines(self.ctx.fs, self.path, size) + (0 if last == b"\n" else 1)
+        except OSError:
+            return ()
+        per_part = max(50, min(2_000, self.options["part_bytes"] * max(lines, 1) // max(size, 1)))
         starts = ", ".join(f"{start:,}" for start in range(1, min(lines, per_part * 4) + 1, per_part))
-        message = f"{name} holds {len(data):,} bytes in {lines:,} lines, more than one Read returns."
+        message = f"{name} holds {size:,} bytes in {lines:,} lines, more than one Read returns."
         fix = Fix("Read", {"file_path": str(self.path), "offset": 1, "limit": per_part},
                   f"Read it in parts of {per_part:,} lines, with limit {per_part:,} and offset {starts} and "
                   f"on.")
-        return (self.result(Code.READ_TOO_LARGE, message, fix, lines=lines, bytes=len(data)),)
+        return (self.result(Code.READ_TOO_LARGE, message, fix, lines=lines, bytes=size),)
 
     def pattern(self) -> tuple[Result, ...]:
         given = self.failed.tool_input.get("pattern")
