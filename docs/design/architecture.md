@@ -46,6 +46,7 @@ plugins/io-guard/
         git.py                     Git, the GitPort implementation
         locks.py                   holders, file_lock, lock_folder
         proc.py                    on_path, located, run, Pump, background
+        logcap.py                  the copier a background run's output goes through, capped, run by its path
         results.py                 CodeSpec, CODES, Code, Result, Fix, render, callable_name, meanings
         config.py                  Config, SCHEMA, load, validate, merge
         config_edit.py             placed, value_at, encoded: one setting written where its file keeps it
@@ -911,8 +912,10 @@ def run(argv: Sequence[str], cwd: Path, env: Optional[Mapping[str, str]] = None,
         timeout_s: float = 10.0, stdin: bytes = b"") -> RunResult   # a timeout, a program PATH lacks, or one
                                                             # that cannot start is a result, and stdin is never
                                                             # the caller's own
-def background(argv: Sequence[str], cwd: Path, env: Mapping[str, str], log: Path) -> Pump
-                                                            # task 25: stdout and stderr in one log
+def background(argv: Sequence[str], cwd: Path, env: Mapping[str, str], log: Path, cap: int) -> Pump
+                                                            # task 25: stdout and stderr in one log, task
+                                                            # 124: through lib.logcap, its own process,
+                                                            # which keeps the first cap bytes
 class Pump: exit_code, wait(timeout_s), when_done(callback), seconds(), stop()   # stop ends the whole tree
 
 # runs.py, task 25
@@ -1073,7 +1076,8 @@ task 21 `skip_trees`, empty by default, and `checks.shell.touched.listed`. Task 
 `line_chars`, `max_bytes` of 16 MB, `code_pages` and `learn_from_bytes` of 5,000. Task 23 added
 `io.read.max_bytes` of 16 MB and `io.read.max_chars` of 60,000, and `checks.server.heartbeat.stale_s` of 30.
 Task 24 added `io.edit.max_bytes` of 16 MB and `io.edit.wait_ms` of 5,000, which `io.edit`, `io.splice` and
-`io.append` share. Task 25 added `io.run.timeout_s` of 120, `io.run.handle_ttl_s` of 3,600,
+`io.append` share. Task 25 added `io.run.timeout_s` of 120, `io.run.handle_ttl_s` of 3,600 (task 124 added
+`io.run.log_max_bytes` of 64 MB, user-only),
 `io.read_log.max_lines` of 500 and `noise_patterns`. Task 26 added `format`, the command `io.format` runs per
 extension, clang-format for C and C++ by default, and `io.format.timeout_s` of 30. Task 29 added
 `commit_policy.forbid`, empty, and `commit_policy.ascii_only`, false. Task 32 added `io.snapshot.max_files` of
@@ -1452,7 +1456,10 @@ io.read_log(path, since_line = None) -> LogOutput(path, first_line, last_line, t
   io-guard's folder, a PowerShell body with a UTF-8 BOM for Windows PowerShell, and runs with
   `runs.interpreter` for its `lang`: the probe's Python, bash, pwsh or Windows PowerShell, or node. The
   program starts in `cwd` with the session's variables, `session.probe`'s UTF-8 ones over them and the call's
-  `env` over both, an empty stdin, and stdout and stderr in `runs/<id>/output.log`.
+  `env` over both, an empty stdin, and stdout and stderr in `runs/<id>/output.log`. The output reaches the
+  log through `lib.logcap`, a copier in its own process, which stops the log at `io.run.log_max_bytes`,
+  64 MB, a user setting, with one line that says so, and lets the program go on. The result's `log_cut` says
+  when that happened (task 124).
 - **To its end, or in the background.** A run to its end waits up to `timeout_s`, or `io.run.timeout_s`,
   sends `notifications/progress` when the request carried a `progressToken`, and is stopped, its whole
   process tree, past the timeout or on the client's cancel. A background run answers at once with a handle,
@@ -1821,7 +1828,8 @@ end. That hook is the only Python spawn per turn, and costs about 300 ms (`docs/
 
 Shutdown is one ordered list: stop accepting, drain the workers with a 2 second cap, cancel the calls still
 running and give them 1 second more (task 105), close the heartbeat. A
-background run keeps running past the server's end, and its log stays in io-guard's folder. Telemetry
+background run keeps running past the server's end, and its log stays in io-guard's folder, capped by its
+copier, which outlives the server too (task 124). Telemetry
 needs no flush, because each line is on disk before `record` returns.
 
 ## 9. Record telemetry

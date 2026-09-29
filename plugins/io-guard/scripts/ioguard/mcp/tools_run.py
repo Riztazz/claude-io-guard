@@ -21,7 +21,7 @@ from pathlib import Path
 
 from ioguard.checks.command_results import compiled
 from ioguard.checks.run_rules import judge, said
-from ioguard.lib import output, paths, proc, rules, runs
+from ioguard.lib import logcap, output, paths, proc, rules, runs
 from ioguard.lib.context import Context, newlines
 from ioguard.lib.results import Code, Fix, Result, Severity, callable_name
 from ioguard.mcp import handles
@@ -82,12 +82,13 @@ class RunOutput:
     tail: list[str] = doc("The log's last lines.")
     handle: str = doc("The background run's handle for io.status, or empty.")
     note: str = doc("What to call next.")
+    log_cut: bool = doc("The log reached io.run.log_max_bytes and stopped growing, while the run went on.")
 
     def render(self) -> str:
         code = "" if self.exit is None else f", exit {self.exit}"
         code += f", {self.meaning}" if self.meaning else ""
         head = (f"{self.command}: {self.state}{code}, {self.duration_s:,.1f} s, {self.log_bytes:,} bytes "
-                f"of log")
+                f"of log{', cut at its size cap' if self.log_cut else ''}")
         errors = [f"{error.line:>6}| {error.text}" for error in self.errors]
         parts = [head, *(["Lines that report errors:", *errors] if errors else []),
                  *(["Last lines:", *self.tail] if self.tail else []), f"Log: {self.log_path}", self.note]
@@ -158,7 +159,8 @@ def reading(pump: proc.Pump, state: str, command: str, handle: str, note: str, c
     exit_code = pump.exit_code
     meaning = meaning_of(pump.argv, exit_code, ctx)
     return RunOutput(command, state, exit_code, exit_code == 0 or bool(meaning), meaning,
-                     round(pump.seconds(), 1), pump.log.as_posix(), size, errors, tail, handle, note)
+                     round(pump.seconds(), 1), pump.log.as_posix(), size, errors, tail, handle, note,
+                     data.endswith(logcap.CUT))
 
 
 def checked(given: RunInput, call: ToolCall) -> dict:
@@ -218,7 +220,8 @@ def run(given: RunInput, call: ToolCall) -> RunOutput:
         ctx.fs.write_atomic(body, BOM + data if given.lang == "powershell" else data)
     command = rules.command_text(argv)
     try:
-        pump = proc.background(argv, cwd, environment(given, ctx), folder / "output.log")
+        pump = proc.background(argv, cwd, environment(given, ctx), folder / "output.log",
+                               cap=ctx.config.get("io.run.log_max_bytes"))
     except OSError as error:
         raise failure(Code.PATH_NOT_FOUND, f"io.run could not start {argv[0]}: {error.strerror or error}.",
                       tool, ctx, Fix(callable_name(tool), {}, "Name the program by its full path, or check "

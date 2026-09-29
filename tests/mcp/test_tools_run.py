@@ -92,6 +92,13 @@ class AProgramRunsWithNoShell(RunTest):
         self.assertEqual([error.line for error in found.errors], [2001],
                          "the line io.read_log gives, though only the log's last 500 bytes were read")
 
+    def test_a_log_past_its_cap_says_it_was_cut(self):
+        program = "for n in range(500): print(f'line {n:04d}')\n"
+        found = self.call(run, RunInput(lang="python", code=program),
+                          self.context(**{"io.run.log_max_bytes": 1000}))
+        self.assertEqual((found.exit, found.log_cut), (0, True),
+                         "the run ends as it would have, and the answer says its log stopped at the cap")
+
     def test_the_utf8_defaults_reach_the_program(self):
         program = "import os; print(os.environ['PYTHONUTF8'], os.environ['X'])"
         found = self.call(run, RunInput(argv=[sys.executable, "-c", program], env={"X": "given"}),

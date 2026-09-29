@@ -8,7 +8,8 @@ and macOS reads an empty or relative PATH entry as the current folder, which is 
 
 A background program starts in its own process group, so stopping it stops what it started too: taskkill /T
 on Windows, and a signal to the group on macOS. Its stdin is empty, because nothing would ever answer a
-prompt, and its stdout and stderr go to one log in the order the program flushes them.
+prompt, and its stdout and stderr go to one log in the order the program flushes them, through lib.logcap,
+which stops the log at a cap and lets the program go on.
 """
 import os
 import signal
@@ -37,6 +38,8 @@ class RunResult:
 
 
 WINDOWS_EXTENSIONS = ".COM;.EXE;.BAT;.CMD"        # PATHEXT's default
+LOGCAP = Path(__file__).with_name("logcap.py")     # the copier a background run's output goes through
+COPIER_WAIT_S = 10.0     # seconds the copier may take to write the last output once the program has ended
 
 
 def names_of(name: str, env: Mapping[str, str]) -> list[str]:
@@ -100,10 +103,12 @@ def run(argv: Sequence[str], cwd: Path, env: Mapping[str, str] | None = None,
 
 class Pump:
     """A program running with its output going to a log, and the moment it ended. A thread waits on the
-    process, so ended is set even when nobody asks."""
+    process, and on the copier that writes its log, so ended is set even when nobody asks, and only once the
+    log holds the last of the output."""
 
-    def __init__(self, process: subprocess.Popen, argv: tuple[str, ...], log: Path) -> None:
-        self.process, self.argv, self.log = process, argv, log
+    def __init__(self, process: subprocess.Popen, argv: tuple[str, ...], log: Path,
+                 copier: subprocess.Popen | None = None) -> None:
+        self.process, self.argv, self.log, self.copier = process, argv, log, copier
         self.started = time.monotonic()
         self.ended: float | None = None
         self.done = threading.Event()
@@ -113,6 +118,11 @@ class Pump:
 
     def watch(self) -> None:
         self.process.wait()
+        if self.copier is not None:
+            try:
+                self.copier.wait(COPIER_WAIT_S)
+            except subprocess.TimeoutExpired:
+                self.copier.kill()
         with self.lock:
             self.ended = time.monotonic()
             self.done.set()
@@ -153,15 +163,25 @@ class Pump:
         self.done.wait(10)
 
 
-def background(argv: Sequence[str], cwd: Path, env: Mapping[str, str], log: Path) -> Pump:
-    """argv started in cwd, its stdout and stderr going to log. OSError when PATH does not hold its program
-    or it cannot start."""
+def background(argv: Sequence[str], cwd: Path, env: Mapping[str, str], log: Path, cap: int) -> Pump:
+    """argv started in cwd, its stdout and stderr going to log through lib.logcap, which keeps the first cap
+    bytes. The copier is its own process, so the cap holds after this one ends. OSError when PATH does not
+    hold its program or it cannot start."""
     resolved = located(argv, env)
     if resolved is None:
         raise FileNotFoundError(not_on_path(argv[0]))
     log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_bytes(b"")
     group = {} if sys.platform == "win32" else {"start_new_session": True}
-    with open(log, "wb") as out:
+    copier = subprocess.Popen([sys.executable, str(LOGCAP), str(log), str(cap)], cwd=log.parent,
+                              stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                              **group)
+    try:
         process = subprocess.Popen(list(resolved), cwd=cwd, env=dict(env), stdin=subprocess.DEVNULL,
-                                   stdout=out, stderr=subprocess.STDOUT, **group)
-    return Pump(process, tuple(argv), log)
+                                   stdout=copier.stdin, stderr=subprocess.STDOUT, **group)
+    except OSError:
+        copier.kill()
+        raise
+    finally:
+        copier.stdin.close()
+    return Pump(process, tuple(argv), log, copier)

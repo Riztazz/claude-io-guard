@@ -145,6 +145,9 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
                                   "after which io-guard stops the program."),
     "io.run.handle_ttl_s": ConfigKey(int, 3600, "Seconds a background run's handle lasts after the program "
                                      "ends."),
+    "io.run.log_max_bytes": ConfigKey(int, 64 * 1024 * 1024, "The most bytes a run's log keeps. Past it the "
+                                      "log stops growing and the run goes on.", project_may_set=False,
+                                      shape=at_least_one),
     "io.read_log.max_lines": ConfigKey(int, 500, "The most log lines one io.read_log returns. The result "
                                        "names the call for the rest."),
     "io.snapshot.max_files": ConfigKey(int, 5000, "The most files one io.snapshot keeps."),

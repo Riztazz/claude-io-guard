@@ -130,6 +130,8 @@ of output. Your own `config.json` may set any pattern.
 
 **Runs:** `io.run.timeout_s`, 120 by default, is how long a run to its end may take when the call names no
 timeout. `io.run.handle_ttl_s` is how long a background run's handle lasts after the program ends, an hour.
+`io.run.log_max_bytes`, 64 MB, is the most a run's log keeps. Past it the log stops growing, says so in its
+last line, and the run goes on, even after the session ends. Only your own `config.json` sets it.
 `io.read_log.max_lines` caps one read of a log at 500 lines.
 
 **After each write:** io-guard compares the file with the file before the call. A BOM or line endings the

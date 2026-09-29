@@ -13,6 +13,7 @@ from unittest import mock
 from ioguard.lib import proc
 
 HERE = Path(__file__).parent
+CAP = 1024 * 1024
 
 
 class ProgramsRun(unittest.TestCase):
@@ -43,7 +44,7 @@ class ProgramsRun(unittest.TestCase):
         self.addCleanup(shutil.rmtree, log.parent.parent, True)
         ended = threading.Event()
         pump = proc.background([sys.executable, "-c", "import sys; print('out', flush=True); "
-                                "print('err', file=sys.stderr); sys.exit(4)"], HERE, os.environ, log)
+                                "print('err', file=sys.stderr); sys.exit(4)"], HERE, os.environ, log, cap=CAP)
         pump.when_done(ended.set)
         self.assertTrue(pump.wait(30) and ended.wait(5), "the waiter thread sees the end and calls back")
         self.assertEqual((pump.exit_code, log.read_bytes().split()), (4, [b"out", b"err"]),
@@ -57,7 +58,7 @@ class ProgramsRun(unittest.TestCase):
         self.addCleanup(shutil.rmtree, log.parent, True)
         child = "import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', 'import time; " \
                 "time.sleep(60)']); print('started', flush=True); time.sleep(60)"
-        pump = proc.background([sys.executable, "-c", child], HERE, os.environ, log)
+        pump = proc.background([sys.executable, "-c", child], HERE, os.environ, log, cap=CAP)
         started = time.monotonic()
         while b"started" not in log.read_bytes() and time.monotonic() - started < 30:
             pump.wait(0.05)
@@ -119,7 +120,7 @@ class OnlyAProgramOnThePathStarts(unittest.TestCase):
         self.planted("repo")
         result = proc.run(["tool", "--version"], self.root / "repo", {"PATH": str(self.root / "empty")})
         with self.assertRaises(FileNotFoundError):
-            proc.background(["tool"], self.root / "repo", {"PATH": ""}, self.root / "log.txt")
+            proc.background(["tool"], self.root / "repo", {"PATH": ""}, self.root / "log.txt", cap=CAP)
         refused = "tool is not on PATH, so io-guard did not start it."
         self.assertEqual((result.exit_code, result.start_error), (None, refused),
                          "a program the repository ships is never run in place of one PATH lacks")

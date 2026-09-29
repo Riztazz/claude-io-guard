@@ -42,7 +42,8 @@ takes each file's own lines in one call.
 deny rule refuses the run, and an ask rule brings up Claude Code's own permission prompt. That holds for a
 command inside `bash -c` or `pwsh -Command` too. A script body or a `python -c` string that mentions a rule's
 program, such as `git` for `Bash(git push *)`, also brings up the prompt, since no rule can see what code does
-with it. A background run's handle lasts an hour past the program's end.
+with it. A background run's handle lasts an hour past the program's end. A run's log keeps its first 64 MB,
+then stops growing while the program goes on, and the result says `log_cut`.
 
 ## Undoing a task
 
