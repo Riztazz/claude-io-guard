@@ -18,7 +18,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 
-from ioguard.lib import commands, edits, paths, probing, proc, text
+from ioguard.lib import commands, edits, paths, proc, text
 from ioguard.lib.context import Context
 from ioguard.lib.git import GitError
 from ioguard.lib.results import Code, Fix, callable_name
@@ -206,10 +206,9 @@ def asked(path: Path, named: list[Place], count: int, ctx: Context) -> tuple[lis
 def formatted(loaded: Loaded, command: tuple[str, ...], ctx: Context) -> str:
     """The format command's output for the file's text, with every CRLF read as LF, as git counts lines."""
     path, name = loaded.path, Path(command[0]).stem
-    argv = (probing.program(command[0], ctx.env), *command[1:])
     timeout_s = ctx.config.get("io.format.timeout_s")
     source = loaded.text.replace("\r\n", "\n").encode("utf-8")
-    done = proc.run(argv, path.parent, ctx.env, timeout_s, stdin=source)
+    done = proc.run(command, path.parent, ctx.env, timeout_s, stdin=source)
     said = text.head(done.stderr.decode("utf-8", "replace").strip(), MESSAGE_CHARS)
     again = retry(f"Fix what {name} says, then call {CALLABLE} again.")
     if done.start_error:

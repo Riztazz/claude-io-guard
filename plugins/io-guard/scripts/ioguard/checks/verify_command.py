@@ -7,7 +7,7 @@ passes and prints nothing adds nothing. Otherwise its exit code and the head of 
 VERIFY_OUTPUT, and so does a timeout or a program that cannot start, so the telemetry counts each one.
 """
 from ioguard.checks.base import Check, CheckMeta, Cost
-from ioguard.lib import commands, probing, proc, text
+from ioguard.lib import commands, proc, text
 from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
@@ -36,9 +36,8 @@ class VerifyCommand(Check):
         if named is None:
             return Decision.observe(self.meta.id)
         command = commands.filled(named, event.file_path)
-        argv = (probing.program(command[0], ctx.env), *command[1:])
         timeout_ms = self.options["timeout_ms"]
-        done = proc.run(argv, event.cwd, ctx.env, timeout_ms / 1000)
+        done = proc.run(command, event.cwd, ctx.env, timeout_ms / 1000)
         shown = " ".join(command)
         output = text.head((done.stdout + done.stderr).decode("utf-8", "replace").strip(),
                            self.options["output_chars"])

@@ -1,12 +1,12 @@
-"""Measuring the machine a session runs on: each tool's place and version, the console encoding, whether file
-names ignore case, and the Claude Code version. checks.session_probe decides what to measure and saves it.
+"""Measuring the machine a session runs on: each tool's version, the console encoding, whether file names
+ignore case, and the Claude Code version. checks.session_probe decides what to measure and saves it, and
+proc.on_path finds each tool.
 """
 import locale
 import os
 import re
-import shutil
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from ioguard.lib import proc
@@ -37,25 +37,6 @@ def tool_version(path: str, pattern: re.Pattern, previous: ToolVersion | None = 
     done = run([path, "--version"], Path(path).parent, timeout_s=timeout_s)
     match = pattern.search(done.stdout.decode("utf-8", "replace"))
     return ToolVersion(path, match[1], current) if done.ok and match else None
-
-
-def find(name: str, env: Mapping[str, str], skip: Sequence[str] = ()) -> str | None:
-    """The first name on the environment's PATH whose folder names none of skip, ignoring case."""
-    for folder in env.get("PATH", "").split(os.pathsep):
-        if not folder or any(part.lower() in folder.lower() for part in skip):
-            continue
-        found = shutil.which(name, path=folder)
-        if found:
-            return found
-    return None
-
-
-def program(name: str, env: Mapping[str, str]) -> str:
-    """name as found on the environment's PATH, with its extension on Windows, or name as given when it is a
-    path already or PATH does not hold it."""
-    if Path(name).name != name:
-        return name
-    return find(name, env) or name
 
 
 def claude_version(env: Mapping[str, str]) -> str | None:

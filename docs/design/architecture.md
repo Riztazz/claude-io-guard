@@ -45,7 +45,7 @@ plugins/io-guard/
         paths.py                   normalise, msys_prefix, reserved, link_target, inside, resolved, LockTable
         git.py                     Git, the GitPort implementation
         locks.py                   holders, file_lock
-        proc.py                    run, Pump, background
+        proc.py                    on_path, located, run, Pump, background
         results.py                 CodeSpec, CODES, Code, Result, Fix, render, callable_name, meanings
         config.py                  Config, SCHEMA, load, validate, merge
         config_edit.py             placed, value_at, encoded: one setting written where its file keeps it
@@ -55,7 +55,7 @@ plugins/io-guard/
         telemetry.py               Telemetry, TraceContext, session_files, expire, erase
         telemetry_summary.py       Summary, files, summarise, page: every session's telemetry summed
         platform.py                Platform, detect
-        probing.py                 tool_version, find, claude_version, console_encoding, case_insensitive
+        probing.py                 tool_version, claude_version, console_encoding, case_insensitive
         text.py                    visible, snippet, head, invisible_added
         transcript.py              refusals: the calls Claude Code refused before any hook, from the transcript
         output.py                  exit_code, saved_path, error_lines, mojibake, excerpt: what a shell result says
@@ -845,9 +845,14 @@ def parse_lsof(raw: bytes) -> tuple[Process, ...]
 def file_lock(path: Path, data_dir: Path, wait_s: float = 5.0) -> ContextManager[None]  # across processes
 
 # proc.py
+def on_path(name: str, env: Mapping[str, str], skip: Sequence[str] = ()) -> Optional[str]
+                                                            # empty PATH entries skipped, never the current folder
+def located(argv: Sequence[str], env: Optional[Mapping[str, str]]) -> Optional[tuple[str, ...]]
+                                                            # task 79: a bare name only from PATH, else None
 def run(argv: Sequence[str], cwd: Path, env: Optional[Mapping[str, str]] = None,
-        timeout_s: float = 10.0, stdin: bytes = b"") -> RunResult   # a timeout or a missing program is a
-                                                            # result, and stdin is never the caller's own
+        timeout_s: float = 10.0, stdin: bytes = b"") -> RunResult   # a timeout, a program PATH lacks, or one
+                                                            # that cannot start is a result, and stdin is never
+                                                            # the caller's own
 def background(argv: Sequence[str], cwd: Path, env: Mapping[str, str], log: Path) -> Pump
                                                             # task 25: stdout and stderr in one log
 class Pump: exit_code, wait(timeout_s), when_done(callback), seconds(), stop()   # stop ends the whole tree

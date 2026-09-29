@@ -1,4 +1,5 @@
-"""proc.run starts a program from a list, and a timeout or a missing program is a result, not a raise."""
+"""proc.run starts a program from a list, only from where PATH holds it when it is named without a folder,
+and a timeout or a missing program is a result, not a raise."""
 import os
 import shutil
 import sys
@@ -66,6 +67,51 @@ class ProgramsRun(unittest.TestCase):
         result = proc.run(["io-guard-no-such-program"], HERE)
         self.assertEqual((result.exit_code, result.ok), (None, False), "a missing program is not ok")
         self.assertTrue(result.start_error, "the result says why the program did not start")
+
+
+class OnlyAProgramOnThePathStarts(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="ioguard-path-"))
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.name = "tool.exe" if sys.platform == "win32" else "tool"
+
+    def planted(self, folder: str) -> Path:
+        path = self.root / folder / self.name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x")
+        path.chmod(0o755)
+        return path
+
+    def test_a_folder_named_in_skip_is_passed_over(self):
+        for folder in ("WindowsApps", "git/usr/bin"):
+            self.planted(folder)
+        folders = [self.root / "WindowsApps", self.root / "git" / "usr" / "bin"]
+        env = {"PATH": os.pathsep.join(map(str, folders))}
+        found = proc.on_path("tool", env, skip=("windowsapps",))
+        first = proc.on_path("tool", env)
+        self.assertEqual(Path(found).parent.name, "bin", "the skipped folder is passed over, ignoring case")
+        self.assertEqual(Path(first).parent.name, "WindowsApps", "and without skip the first folder wins")
+
+    def test_an_empty_path_entry_never_means_the_current_folder(self):
+        self.planted("repo")
+        previous = Path.cwd()
+        os.chdir(self.root / "repo")
+        self.addCleanup(os.chdir, previous)
+        self.assertIsNone(proc.on_path("tool", {"PATH": os.pathsep + str(self.root / "empty")}),
+                          "an empty entry is skipped, where the operating system reads the current folder")
+
+    def test_a_bare_name_path_lacks_never_starts_from_the_folder_it_runs_in(self):
+        self.planted("repo")
+        result = proc.run(["tool", "--version"], self.root / "repo", {"PATH": str(self.root / "empty")})
+        with self.assertRaises(FileNotFoundError):
+            proc.background(["tool"], self.root / "repo", {"PATH": ""}, self.root / "log.txt")
+        refused = "tool is not on PATH, so io-guard did not start it."
+        self.assertEqual((result.exit_code, result.start_error), (None, refused),
+                         "a program the repository ships is never run in place of one PATH lacks")
+
+    def test_a_program_given_as_a_path_runs_as_given(self):
+        self.assertEqual(proc.located([sys.executable, "-V"], {"PATH": ""}), (sys.executable, "-V"),
+                         "a path needs no PATH")
 
 
 if __name__ == "__main__":

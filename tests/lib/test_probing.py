@@ -60,22 +60,6 @@ class AToolVersionIsMeasuredOnce(unittest.TestCase):
                               "output with no version has none, never a guess")
 
 
-class ToolsAreFoundOnThePath(unittest.TestCase):
-    def test_a_folder_named_in_skip_is_passed_over(self):
-        name = "tool.exe" if detect().windows else "tool"
-        with TemporaryProject({f"WindowsApps/{name}": b"x", f"git/usr/bin/{name}": b"x"}) as root:
-            for path in root.rglob(name):
-                path.chmod(0o755)
-            env = {"PATH": os.pathsep.join([str(root / "WindowsApps"), str(root / "git" / "usr" / "bin")])}
-            found = probing.find("tool", env, skip=("windowsapps",))
-            first = probing.find("tool", env)
-        self.assertEqual(Path(found).parent.name, "bin", "the skipped folder is passed over, ignoring case")
-        self.assertEqual(Path(first).parent.name, "WindowsApps", "and without skip the first folder wins")
-
-    def test_a_tool_on_no_folder_is_none(self):
-        self.assertIsNone(probing.find("io-guard-no-such-tool", {"PATH": ""}), "a missing tool is None")
-
-
 class TheClaudeCodeVersion(unittest.TestCase):
     def test_it_comes_from_the_agent_variable_first(self):
         env = {"AI_AGENT": "claude-code_2-1-281_agent", "CLAUDE_CODE_EXECPATH": "C:/x/2.1.999/claude.exe"}

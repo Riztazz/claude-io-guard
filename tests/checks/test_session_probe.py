@@ -44,7 +44,7 @@ def probed(ctx: Context, session_id: str = events.SESSION_ID) -> tuple[dict, byt
     registry = Registry()
     registry.register(SessionProbe)
     check = registry.instantiate(ctx.config)[0]
-    with mock.patch.object(session_probe.probing, "find", lambda name, env, skip=(): f"/tools/{name}"), \
+    with mock.patch.object(session_probe.proc, "on_path", lambda name, env, skip=(): f"/tools/{name}"), \
             mock.patch.object(session_probe.probing, "tool_version", version_of):
         decision = check.run(event, ctx)
     probe = json.loads(ctx.fs.files[DATA / "probe.json"]) if DATA / "probe.json" in ctx.fs.files else {}

@@ -1,11 +1,16 @@
 """Running a program from an argument list, with no shell: to the end with a timeout, or in the background
 with its output going to a log.
 
+A program named without a folder starts only from where the environment's PATH holds it, and one PATH does not
+hold does not start. The operating system's own search can reach further, into the current folder on some
+Windows versions and through an empty PATH entry on macOS, and the current folder is the user's project.
+
 A background program starts in its own process group, so stopping it stops what it started too: taskkill /T
 on Windows, and a signal to the group on macOS. Its stdin is empty, because nothing would ever answer a
 prompt, and its stdout and stderr go to one log in the order the program flushes them.
 """
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -31,15 +36,44 @@ class RunResult:
         return self.exit_code == 0
 
 
+def on_path(name: str, env: Mapping[str, str], skip: Sequence[str] = ()) -> str | None:
+    """The first name on the environment's PATH whose folder names none of skip, ignoring case, or None. An
+    empty PATH entry is skipped, since the operating system would read it as the current folder."""
+    for folder in env.get("PATH", "").split(os.pathsep):
+        if not folder or any(part.lower() in folder.lower() for part in skip):
+            continue
+        found = shutil.which(name, path=folder)
+        if found:
+            return found
+    return None
+
+
+def located(argv: Sequence[str], env: Mapping[str, str] | None) -> tuple[str, ...] | None:
+    """argv with a program named without a folder replaced by where PATH holds it, a program given as a path
+    as it is, or None when PATH holds no such program. env None is this process's environment."""
+    name = argv[0]
+    if Path(name).name != name:
+        return tuple(argv)
+    found = on_path(name, os.environ if env is None else env)
+    return None if found is None else (found, *argv[1:])
+
+
+def not_on_path(name: str) -> str:
+    return f"{name} is not on PATH, so io-guard did not start it."
+
+
 def run(argv: Sequence[str], cwd: Path, env: Mapping[str, str] | None = None,
         timeout_s: float = 10.0, stdin: bytes = b"") -> RunResult:
-    """Run argv in cwd with stdin as its input, and wait. A timeout, or a program that cannot start, is a
-    result, not a raise. The program never reads the caller's own stdin, which in the io server is the
-    client's messages."""
+    """Run argv in cwd with stdin as its input, and wait. A timeout, a program PATH does not hold, or one that
+    cannot start, is a result, not a raise. The program never reads the caller's own stdin, which in the io
+    server is the client's messages."""
     started = time.monotonic()
     command = tuple(argv)
+    resolved = located(command, env)
+    if resolved is None:
+        return RunResult(command, None, b"", b"", False, 0.0, start_error=not_on_path(command[0]))
     try:
-        done = subprocess.run(command, cwd=cwd, env=None if env is None else dict(env), capture_output=True,
+        done = subprocess.run(resolved, cwd=cwd, env=None if env is None else dict(env), capture_output=True,
                               input=stdin, timeout=timeout_s, check=False)
     except subprocess.TimeoutExpired as expired:
         return RunResult(command, None, expired.stdout or b"", expired.stderr or b"", True,
@@ -95,8 +129,7 @@ class Pump:
         if self.done.is_set():
             return
         if sys.platform == "win32":
-            subprocess.run(["taskkill", "/T", "/F", "/PID", str(self.process.pid)], capture_output=True,
-                           timeout=10, check=False)
+            run(["taskkill", "/T", "/F", "/PID", str(self.process.pid)], Path(sys.executable).parent)
         else:
             try:
                 os.killpg(self.process.pid, signal.SIGKILL)
@@ -106,10 +139,14 @@ class Pump:
 
 
 def background(argv: Sequence[str], cwd: Path, env: Mapping[str, str], log: Path) -> Pump:
-    """argv started in cwd, its stdout and stderr going to log. OSError when it cannot start."""
+    """argv started in cwd, its stdout and stderr going to log. OSError when PATH does not hold its program
+    or it cannot start."""
+    resolved = located(argv, env)
+    if resolved is None:
+        raise FileNotFoundError(not_on_path(argv[0]))
     log.parent.mkdir(parents=True, exist_ok=True)
     group = {} if sys.platform == "win32" else {"start_new_session": True}
     with open(log, "wb") as out:
-        process = subprocess.Popen(list(argv), cwd=cwd, env=dict(env), stdin=subprocess.DEVNULL, stdout=out,
-                                   stderr=subprocess.STDOUT, **group)
+        process = subprocess.Popen(list(resolved), cwd=cwd, env=dict(env), stdin=subprocess.DEVNULL,
+                                   stdout=out, stderr=subprocess.STDOUT, **group)
     return Pump(process, tuple(argv), log)

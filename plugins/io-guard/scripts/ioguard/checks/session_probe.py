@@ -19,7 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from ioguard.checks.base import Check, CheckMeta, Cost
-from ioguard.lib import probing
+from ioguard.lib import probing, proc
 from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context, FsPort, GitPort, Probe, session_file
 from ioguard.lib.decisions import Decision, Verdict
@@ -64,8 +64,8 @@ def cut_applies(windows: bool, version: str | None) -> bool:
 def measure(event: Event, ctx: Context, dirty_wanted: bool) -> tuple[Probe, tuple[Path, ...] | None]:
     """The machine's facts, and the dirty files of the session's repository when dirty_wanted, else None."""
     env, previous = ctx.env, ctx.probe
-    paths = {"bash": probing.find("bash", env, NOT_BASH if ctx.platform.windows else ()),
-             "pwsh": probing.find("pwsh", env), "git": probing.find("git", env)}
+    paths = {"bash": proc.on_path("bash", env, NOT_BASH if ctx.platform.windows else ()),
+             "pwsh": proc.on_path("pwsh", env), "git": proc.on_path("git", env)}
     if ctx.platform.windows and env.get("CLAUDE_CODE_GIT_BASH_PATH"):
         paths["bash"] = env["CLAUDE_CODE_GIT_BASH_PATH"]
     with ThreadPoolExecutor(max_workers=4) as pool:

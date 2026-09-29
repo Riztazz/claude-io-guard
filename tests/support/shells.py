@@ -9,17 +9,17 @@ import sys
 from pathlib import Path
 
 from ioguard.checks.session_probe import NOT_BASH
-from ioguard.lib import probing
+from ioguard.lib import proc
 
 
 def git_folder() -> Path | None:
     """Git for Windows' install folder, from the git on PATH: <folder>/cmd/git.exe or <folder>/bin/git.exe."""
-    git = probing.find("git", os.environ)
+    git = proc.on_path("git", os.environ)
     return None if git is None else Path(git).resolve().parents[1]
 
 
 def windows_shell(name: str) -> str | None:
-    found = probing.find(name, os.environ, NOT_BASH)
+    found = proc.on_path(name, os.environ, NOT_BASH)
     if found:
         return found
     folder = git_folder()
