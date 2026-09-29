@@ -125,7 +125,9 @@
 <div class="columns" id="columns"><span>Setting</span><span>All projects</span><span>This project</span></div>
 <div id="list"></div>
 <p class="muted">Hover a setting's name for its key and default, and press ? for its whole help. A change saves at
-once and applies from the next tool call. A greyed value under this project is the one it takes from All projects.</p>
+once and applies from the next tool call. A greyed value under this project is the one it takes from All projects
+or the repository's file. A change there goes into your own config, for this project alone, and may turn a check
+off.</p>
 </div>
 <div id="stats-view" hidden>
   <div class="row controls">
@@ -187,7 +189,6 @@ function make(tag, attrs, ...children) {
 }
 
 const shown = value => typeof value === "boolean" ? (value ? "on" : "off") : JSON.stringify(value);
-const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const firstSentence = text => (text.match(/^.*?[.!?](?=\s|$)/) || [text])[0];
 
 function groupName(row) {
@@ -237,17 +238,16 @@ async function send(card, body) {
   }
 }
 
-function control(row, value, save, forbids) {
+function control(row, value, save) {
   if (row.type === "bool") {
-    const blocked = forbids.includes(!value);
     return make("button", {type: "button", class: "switch", "aria-pressed": String(value),
-      "aria-label": label(row), disabled: blocked, onclick: () => save(!value)});
+      "aria-label": label(row), onclick: () => save(!value)});
   }
   if (row.choices.length) {
     const group = make("div", {class: "seg", role: "group", "aria-label": label(row)});
     for (const choice of row.choices) {
       group.append(make("button", {type: "button", "aria-pressed": String(choice === value), text: choice,
-        disabled: forbids.includes(choice), onclick: () => save(choice)}));
+        onclick: () => save(choice)}));
     }
     return group;
   }
@@ -290,33 +290,25 @@ function allCell(node, row) {
     : make("button", {type: "button", class: "link", text: "Use the default",
       onclick: () => send(node, {key: row.key, scope: "user", remove: true})});
   return make("div", {class: "cell"}, make("div", {class: "col-label", text: "All projects"}),
-    control(row, value, value => send(node, {key: row.key, scope: "user", value: value}), []),
+    control(row, value, value => send(node, {key: row.key, scope: "user", value: value})),
     make("div", {class: "cell-note"}, note));
 }
 
 function projectCell(node, row) {
   const cell = make("div", {class: "cell"}, make("div", {class: "col-label", text: "Only " + projectName()}));
-  if (!row.project_may_set) {
-    cell.append(make("div", {class: "muted", text: "Set only under All projects"}));
+  const save = value => send(node, {key: row.key, scope: "user_project", value: value});
+  if (row.own === null) {
+    const all = row.user === null ? row.default : row.user;
+    const takes = row.project === null ? all : row.project;
+    const from = row.project === null ? "Same as all projects" : "Set by the repository's .claude/io-guard.json";
+    const inherited = make("div", {class: "inherited", inert: true}, control(row, takes, () => {}));
+    cell.append(inherited, make("div", {class: "cell-note"}, make("span", {class: "muted", text: from}),
+      make("button", {type: "button", class: "link", text: "Change for this project", onclick: () => save(takes)})));
     return cell;
   }
-  const all = row.user === null ? row.default : row.user;
-  const forbids = row.project_forbids.length ?
-    [make("div", {class: "muted", text: "Can't pick " + row.project_forbids.map(shown).join(" or ")})] : [];
-  if (row.project === null) {
-    const allowed = value => !row.project_forbids.some(forbidden => sameValue(forbidden, value));
-    const start = [all, row.default, ...row.choices, true, false].find(allowed);
-    const inherited = make("div", {class: "inherited", inert: true}, control(row, all, () => {}, []));
-    const same = make("span", {class: "muted", text: "Same as all projects"});
-    cell.append(inherited, make("div", {class: "cell-note"}, same,
-      make("button", {type: "button", class: "link", text: "Change for this project",
-        onclick: () => send(node, {key: row.key, scope: "project", value: start})})), ...forbids);
-    return cell;
-  }
-  cell.append(control(row, row.project, value => send(node, {key: row.key, scope: "project", value: value}),
-    row.project_forbids), make("div", {class: "cell-note"}, make("button", {type: "button", class: "link",
-      text: "Use all projects' value", onclick: () => send(node, {key: row.key, scope: "project", remove: true})})),
-    ...forbids);
+  const back = row.project === null ? "Use all projects' value" : "Use the repository's value";
+  cell.append(control(row, row.own, save), make("div", {class: "cell-note"}, make("button", {type: "button",
+    class: "link", text: back, onclick: () => send(node, {key: row.key, scope: "user_project", remove: true})})));
   return cell;
 }
 
@@ -339,7 +331,8 @@ function render() {
   allHead.textContent = "All projects";
   allHead.title = "Your own config, " + data.files.user + ". Every project uses it unless it changes a value.";
   projectHead.textContent = "Only " + projectName();
-  projectHead.title = "This project's config, " + data.files.project + ". It wins over All projects here.";
+  projectHead.title = "Your own config, " + data.files.user + ", under projects for this folder. It wins over " +
+    "All projects and over the repository's " + data.files.project + " here.";
   const banners = document.getElementById("banners");
   banners.replaceChildren(...Object.entries(data.errors).map(([scope, message]) =>
     make("div", {class: "banner", text: (scope === "user" ? "Your config: " : "The project's config: ") + message})));

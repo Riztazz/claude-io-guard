@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest import mock
 from urllib.parse import parse_qs, urlsplit
 
-from ioguard.checks.registry import Registry
+from ioguard.checks.registry import Registry, default_registry
 from ioguard.hooks import entry
 from ioguard.lib.context import Context, LiveFs, project_root
 from ioguard.lib.platform import detect
@@ -69,6 +69,29 @@ class ASettingIsReadAndWritten(ConfigTest):
                          "a remove leaves the file as it was, and the default applies again")
 
 
+class YourOwnSettingForOneProject(ConfigTest):
+    def test_user_project_turns_a_check_off_in_one_project_and_a_remove_clears_it(self):
+        key = "commit_policy.ascii_only"
+        with TemporaryProject(git=True) as root, TemporaryProject(git=True) as other:
+            self.call(root, key=key, value=True)
+            done = self.call(root, key=key, value=False, scope="user_project")
+            written = json.loads((self.home / "config.json").read_bytes())
+            elsewhere = self.call(other, key=key)
+            removed = self.call(root, key=key, scope="user_project", remove=True)
+            left = json.loads((self.home / "config.json").read_bytes())
+        self.assertEqual((done.applies, elsewhere.applies, written["projects"]),
+                         (False, True, {root.as_posix(): {"commit_policy": {"ascii_only": False}}}),
+                         "your own entry for a project may turn a check off there, and nowhere else")
+        self.assertEqual((removed.applies, left),
+                         (True, {"schema": 1, "commit_policy": {"ascii_only": True}}),
+                         "a remove takes the entry and projects with it, so All projects applies again")
+
+    def test_a_project_file_refusal_names_the_scope_that_may_loosen(self):
+        with TemporaryProject(git=True) as root:
+            result = self.refusal(root, key="commit_policy.ascii_only", value=False, scope="project")
+        self.assertIn("scope user_project", result.fix.text, "the refusal names the call that works")
+
+
 class WhatTheFileMayNotHoldIsRefused(ConfigTest):
     def test_each_refusal_names_why_and_writes_nothing(self):
         cases = {"an unknown key": dict(key="checks.shell.lnt.enabled", value=False),
@@ -105,6 +128,16 @@ class TheNextCallRunsWithIt(ConfigTest):
             after = contexts.get("s1", root, Registry()).config.get(key)
         self.assertEqual((before, after), ("ask", "refuse"),
                          "the hooks load the changed file on their next call")
+
+    def test_a_check_turned_off_for_one_project_stays_on_in_another(self):
+        contexts = entry.LiveContexts()
+        key = "checks.shell.lint.enabled"
+        with TemporaryProject(git=True) as root, TemporaryProject(git=True) as other, \
+                mock.patch.dict(os.environ, {"IOGUARD_HOME": str(self.home)}):
+            self.call(root, key=key, value=False, scope="user_project")
+            here = contexts.get("s1", root, default_registry()).config.get(key)
+            there = contexts.get("s2", other, default_registry()).config.get(key)
+        self.assertEqual((here, there), (False, True), "a hook call in the project runs without the check")
 
 
 class ThePageServerAnswersOnlyItsOwnPage(ConfigTest):
@@ -174,6 +207,17 @@ class ThePageServerAnswersOnlyItsOwnPage(ConfigTest):
                                      b"/api/stats/from", b"/api/stats?days="]),
                          "one self-contained file, which calls only the paths the server answers, and names "
                          "the SVG namespace alone")
+
+    def test_each_row_carries_your_own_value_for_this_project_apart_from_the_repositorys(self):
+        key = "commit_policy.ascii_only"
+        for scope, value in (("user", True), ("project", True), ("user_project", False)):
+            sent = json.dumps({"key": key, "value": value, "scope": scope}).encode()
+            self.request("POST", "/api/setting", sent, token=self.token)
+        _, body = self.request("GET", "/api/settings", token=self.token)
+        row = next(row for row in json.loads(body)["settings"] if row["key"] == key)
+        self.assertEqual({name: row[name] for name in ("user", "project", "own", "applies")},
+                         {"user": True, "project": True, "own": False, "applies": False},
+                         "your own entry turns the check off here, over the repository's file")
 
     def test_a_global_key_a_check_reads_sits_under_that_checks_heading(self):
         _, body = self.request("GET", "/api/settings", token=self.token)

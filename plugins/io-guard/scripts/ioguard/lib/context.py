@@ -367,10 +367,12 @@ def project_root(cwd: Path) -> Path:
 
 def config_layers(data_dir: Path | None, project: Path) -> tuple[ConfigLayer, ...]:
     """The config files over the defaults, in order: the user's config.json in io-guard's folder when there is
-    one, then the project's io-guard.json and io-guard.local.json."""
+    one, the project's io-guard.json and io-guard.local.json, then the user's entry for the project in
+    config.json."""
     user = () if data_dir is None else (ConfigLayer(Scope.USER, data_dir / "config.json"),)
+    own = () if data_dir is None else (ConfigLayer(Scope.USER_PROJECT, data_dir / "config.json", project),)
     return (*user, ConfigLayer(Scope.PROJECT, project / ".claude" / "io-guard.json"),
-            ConfigLayer(Scope.PROJECT_LOCAL, project / ".claude" / "io-guard.local.json"))
+            ConfigLayer(Scope.PROJECT_LOCAL, project / ".claude" / "io-guard.local.json"), *own)
 
 
 def config_stamp(data_dir: Path | None, project: Path) -> tuple:

@@ -948,7 +948,7 @@ Policy data lives in `io-guard.json`. The file carries no comments, so its keys 
 }
 ```
 
-Four layers merge in this order, and a later layer overrides an earlier one key by key.
+Five layers merge in this order, and a later layer overrides an earlier one key by key.
 
 | Layer | File | May widen |
 |---|---|---|
@@ -956,6 +956,20 @@ Four layers merge in this order, and a later layer overrides an earlier one key 
 | User | `config.json` in io-guard's folder, `~/.claude/io-guard` by default (D30) | yes |
 | Project | `<project>/.claude/io-guard.json` | no |
 | Project local | `<project>/.claude/io-guard.local.json`, gitignored | no |
+| User project | the entry for `<project>` under `projects` in the user's `config.json` (task 76) | yes |
+
+The user project layer is the user's own choice for one project, kept in the user's file, which no repository
+ships. So it may set anything the user layer may, a check turned off included, and it loads last, over the
+repository's files. Its key is the project's absolute folder, matched as the file system names folders, as
+`verify` keys a project's own commands:
+
+```json
+{"commit_policy": {"ascii_only": true},
+ "projects": {"C:/work/game": {"commit_policy": {"ascii_only": false}}}}
+```
+
+The user's file is checked with its entries, each error named `projects.<folder>.<key>`, and one error drops
+the file and every entry in it.
 
 `<project>` is `lib.context.project_root` of the hook's `cwd`: the nearest folder at or above it that holds one
 of the two project files, else the nearest that holds `.git`, else `cwd` itself. The hooks keep one Context per
@@ -1431,11 +1445,14 @@ io.config(key, value = None, scope = "user", remove = False)
 
 - **Read.** With no `value` and no `remove`, the call writes nothing and names what the file sets, what
   applies for the project, and what the key does.
-- **Write.** `scope` `user` is `config.json` in io-guard's folder, and `project` is the project root's
-  `.claude/io-guard.json`. `lib.config_edit` places the key where the file already keeps its neighbours, and
-  `remove` takes it out with every object it empties. The file as it would be is checked with `validate`, and
-  a project file with `widened` too, so a value the loader would drop answers `CONFIG_REFUSED` and nothing is
-  written. The write is one `write_atomic` under `file_lock`.
+- **Write.** `scope` `user` is `config.json` in io-guard's folder, `user_project` is the project's entry under
+  `projects` in the same file (task 76), and `project` is the project root's `.claude/io-guard.json`.
+  `lib.config_edit` places the key where the file already keeps its neighbours, `entry_of` and `with_entry`
+  read and write one project's entry, and `remove` takes the key out with every object it empties, the entry
+  and `projects` included. The file as it would be is checked with `validate`, and a project file with
+  `widened` too, so a value the loader would drop answers `CONFIG_REFUSED` and nothing is written. A refusal at
+  `project` names `user_project` as the scope that may loosen. The write is one `write_atomic` under
+  `file_lock`.
 
 ### Keep files, and put them back
 
@@ -1586,14 +1603,15 @@ from it. A background run keeps running when its call is cancelled, because its 
 - **The page.** One list of every setting, grouped by check, with the rewrite modes first, and a global key a
   check reads under that check (`READ_BY`). Each setting is a row of three columns, whose headings stay at the
   top: the setting, with a one-line help that `?` opens in full and a tooltip with its key and default, then
-  "All projects", the user's file, then "Only <project>", the project's file, each with the control its type
-  takes in the same place on every row (task 74). A project that sets nothing shows the value it takes from All
-  projects, greyed, with "Change for this project", which starts from the first value the project may pick. An
-  override has "Use all projects' value". A key the project may not set says so, and a value it may not pick
-  is greyed. Below 640 pixels, and for a list or a JSON value, the two columns stack under the setting, each
-  with its heading. A change saves at once
-  and the page reads the settings again, so a refused value goes back to the saved one and its message stays
-  on the card. It follows the system's light or dark scheme until a pick at the top, kept in `localStorage`.
+  "All projects", the user's file, then "Only <project>", the user's entry for the project, each with the
+  control its type takes in the same place on every row (tasks 74 and 76). The project column writes
+  `user_project`, so it may turn a check off. With no entry it shows the value the project takes, greyed: from
+  the repository's `.claude/io-guard.json` when that sets one, and it says so, else from All projects. "Change
+  for this project" starts the entry from that value, and "Use all projects' value" or "Use the repository's
+  value" removes it. Below 640 pixels, and for a list or a JSON value, the two columns stack under the setting,
+  each with its heading. A change saves at once and the page reads the settings again, so a refused value goes
+  back to the saved one and its message stays on the card. It follows the system's light or dark scheme until
+  a pick at the top, kept in `localStorage`.
 - **The stats.** A switch at the top shows Stats instead of Settings: the last 1, 7 or 30 days, of this project
   or of all projects. It shows the totals fixed, warned and refused, a bar per day, and every code with its
   counts. A code opens to its meaning, its fix and its last 20 lines, with the command head of each. Then the

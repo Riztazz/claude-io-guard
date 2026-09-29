@@ -258,6 +258,12 @@ SUBFOLDER_WRITE = ("Do these in order, one tool call each, and never retry. 1. R
                    "name = \"caf" + chr(0xE9) + "\" Then reply DONE.")
 BROKEN_PY = ("Use the Write tool once to create bad.py with exactly this one line: def f(: Then reply DONE, "
              "without fixing anything.")
+WORK = "{work}"             # in a user_config, the run's work folder, as a key under projects
+OWN_PROJECT_OFF = {"commit_policy": {"ascii_only": True},
+                   "projects": {WORK: {"commit_policy": {"ascii_only": False}}}}
+CAFE = "feat: caf" + chr(0xE9)
+NON_ASCII_COMMIT = (GRANTED + f"Run exactly this Bash command: git commit --allow-empty -m '{CAFE}' "
+                    "Then reply DONE.")
 COMMIT_WITH_CO_AUTHOR = (GRANTED + "The co-author line is the test: the guard should refuse it. Run "
                          "exactly this Bash command: git commit --allow-empty -m 'feat: two' -m "
                          "'Co-Authored-By: Helper <helper@example.com>' If it is refused, commit again as "
@@ -557,6 +563,9 @@ PROBES = {
     "live-commit-policy": Probe(0, "", guard="", permission="dontAsk", allowed=("Bash",), git=True,
                                 prompt=COMMIT_WITH_CO_AUTHOR, user_config=COMMIT_POLICY,
                                 setup={"notes.txt": b"one\n"}),
+    "live-own-project": Probe(0, "", guard="", permission="dontAsk", allowed=("Bash",), git=True,
+                              prompt=NON_ASCII_COMMIT, user_config=OWN_PROJECT_OFF, max_turns=4,
+                              setup={"notes.txt": b"one\n"}),
     "live-ascii-joined": Probe(0, "", guard="", permission="acceptEdits", allowed=("Write",), max_turns=4,
                                prompt=NON_ASCII_WRITE, user_config=ASCII_USER,
                                setup={".claude/io-guard.json": ASCII_DROPPED}),
@@ -749,15 +758,15 @@ def feed(session: subprocess.Popen, probe: Probe, answered: threading.Semaphore)
 
 
 @contextlib.contextmanager
-def user_config(values: dict | None):
-    """values as io-guard's user config.json in the probes' io-guard folder for the with block, then the
-    file as it was before, or none."""
+def user_config(values: dict | None, work: Path):
+    """values as io-guard's user config.json in the probes' io-guard folder for the with block, with WORK
+    as the run's work folder, then the file as it was before, or none."""
     if values is None:
         yield
         return
     path = GUARD_HOME / "config.json"
     before = path.read_bytes() if path.is_file() else None
-    write_json(path, values)
+    write_json(path, json.loads(json.dumps(values).replace(WORK, work.resolve().as_posix())))
     try:
         yield
     finally:
@@ -807,7 +816,7 @@ def run(name: str) -> Path:
     started = time.time()
     lines, arrivals = [], []
     answered = threading.Semaphore(0)
-    with (out / "stderr.txt").open("wb") as stderr, user_config(probe.user_config):
+    with (out / "stderr.txt").open("wb") as stderr, user_config(probe.user_config, work):
         session = subprocess.Popen(argv, cwd=work, stdout=subprocess.PIPE, stderr=stderr,
                                    stdin=subprocess.PIPE if probe.turns else None, env={**os.environ, **env})
         killer = threading.Timer(600 + probe.pause_s * len(probe.turns), session.kill)
@@ -1185,6 +1194,15 @@ def commit_asked(summary: dict, name: str) -> bool:
     return "git commit" in prompted and "reset --hard" not in prompted and "reset --hard" in denied
 
 
+def own_project_off(summary: dict, name: str) -> bool:
+    """The user's entry for the work folder turned ascii_only off there, though the user's file turns it on:
+    the non-ASCII commit landed and no COMMIT_POLICY came back."""
+    folder, _ = latest(name)
+    log = subprocess.run(["git", "log", "--format=%s"], cwd=folder / "work", capture_output=True,
+                         check=True).stdout.decode("utf-8")
+    return "COMMIT_POLICY" not in seen(summary) and CAFE in log
+
+
 def commit_refused(summary: dict, name: str) -> bool:
     """The co-author commit met COMMIT_POLICY, and the commit that landed has no co-author line."""
     folder, _ = latest(name)
@@ -1306,6 +1324,7 @@ VERDICTS = {
     "live-commit-asked": commit_asked,
     "live-invisible": invisible_named,
     "live-commit-policy": commit_refused,
+    "live-own-project": own_project_off,
     "live-skill-doctor": lambda s, n: "io-guard" in json.dumps(s["final"]),
     "command-output": lambda s, n: logged(s, '"error": "Exit code 1\\nIOPROBE_OUT\\nIOPROBE_ERR"')
     and sum("IOPROBE-SUMMARY" in str(result["content"]) and "persisted-output" not in str(result["content"])

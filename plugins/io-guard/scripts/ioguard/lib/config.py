@@ -1,24 +1,27 @@
-"""io-guard's policy, in four layers: defaults in code, the user's config.json, and two project files.
+"""io-guard's policy, in five layers: defaults in code, the user's config.json, the project's two files, and
+the user's own entry for the project under projects in config.json.
 
 Every policy value is a key with its default in code (D16). A later layer overrides an earlier one key by
 key. Dictionaries merge, lists replace, and a list key that ends in "extra" appends. A project file restricts
 and never widens: it cannot set a key marked project_may_set=False, set a value in project_forbids, raise a
 number marked project_narrows above the layers below it, or set a regex in a key marked project_regex that
 lib.patterns finds could stall. Its list for a key marked project_joins, where a longer list is stricter, adds
-to the list below and never drops an entry of it. A file with any error is dropped whole, and the guard runs
-on the layers that loaded.
+to the list below and never drops an entry of it. Any repository can ship a project file, and only the user
+writes config.json, so the user's entry for a project may set what the user's file may, and it loads last. A
+file with any error is dropped whole, its projects entries with it, and the guard runs on the layers that
+loaded.
 """
 import difflib
 import json
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import IntEnum
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
 from ioguard import CONFIG_SCHEMA
-from ioguard.lib import bytesio, commands, patterns
+from ioguard.lib import bytesio, commands, paths, patterns
 
 
 class Scope(IntEnum):
@@ -26,10 +29,12 @@ class Scope(IntEnum):
     USER = 1
     PROJECT = 2
     PROJECT_LOCAL = 3
+    USER_PROJECT = 4        # the user's own entry for one project, under projects in config.json
 
     @property
     def project(self) -> bool:
-        return self >= Scope.PROJECT
+        """Whether the layer is a file in the project's folder, which restricts and never widens."""
+        return self in (Scope.PROJECT, Scope.PROJECT_LOCAL)
 
 
 @dataclass(frozen=True)
@@ -50,6 +55,7 @@ class ConfigKey:
 class ConfigLayer:
     scope: Scope
     path: Path
+    project: Path | None = None      # for USER_PROJECT, the folder whose entry under projects the layer reads
 
 
 @dataclass(frozen=True)
@@ -160,7 +166,9 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
         choices=REWRITE_MODES, project_forbids=("allow",)) for mode, default in REWRITE_DEFAULTS.items()},
 }
 ENABLED = ConfigKey(bool, True, "Run this check.")
-USER_FILE = "Set it in your own config.json in io-guard's folder, ~/.claude/io-guard."
+USER_FILE = ("Set it in your own config.json in io-guard's folder, ~/.claude/io-guard, for every project or "
+             "under projects for this one.")
+PROJECTS = "projects"
 
 
 def all_keys(check_keys: Mapping[str, Mapping[str, ConfigKey]]) -> dict[str, ConfigKey]:
@@ -202,8 +210,8 @@ def validate(raw: Any, scope: Scope, keys: Mapping[str, ConfigKey], file: Path |
     if not isinstance(raw, Mapping):
         return (ConfigError(file, "(file)", "The file must hold a JSON object."),)
     newer = type_matches(raw.get("schema"), int) and raw["schema"] > CONFIG_SCHEMA
-    errors = []
-    for key, value in flatten(raw, keys).items():
+    errors = list(entry_errors(raw[PROJECTS], keys, file)) if scope is Scope.USER and PROJECTS in raw else []
+    for key, value in flatten(settings_of(raw, scope), keys).items():
         spec = keys.get(key)
         if spec is None:
             nearest = next(iter(difflib.get_close_matches(key, list(keys), n=1, cutoff=0.6)), None)
@@ -223,6 +231,43 @@ def validate(raw: Any, scope: Scope, keys: Mapping[str, ConfigKey], file: Path |
         elif scope.project and spec.project_regex and (problem := unbounded(value)):
             errors.append(ConfigError(file, key, problem))
     return tuple(errors)
+
+
+def settings_of(raw: Mapping[str, Any], scope: Scope) -> Mapping[str, Any]:
+    """A file's settings for every project it applies to: the user's file without its projects entries."""
+    return {key: value for key, value in raw.items() if key != PROJECTS} if scope is Scope.USER else raw
+
+
+def entry_errors(entries: Any, keys: Mapping[str, ConfigKey], file: Path | None) -> tuple[ConfigError, ...]:
+    """Every error in the user's projects entries, each named by its folder: a folder that is not absolute,
+    and what validate finds in its settings."""
+    if not isinstance(entries, Mapping):
+        return (ConfigError(file, PROJECTS, "The value must be an object of project folders to settings."),)
+    errors = []
+    for folder, entry in entries.items():
+        if not Path(folder).is_absolute():
+            errors.append(ConfigError(file, f"{PROJECTS}.{folder}",
+                                      "The key must be a project's absolute folder."))
+            continue
+        errors += [replace(error, key=f"{PROJECTS}.{folder}.{error.key}")
+                   for error in validate(entry, Scope.USER_PROJECT, keys, file)]
+    return tuple(errors)
+
+
+def project_key(raw: Any, project: Path) -> str | None:
+    """The key of the user's entry for project under projects, matched as the file system names folders, or
+    None when there is no entry."""
+    entries = raw.get(PROJECTS) if isinstance(raw, Mapping) else None
+    if not isinstance(entries, Mapping):
+        return None
+    wanted = paths.resolved(project)
+    return next((folder for folder in entries if paths.resolved(Path(folder)) == wanted), None)
+
+
+def project_entry(raw: Any, project: Path) -> Mapping[str, Any] | None:
+    """The user's entry for project under projects, or None."""
+    folder = project_key(raw, project)
+    return None if folder is None else raw[PROJECTS][folder]
 
 
 def unbounded(value: Any) -> str | None:
@@ -276,20 +321,28 @@ def load(layers: Sequence[ConfigLayer], check_keys: Mapping[str, Mapping[str, Co
     values = dict(defaults(check_keys).values)
     errors, loaded, dropped = [], [], []
     for layer in layers:
-        if not layer.path.is_file():
+        if not layer.path.is_file() or layer.path in dropped:
             continue
         raw, unreadable = read_file(layer.path)
-        found = (unreadable,) if unreadable else validate(raw, layer.scope, keys, layer.path)
+        if layer.project is not None:
+            raw = None if unreadable else project_entry(raw, layer.project)
+            if raw is None:
+                continue
+            found = ()          # checked with the user's file, which holds it
+        else:
+            found = (unreadable,) if unreadable else validate(raw, layer.scope, keys, layer.path)
         if not found and layer.scope.project:
             found = widened(flatten(raw, keys), keys, values, layer.path)
         errors.extend(found)
         if any(not error.warning for error in found):
             dropped.append(layer.path)
             continue
-        flat = {key: value for key, value in flatten(raw, keys).items() if key in keys}
+        settings = flatten(settings_of(raw, layer.scope), keys)
+        flat = {key: value for key, value in settings.items() if key in keys}
         if layer.scope.project:
             flat = {key: joined(values[key], value) if keys[key].project_joins else value
                     for key, value in flat.items()}
         values = merge(values, flat)
-        loaded.append(layer.path)
+        if layer.path not in loaded:
+            loaded.append(layer.path)
     return LoadReport(Config(MappingProxyType(values)), tuple(errors), tuple(loaded), tuple(dropped))

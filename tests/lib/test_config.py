@@ -1,4 +1,5 @@
-"""The config's four layers: defaults in code, the user's file, and project files that never widen."""
+"""The config's five layers: defaults in code, the user's file, project files that never widen, and the user's
+own entry for the project, which may."""
 import json
 import shutil
 import tempfile
@@ -211,6 +212,40 @@ class BadFilesAreDroppedWhole(ConfigFiles):
                            self.layer(Scope.PROJECT, "p.json", {"bogus": 1}))
         self.assertEqual((report.config.get("pipeline.soft_ms"), len(report.loaded)), (150, 1),
                          "the guard runs on the layers that loaded")
+
+
+class TheUsersEntryForAProjectMayLoosen(ConfigFiles):
+    def layers(self, user: dict, project: dict | None = None) -> tuple[ConfigLayer, ...]:
+        """The user's file, the project's file, then the user's entry for the project folder "game"."""
+        own = self.layer(Scope.USER, "config.json", user)
+        repo = self.layer(Scope.PROJECT, "p.json", project or {})
+        return own, repo, ConfigLayer(Scope.USER_PROJECT, own.path, self.folder / "game")
+
+    def test_the_entry_turns_off_what_the_user_turned_on_for_this_project_only(self):
+        user = {"commit_policy": {"ascii_only": True},
+                "projects": {(self.folder / "game").as_posix(): {"commit_policy": {"ascii_only": False}}}}
+        here = self.load(*self.layers(user))
+        own, repo, _ = self.layers(user)
+        elsewhere = self.load(own, repo, ConfigLayer(Scope.USER_PROJECT, own.path, self.folder / "other"))
+        self.assertEqual((here.config.get("commit_policy.ascii_only"),
+                          elsewhere.config.get("commit_policy.ascii_only"), here.errors), (False, True, ()),
+                         "the user's entry may loosen, and only in its own project")
+
+    def test_the_entry_wins_over_the_repositorys_file(self):
+        user = {"projects": {str(self.folder / "game"): {"transport": {"rewrite_mode": {"auto": "allow"}}}}}
+        report = self.load(*self.layers(user, {"transport": {"rewrite_mode": {"auto": "ask"}}}))
+        self.assertEqual(report.config.get("transport.rewrite_mode.auto"), "allow",
+                         "the user's own choice for a project loads after the repository's file")
+
+    def test_a_bad_entry_drops_the_users_file_whole(self):
+        user = {"pipeline": {"soft_ms": 150}, "projects": {"relative/game": {"pipeline": {"soft_ms": "x"}},
+                                                           (self.folder / "game").as_posix(): {"bogus": 1}}}
+        report = self.load(*self.layers(user))
+        named = sorted(error.key for error in report.errors)
+        bogus = f"projects.{(self.folder / 'game').as_posix()}.bogus"
+        self.assertEqual((report.config.get("pipeline.soft_ms"), named),
+                         (300, [bogus, "projects.relative/game"]),
+                         "every entry is checked with the user's file, and one error drops the file")
 
 
 if __name__ == "__main__":

@@ -3,11 +3,15 @@
 A file may nest a dotted key any way the loader reads, such as checks > shell.lint > enabled or checks > shell
 > lint > enabled. A new key goes under the longest part of its path the file already holds, and the rest nests
 the way the defaults name it: checks, then the check's id, then the option, and one level per dot elsewhere.
-A removed key takes each object it leaves empty with it, so the layer below applies again.
+A removed key takes each object it leaves empty with it, so the layer below applies again. The user's settings
+for one project sit under projects, keyed by the project's folder, and entry_of and with_entry read and write
+that one object.
 """
 import copy
 import json
 from typing import Any
+
+from ioguard.lib.config import PROJECTS
 
 
 def canonical(key: str) -> list[str]:
@@ -78,6 +82,29 @@ def value_at(raw: dict, key: str) -> Any:
             return None
         node = node[name]
     return node
+
+
+def entry_of(raw: dict, folder: str) -> dict:
+    """The user's settings for the project at folder, under projects, or an empty object."""
+    entries = raw.get(PROJECTS)
+    entry = entries.get(folder) if isinstance(entries, dict) else None
+    return entry if isinstance(entry, dict) else {}
+
+
+def with_entry(raw: dict, folder: str, entry: dict) -> dict:
+    """A copy of raw whose projects entry for folder is entry. An empty entry goes, and projects with it
+    when it holds nothing else."""
+    out = copy.deepcopy(raw)
+    entries = out.get(PROJECTS) if isinstance(out.get(PROJECTS), dict) else {}
+    if entry:
+        out[PROJECTS] = {**entries, folder: entry}
+        return out
+    entries.pop(folder, None)
+    if entries:
+        out[PROJECTS] = entries
+    else:
+        out.pop(PROJECTS, None)
+    return out
 
 
 def encoded(raw: dict) -> bytes:
