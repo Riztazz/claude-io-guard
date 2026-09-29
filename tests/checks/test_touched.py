@@ -111,6 +111,17 @@ class TheCommandsChangesAreNamed(unittest.TestCase):
                 self.assertEqual(session.after(command=command), [],
                                  "a file the command moved on purpose is neither deleted nor created")
 
+    def test_a_git_mv_of_a_new_file_never_read_is_no_news(self):
+        command = "git add open/b.md && git mv open/b.md done/"
+        session = Session(before=(entry("open/b.md", "??"),))
+        session.fs.files[CWD / "open" / "b.md"] = b"task\n"
+        session.run(events.bash(command, CWD))
+        del session.fs.files[CWD / "open" / "b.md"]
+        session.fs.files[CWD / "done" / "b.md"] = b"task\n"
+        session.git.current_status = GitStatus((entry("done/b.md", "A "),))
+        self.assertEqual(session.after(command=command), [],
+                         "git lists no D for a file it never committed, and the move is still seen")
+
     def test_a_move_the_command_does_not_name_is_named_as_a_move(self):
         session = Session()
         session.fs.files[CWD / "open" / "a.md"] = b"task\n"

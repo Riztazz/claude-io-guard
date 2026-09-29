@@ -93,6 +93,17 @@ def moves(gone: list[Path], arrived: list[Path], renamed: dict[Path, Path], size
     return pairs
 
 
+def vanished(before: ShellSnapshot, after: frozenset[tuple[str, str]] | None, ctx: Context) -> list[Path]:
+    """The paths git status listed before the command, such as an untracked or a newly added file, that it
+    lists no more and that are gone from disk. git leaves no D entry for a file it never committed, so a
+    move of one shows only here."""
+    if before.root is None or before.status is None or after is None:
+        return []
+    now = {name for name, _ in after}
+    return [before.root / name for name, _ in sorted(before.status)
+            if name not in now and not ctx.fs.exists(before.root / name)]
+
+
 def under(path: Path, folders: frozenset[Path]) -> bool:
     return any(path == folder or path.is_relative_to(folder) for folder in folders)
 
@@ -192,7 +203,8 @@ class Touched(Check):
                  added if code[0] in "AR" else changed).append(path)
         sizes = {path: stat.size for path, stat in (*before.stats.items(), *before.listed.items()) if stat}
         named_move = names_a_move(event)
-        moved = moves(deleted, created + added, renamed, sizes, named_move, ctx)
+        gone = deleted + vanished(before, after, ctx)
+        moved = moves(gone, created + added, renamed, sizes, named_move, ctx)
         deleted = [path for path in deleted if path not in {old for old, _ in moved}]
         created = [path for path in created if path not in {new for _, new in moved}]
         changed += [path for path in added if path not in {new for _, new in moved}]

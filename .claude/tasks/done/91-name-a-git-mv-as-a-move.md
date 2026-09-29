@@ -52,3 +52,14 @@ Evidence:
   notes.md to archive/notes.md. Use the files' new paths from now on.`
 
 Checked on Windows 10 on 2026-09-29. Not checked: macOS (task 36).
+
+## Follow-up, the same day
+
+The lead's own session, on the installed c46e104, still got `TOUCHED_BY_SHELL: This command changed
+.claude/tasks/done/99-scratch-move-check.md.` for `git add` then `git mv` of a new file the session had
+written but not read. git status lists no D for a file it never committed, and the file was not among the
+read ones, so the old path never showed as gone. `vanished` now adds each path git status listed before the
+command, lists no more and is gone from disk, for pairing only, so a plain delete reports as before.
+`python tests/run_all.py`: 961 tests, OK. `live-touched-move` gained that step (`python maker.py`, then `git
+add draft.md && git mv draft.md done/`) and passes from this checkout (20260929-134112), with no message on
+the move.

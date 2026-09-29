@@ -159,10 +159,12 @@ TOUCHED_FILES = {"a.cpp": b"int   main( ){return 0;}\n", "conv.txt": b"one\r\ntw
                             b"path.write_bytes(path.read_bytes().replace(b'\\r\\n', b'\\n'))\n"}
 TOUCHED_MOVE = ("Do these in order, one tool call each, and never retry. 1. Read task.md. 2. Read notes.md. "
                 "3. Run the Bash command: mkdir -p done && git add task.md && git mv task.md done/ 4. Run "
-                "the Bash command: python mover.py Then reply DONE.")
+                "the Bash command: python mover.py 5. Run the Bash command: python maker.py 6. Run the Bash "
+                "command: git add draft.md && git mv draft.md done/ Then reply DONE.")
 MOVER = (b"import os\nos.makedirs('archive', exist_ok=True)\n"
          b"os.replace('notes.md', 'archive/notes.md')\n")
-TOUCHED_MOVE_FILES = {"task.md": b"task\n", "notes.md": b"notes\n", "mover.py": MOVER}
+MAKER = b"open('draft.md', 'wb').write(b'draft\\n')\n"
+TOUCHED_MOVE_FILES = {"task.md": b"task\n", "notes.md": b"notes\n", "mover.py": MOVER, "maker.py": MAKER}
 OUTPUT = ("Do these in order, one tool call each, and never retry a failed step. 1. Run the Bash command: "
           "seq 1 8000 2. Run the Bash command: echo IOPROBE_OUT; echo IOPROBE_ERR >&2; exit 1 3. Run the "
           "Bash command: grep -c nomatch s.txt && echo IOPROBE_AFTER 4. Run the Bash command: grep nomatch "
@@ -1366,6 +1368,8 @@ VERDICTS = {
         "TOUCHED_BY_SHELL: This command changed a.cpp, read before it",
         "EOL_MISMATCH: This command changed conv.txt from CRLF to LF line endings.")),
     "live-touched-move": lambda s, n: (not context_reached(n, "deleted task.md")
+                                       and not context_reached(n, "done/draft.md")
+                                       and context_reached(n, "created draft.md")
                                        and context_reached(n, "moved notes.md to archive/notes.md")),
     "live-results": results_shown,
     "live-pipe-once": piped_twice_warned_once,
