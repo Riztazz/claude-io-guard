@@ -38,6 +38,7 @@
   .columns { position: sticky; top: 0; z-index: 4; background: var(--bg); padding: 8px 15px; margin-top: 12px;
              border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 600; }
   .columns span + span { cursor: help; }
+  .saved { margin: 12px 0 0; overflow-wrap: anywhere; }
   .setting { align-items: start; }
   .setting.wide { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .setting.wide .about, .setting .err { grid-column: 1 / -1; }
@@ -122,6 +123,7 @@
 <div id="banners"></div>
 <div id="settings-view">
 <input type="search" id="search" placeholder="Filter, such as shell.lint or rewrite" aria-label="Filter settings">
+<p class="muted saved" id="saved"></p>
 <div class="columns" id="columns"><span>Setting</span><span>All projects</span><span>This project</span></div>
 <div id="list"></div>
 <p class="muted">Hover a setting's name for its key and default, and press ? for its whole help. A change saves at
@@ -333,6 +335,8 @@ function render() {
   projectHead.textContent = "Only " + projectName();
   projectHead.title = "Your own config, " + data.files.user + ", under projects for this folder. It wins over " +
     "All projects and over the repository's " + data.files.project + " here.";
+  document.getElementById("saved").textContent = "Saved in " + data.files.user + ". Only " + projectName() +
+    " saves in the same file, under projects, and never in the repository's .claude/io-guard.json.";
   const banners = document.getElementById("banners");
   banners.replaceChildren(...Object.entries(data.errors).map(([scope, message]) =>
     make("div", {class: "banner", text: (scope === "user" ? "Your config: " : "The project's config: ") + message})));

@@ -1613,8 +1613,8 @@ from it. A background run keeps running when its call is cancelled, because its 
   `user_project`, so it may turn a check off. With no entry it shows the value the project takes, greyed: from
   the repository's `.claude/io-guard.json` when that sets one, and it says so, else from All projects. "Change
   for this project" starts the entry from that value, and "Use all projects' value" or "Use the repository's
-  value" removes it. Below 640 pixels, and for a list or a JSON value, the two columns stack under the setting,
-  each with its heading. A change saves at once and the page reads the settings again, so a refused value goes
+  value" removes it. A line above the headings names the file both columns save in (task 78). Below 640
+  pixels, and for a list or a JSON value, the two columns stack under the setting, each with its heading. A change saves at once and the page reads the settings again, so a refused value goes
   back to the saved one and its message stays on the card. It follows the system's light or dark scheme until
   a pick at the top, kept in `localStorage`.
 - **The stats.** A switch at the top shows Stats instead of Settings: the last 1, 7 or 30 days, of this project
