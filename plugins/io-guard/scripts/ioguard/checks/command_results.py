@@ -12,6 +12,7 @@ failed marks the programs a later run uses as stale (VFY-7). A well-formed Bash 
 read as ending inside a quote was cut by this machine's Bash tool, so the session's transport budget drops
 below its length.
 """
+import logging
 import re
 from collections import Counter
 from collections.abc import Mapping, Sequence
@@ -21,10 +22,12 @@ from typing import Any
 from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.lib import output, pwsh, shell
 from ioguard.lib.config import ConfigKey
-from ioguard.lib.context import Context
+from ioguard.lib.context import Context, claude_folder
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity
+
+log = logging.getLogger("ioguard.checks.command_results")
 
 ERROR_PATTERNS = {
     "compiler": [r"^[ \t]*(?:\d+>)?(?:[^\s:(][^\n(]*\(\d+(?:,\d+)*\)[ \t]*:[ \t]*|[A-Za-z]+[ \t]+:[ \t]*)?"
@@ -124,6 +127,9 @@ class Reading:
             stderr = str(self.response.get("stderr") or "")
             self.text = str(self.response.get("stdout") or "") + (f"\n{stderr}" if stderr else "")
         self.saved = output.saved_path(self.response or {"stdout": self.text})
+        if self.saved and not output.in_tool_results(self.saved, claude_folder(ctx.env), event.session_id):
+            log.debug("io-guard left %s unread: it is not in this session's tool-results folder", self.saved)
+            self.saved = None
         self.size, self.whole = self.saved_text() if self.saved else (0, None)
         self.full = self.text if self.whole is None else self.whole
         quoting = all(simple.name in QUIET or shell.matching(simple, options["readers"])

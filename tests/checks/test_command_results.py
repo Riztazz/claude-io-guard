@@ -17,7 +17,8 @@ from tests.support import events
 
 CWD = Path("C:/project")
 WINDOWS = Platform("win32", True)
-SAVED = Path("C:/Users/u/.claude/projects/p/s/tool-results/b1.txt")
+CLAUDE = "C:/Users/u/.claude"
+SAVED = Path(f"{CLAUDE}/projects/p/{events.SESSION_ID}/tool-results/b1.txt")
 REGISTRY = Registry()
 REGISTRY.register(CommandResults)
 EOF = "Exit code 2\n/usr/bin/bash: eval: line 1: unexpected EOF while looking for matching `''"
@@ -27,7 +28,8 @@ COMPILER = "a.cpp(3): error C2065: 'x': undeclared identifier"
 def context(files: dict | None = None, **options) -> Context:
     values = {**defaults(REGISTRY.keys()).values,
               **{f"checks.shell.results.{name}": value for name, value in options.items()}}
-    return Context.fake(files or {}, config=Config(MappingProxyType(values)), platform=WINDOWS)
+    return Context.fake(files or {}, config=Config(MappingProxyType(values)), platform=WINDOWS,
+                        env={"CLAUDE_CONFIG_DIR": CLAUDE})
 
 
 def run(raw: dict, ctx: Context | None = None):
@@ -192,6 +194,21 @@ class ASavedOutputIsShownByItsEnds(unittest.TestCase):
         outcome = run(ran("make", stdout), context({SAVED: b"one\ntwo\n"}))
         self.assertTrue(outcome.output_replacement["stdout"].endswith("1| one\n2| two"),
                         "the notice is enough to find the file")
+
+    def test_only_a_file_in_this_sessions_tool_results_folder_is_read(self):
+        session = f"{CLAUDE}/projects/p/{events.SESSION_ID}"
+        for named in (Path("C:/Users/u/.ssh/id_rsa"),
+                      Path(f"{session}/tool-results/../../../../../.ssh/id_rsa"),
+                      Path(f"{CLAUDE}/projects/p/another-session/tool-results/b1.txt"),
+                      Path(f"{session}/b1.txt")):
+            ctx = context({named: b"-----BEGIN KEY-----\nsecret\n"})
+            for stdout, extra in ((f"Output too large (1KB). Full output saved to: {named}", {}),
+                                  ("x", {"persistedOutputPath": str(named), "persistedOutputSize": 30})):
+                with self.subTest(named=named, persisted=bool(extra)):
+                    outcome = run(ran("cat notes.md", stdout, **extra), ctx)
+                    self.assertIsNone(outcome.output_replacement,
+                                      "io-guard reads a saved output only where Claude Code saves this "
+                                      "session's outputs")
 
     def test_a_file_that_is_gone_or_past_max_bytes_is_left_as_it_is(self):
         stdout = f"Output too large (1KB). Full output saved to: {SAVED}"

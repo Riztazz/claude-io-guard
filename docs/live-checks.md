@@ -160,7 +160,7 @@ match `.claude/tasks/context.md`, "The hook entry point".
 | `/skill-doctor` lists the plugin's skill as `io-guard:io-guard`, and its one-line listing costs under 20 tokens a turn | `live-skill-doctor` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | In dontAsk mode, commands refused with `SHELL_WRITE`, `MSYS_PATH`, `TRAILING_BACKSLASH_QUOTE`, `POWERSHELL_TRAP` and `DIALECT_MISMATCH` each get one retry, and it runs. Haiku recovered from the refusal's own text and loaded no skill | `live-skill` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | After an `io.edit` adds a badly formatted line to a committed BOM and CRLF `.cpp`, `io.format` runs clang-format from `PATH` over that line only: it becomes five formatted lines, the badly formatted committed line stays, and every line keeps CRLF although the `.clang-format` names `LineEnding: LF` | `live-format` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
-| A saved Bash or PowerShell output comes back as its first and last 20 lines with the file's path, and the model reads no file. grep's exit code 1 that stopped an `&&` chain is labelled as its answer, and a traceback behind `\| tail` is named with tail's exit code | `live-results` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-27 |
+| A saved Bash or PowerShell output comes back as its first and last 20 lines with the file's path, and the model reads no file. grep's exit code 1 that stopped an `&&` chain is labelled as its answer, and a traceback behind `\| tail` is named with tail's exit code | `live-results` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-29 |
 
 ## Not checked yet
 

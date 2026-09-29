@@ -9,7 +9,10 @@ import re
 from bisect import bisect_right
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path, PurePath
 from typing import Any
+
+from ioguard.lib import paths
 
 EXIT = re.compile(r"\AExit code (\d+)")
 SAVED = re.compile(r"Output too large \([^)\n]*\)\. Full output saved to: ([^\n]+)")
@@ -53,6 +56,17 @@ def saved_path(response: Mapping[str, Any]) -> str | None:
         return path
     found = SAVED.search(str(response.get("stdout") or "")[:1_000])
     return None if found is None else found[1].strip()
+
+
+def in_tool_results(path: str, claude: Path, session_id: str) -> bool:
+    """Whether path, after .. and links, is a file in the folder where Claude Code saves this session's long
+    outputs: <claude>/projects/<project>/<session>/tool-results, or a tool-results folder below it. The
+    notice's text is the command's own output, so it can name any file."""
+    try:
+        parts = PurePath(paths.resolved(Path(path))).relative_to(paths.resolved(claude / "projects")).parts
+    except (ValueError, OSError):
+        return False
+    return len(parts) >= 4 and parts[1].casefold() == session_id.casefold() and "tool-results" in parts[2:-1]
 
 
 def error_lines(text: str, patterns: Mapping[str, re.Pattern]) -> tuple[ErrorLine, ...]:

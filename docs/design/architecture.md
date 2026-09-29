@@ -937,6 +937,8 @@ def skipped_since(cache: bytes, server: str, default_ttl_s: float) -> Optional[t
 # output.py, task 22
 def exit_code(error: str) -> Optional[int]                     # from a failed call's first line, Exit code N
 def saved_path(response: Mapping[str, Any]) -> Optional[str]   # persistedOutputPath, or the path its notice names
+def in_tool_results(path: str, claude: Path, session_id: str) -> bool   # task 98: in this session's
+                                                            # tool-results folder, after .. and links
 def error_lines(text: str, patterns: Mapping[str, Pattern]) -> tuple[ErrorLine, ...]   # matched from line start
 def mojibake(text: str, code_pages: Sequence[str]) -> Mojibake # U+FFFD, and UTF-8 a console read in a code page
 def excerpt(text: str, head: int, tail: int, marked: Sequence[ErrorLine], width: int) -> str   # numbered lines
@@ -1127,7 +1129,9 @@ PostToolUse answers carry `additionalContext`, `classifierContext` and `updatedT
 `stdout` replaced. A plain string there fails the harness's schema check and changes nothing. `shell.results`
 replaces a saved output with its first and last lines and its error lines, and drops `persistedOutputPath` and
 `persistedOutputSize` from it, because with them Claude Code shows the replacement only as the 2 KB preview of
-the saved file (`context.md`, "Hooks and MCP", row 32). A failed Bash or PowerShell call brings no
+the saved file (`context.md`, "Hooks and MCP", row 32). It reads a saved file only inside the session's
+`<Claude Code's folder>/projects/<project>/<session>/tool-results`, after `..` and links, since the notice
+that names it is the command's own output and can name any file (task 98). A failed Bash or PowerShell call brings no
 `tool_response`, and its output follows the `Exit code N` line in `error`. PostToolUseFailure answers carry
 `additionalContext`. SessionStart answers carry `additionalContext` and write `CLAUDE_ENV_FILE`. The
 user's `systemMessage` is the outcome's `user_message` on every event. PreToolUse `additionalContext` reaches
