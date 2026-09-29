@@ -134,6 +134,9 @@ CODES: tuple[CodeSpec, ...] = (
     CodeSpec("PIPE_HIDES_EXIT", Layer.TRANSPORT, Severity.WARNING,
              "A pipe gives the command the exit code of its last part, which hides a build or test failure.",
              "Read the output for the result, not the exit code.", "0.1"),
+    CodeSpec("CONFIG_REFUSED", Layer.INTERNAL, Severity.REFUSED,
+             "The setting was not written: the key is unknown, the value does not fit it, or this file may "
+             "not set it.", "Use a key and a value the message names.", "0.1"),
     CodeSpec("STOPS_BY_MATCH", Layer.TRANSPORT, Severity.WARNING,
              "The command stops every process a name or a match picks, other sessions' processes too.",
              "Stop the one process by its id.", "0.1"),

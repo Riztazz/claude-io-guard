@@ -111,6 +111,19 @@ class LiveContextsKeepOneSessionState(unittest.TestCase):
         self.assertEqual(ctx.config.get("transport.rewrite_mode.default"), "refuse",
                          "IOGUARD_HOME names the folder whose config.json is the user layer")
 
+    def test_a_changed_config_file_applies_from_the_next_call_and_keeps_the_session(self):
+        contexts, key = entry.LiveContexts(), "transport.rewrite_mode.default"
+        with TemporaryProject() as data, TemporaryProject() as project, \
+                mock.patch.dict(os.environ, {"IOGUARD_HOME": str(data)}):
+            before = contexts.get("s1", project, Registry())
+            (data / "config.json").write_bytes(b'{"transport": {"rewrite_mode": {"default": "refuse"}}}')
+            after = contexts.get("s1", project, Registry())
+            same = contexts.get("s1", project, Registry())
+        self.assertEqual((before.config.get(key), after.config.get(key)), ("ask", "refuse"),
+                         "a setting written while the server runs applies from the next call")
+        self.assertEqual((after.session is before.session, same is after), (True, True),
+                         "the session's state survives the rebuild, and an unchanged file builds nothing")
+
     def test_a_warning_goes_out_once_across_the_sessions_processes(self):
         with TemporaryProject() as data, TemporaryProject() as project, \
                 mock.patch.dict(os.environ, {"IOGUARD_HOME": str(data)}):

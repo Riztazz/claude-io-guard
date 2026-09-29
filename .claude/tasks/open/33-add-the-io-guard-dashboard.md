@@ -4,7 +4,7 @@ stage: H
 area: mcp
 created: 2026-09-27
 status: open
-depends-on: [23, 28, 31]
+depends-on: [23, 28]
 findings: []
 platforms: [windows, macos]
 commit: "feat: the io-guard dashboard, as an MCP App and as a local page"
@@ -38,6 +38,25 @@ therefore also exists as text and as a local page. It comes after the measuremen
   `lib.bytesio.write_atomic`, and refuses what the scope may not set (`docs/design/architecture.md`, section 5).
 - **`tools/report.py --html <file>`**: renders the same page from the same data into a standalone file that opens
   in any browser. It is one template, shared by both uses.
+
+## Decisions, 2026-09-29
+
+The lead picked these after seeing three mockups: a page in the browser pane, a native window, and text in chat.
+
+- **Surface:** a local page that the io server serves on `127.0.0.1`, which Claude opens in the desktop app's
+  browser pane and any browser opens elsewhere, plus `io.config`, so a setting also changes by asking in chat.
+  The MCP App stays for a client that renders one, since neither Code tab nor CLI does today.
+- **First version:** the settings. The checks on or off, the rewrite mode per permission mode, and the lists.
+  The stats come after task 31's measurement (D20), in task 66.
+- **Files:** a switch picks the user's `config.json` or the project's `.claude/io-guard.json`. A key the project
+  may not set shows, and can't be changed, under the project.
+
+The phases, each its own commit:
+
+1. `io.config(scope, key, value)`, the write both surfaces share, with its tests.
+2. `io.dashboard`: the io server serves the page and a JSON API on `127.0.0.1`, behind a token in the URL, and
+   the tool answers with the URL and a text summary.
+3. The page: `ui/dashboard.html`, one file with inline CSS and JS, and a live check in the browser pane.
 
 ## Where
 

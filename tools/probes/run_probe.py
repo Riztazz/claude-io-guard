@@ -265,6 +265,14 @@ COMMIT_WITH_CO_AUTHOR = (GRANTED + "The co-author line is the test: the guard sh
 INVISIBLE = ("Use the Write tool once to create strip.py with two lines. Line 1: import io. Line 2: raw = "
              "raw.lstrip('X'), where X is the byte order mark character itself, U+FEFF, and not an escape "
              "for it. Then quote word for word any note that came back with the Write, and reply DONE.")
+IO_CONFIG = "mcp__plugin_io-guard_io__io_config"
+CONFIG_STEPS = (f"Do these in order, one tool call each. 1. Load {IO_CONFIG} with the ToolSearch tool, with "
+                f"the query select:{IO_CONFIG} 2. Call {IO_CONFIG} with these exact arguments: "
+                '{"key": "checks.shell.lint.enabled", "value": false, "scope": "project"} 3. Call '
+                f"{IO_CONFIG} with these exact arguments: "
+                '{"key": "transport.rewrite_mode.auto", "value": "allow", "scope": "project"} '
+                "Then quote each result's first line word for word.")
+CONFIG_FILE = '{\n  "schema": 1,\n  "checks": {\n    "shell.lint": {\n      "enabled": false\n    }\n  }\n}\n'
 IO_FORMAT = "mcp__plugin_io-guard_io__io_format"
 FORMAT_STYLE = b"BasedOnStyle: LLVM\nLineEnding: LF\n"
 FORMAT_CPP = b"\xef\xbb\xbfint  kept=1;\r\nint main() {\r\n  return 0;\r\n}\r\n"
@@ -523,6 +531,8 @@ PROBES = {
     "live-format": Probe(0, "", guard="", allowed=("ToolSearch", IO_EDIT, IO_FORMAT), prompt=FORMAT_STEPS,
                          git=True, check=("a.cpp",),
                          setup={".clang-format": FORMAT_STYLE, "a.cpp": FORMAT_CPP}),
+    "live-config": Probe(0, "", guard="", allowed=("ToolSearch", IO_CONFIG), prompt=CONFIG_STEPS, git=True,
+                         check=(".claude/io-guard.json",), setup={"README.md": b"probe\n"}),
     "live-format-dry": Probe(0, "", guard="", allowed=("ToolSearch", IO_EDIT, IO_FORMAT),
                              prompt=FORMAT_DRY_STEPS, git=True, check=("a.cpp",),
                              setup={".clang-format": FORMAT_STYLE, "a.cpp": FORMAT_CPP}),
@@ -1079,6 +1089,12 @@ def dry_run_shown(summary: dict, name: str) -> bool:
     return summary["files"]["a.cpp"] == EDITED_CPP and any("+  int y = 2;" in diff for diff in diffs)
 
 
+def config_written(summary: dict, name: str) -> bool:
+    """io.config wrote the project setting into .claude/io-guard.json as the loader reads it, and refused
+    the rewrite mode a project file may not set, leaving the file as the first call wrote it."""
+    return summary["files"][".claude/io-guard.json"] == CONFIG_FILE and "CONFIG_REFUSED" in seen(summary)
+
+
 def formatted_changed_lines(summary: dict, name: str) -> bool:
     """io.format formatted the edited line, left the committed line 1 as badly formatted as it was, and kept
     the BOM and every CRLF although the style names LF. Its own result names the lines it changed, so the
@@ -1266,6 +1282,7 @@ VERDICTS = {
     "live-restore": restore_asked,
     "live-stage": staged_one_hunk,
     "live-format": formatted_changed_lines,
+    "live-config": config_written,
     "live-format-dry": dry_run_shown,
     "live-skill": recovered_once,
     "live-commit-asked": commit_asked,

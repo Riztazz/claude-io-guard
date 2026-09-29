@@ -365,6 +365,27 @@ def project_root(cwd: Path) -> Path:
     return cwd
 
 
+def config_layers(data_dir: Path | None, project: Path) -> tuple[ConfigLayer, ...]:
+    """The config files over the defaults, in order: the user's config.json in io-guard's folder when there is
+    one, then the project's io-guard.json and io-guard.local.json."""
+    user = () if data_dir is None else (ConfigLayer(Scope.USER, data_dir / "config.json"),)
+    return (*user, ConfigLayer(Scope.PROJECT, project / ".claude" / "io-guard.json"),
+            ConfigLayer(Scope.PROJECT_LOCAL, project / ".claude" / "io-guard.local.json"))
+
+
+def config_stamp(data_dir: Path | None, project: Path) -> tuple:
+    """Each config file's modification time and size, or None when it is missing, so a change shows."""
+    stamp = []
+    for layer in config_layers(data_dir, project):
+        try:
+            found = os.stat(layer.path)
+        except OSError:
+            stamp.append(None)
+        else:
+            stamp.append((found.st_mtime_ns, found.st_size))
+    return tuple(stamp)
+
+
 def load_probe(data_dir: Path | None, platform: Platform) -> Probe:
     path = None if data_dir is None else data_dir / "probe.json"
     if path is None or not path.is_file():
@@ -394,9 +415,8 @@ class Context:
         """The real ports, the config from its four layers, and the probe from io-guard's folder. With no
         folder there is no user layer and no probe, and telemetry stays in memory."""
         platform = detect()
-        user = () if data_dir is None else (ConfigLayer(Scope.USER, data_dir / "config.json"),)
-        layers = (*user, ConfigLayer(Scope.PROJECT, project / ".claude" / "io-guard.json"),
-                  ConfigLayer(Scope.PROJECT_LOCAL, project / ".claude" / "io-guard.local.json"))
+        layers = config_layers(data_dir, project)
+        user = tuple(layer for layer in layers if layer.scope is Scope.USER)
         report = load(layers, check_keys or {})
         return cls(config=report.config, probe=load_probe(data_dir, platform), platform=platform, git=Git(),
                    fs=LiveFs(), clock=SystemClock(), session=SessionState(),

@@ -47,6 +47,7 @@ plugins/io-guard/
         proc.py                    run, Pump, background
         results.py                 CodeSpec, CODES, Code, Result, Fix, render, callable_name
         config.py                  Config, SCHEMA, load, validate, merge
+        config_edit.py             placed, value_at, encoded: one setting written where its file keeps it
         events.py                  HookEvent, Tool, PermissionMode, Surface, Event
         context.py                 Context, the ports, SessionState, Probe
         decisions.py               Verdict, Rewrite, Decision, compose
@@ -111,7 +112,7 @@ plugins/io-guard/
         tools_run.py               io.run, io.status, io.read_log
         tools_format.py            io.format
         tools_history.py           io.snapshot, io.restore, io.compare, io.stage
-        tools_dashboard.py         io.dashboard, io.config, the ui resource
+        tools_dashboard.py         io.config today, then io.dashboard and the ui resource
         tools_hook.py              hook.pre_tool_use, hook.post_tool_use, hook.post_tool_use_failure, hook.ping
         skill.py                   the skill page's tool and code tables, which tools/skill.py writes
       cli/
@@ -451,6 +452,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Read | `PATH_NOT_FOUND`, `READ_TOO_LARGE`, `PATTERN_INVALID`, `SEARCH_TOO_BROAD`, all warnings | 20, in `CODES` |
 | Output | `EXIT_BENIGN`, `OUTPUT_SAVED`, `ERRORS_IN_OUTPUT`, `MOJIBAKE`, `STALE_BINARY` | 22, in `CODES` |
 | Internal | `GUARD_ERROR`, `REWRITE_CONFLICT`, `BUDGET_EXCEEDED` | 07, in `CODES` |
+| Internal | `CONFIG_REFUSED`, a setting `io.config` would write into a file the loader drops | 33, in `CODES` |
 | Internal | `SERVER_DOWN`, `CANCELLED` | 23, in `CODES` |
 | Internal | `HANDLE_EXPIRED`, with the first tool that makes a handle | 25, in `CODES` |
 | Location | `RESTORE_ASKED`, a warning, and `SNAPSHOT_TOO_LARGE` | 32, in `CODES` |
@@ -1415,6 +1417,23 @@ Over 12 C++ files copied from one of the lead's projects, 8 CRLF and 4 LF, each 
 line and one line with doubled spaces, `io.format` wrote the same bytes as the script agents there ran 128
 times to format changed hunks, with the same clang-format (`context.md`, task 26).
 
+### Change a setting
+
+`mcp/tools_dashboard.py` holds `io.config` (task 33).
+
+```python
+io.config(key, value = None, scope = "user", remove = False)
+-> ConfigOutput(key, scope, file, about, choices, project_may_set, before, after, applies, written)
+```
+
+- **Read.** With no `value` and no `remove`, the call writes nothing and names what the file sets, what
+  applies for the project, and what the key does.
+- **Write.** `scope` `user` is `config.json` in io-guard's folder, and `project` is the project root's
+  `.claude/io-guard.json`. `lib.config_edit` places the key where the file already keeps its neighbours, and
+  `remove` takes it out with every object it empties. The file as it would be is checked with `validate`, and
+  a project file with `widened` too, so a value the loader would drop answers `CONFIG_REFUSED` and nothing is
+  written. The write is one `write_atomic` under `file_lock`.
+
 ### Keep files, and put them back
 
 `mcp/tools_history.py` holds `io.snapshot`, `io.restore`, `io.compare` and `io.stage` (task 32).
@@ -1577,7 +1596,7 @@ Across processes, three rules keep two servers from corrupting each other's work
 |---|---|
 | A file an io tool edits | Inside the thread lock, the tool takes `lib.locks.file_lock(path)`: an exclusive lock on `locks/<sha1 of the resolved path>.lock` in io-guard's folder, or under the system temporary folder's `io-guard` with no data folder, through `msvcrt.locking` on Windows and `fcntl.flock` on macOS, held from the read to the atomic replace, with an `io.edit.wait_ms` wait of 5 seconds and then `FILE_LOCKED`. The write itself is a temp file in the same folder and `os.replace`, so a reader never sees half a file |
 | Telemetry | One file per session, `events/<YYYY-MM>/<session>.jsonl`, so two servers never interleave lines. `tools/report.py` merges them |
-| Config | Loaded once per process and read-only after that. `io.config` writes the project file atomically, and a running server picks the change up at its next start |
+| Config | Read-only once loaded. Each hook call compares the config files' times and sizes with those it loaded, and loads them again when one changed, keeping the session's state. `io.config` writes a file atomically under the file lock, so the change applies from the next call |
 
 Snapshots and handles are keyed by id and written atomically, so two servers never write the same file.
 

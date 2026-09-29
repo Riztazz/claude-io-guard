@@ -131,6 +131,7 @@ A few jobs have no safe built-in tool, so the io server adds them:
 | `io.restore` | Put back the files a snapshot kept, only those that changed, after your yes |
 | `io.compare` | Show whether a pass changed code since a snapshot, ignoring comments or include lines, and where |
 | `io.stage` | Stage the hunks of a file that meet the lines you name, or that one task wrote, and never commit |
+| `io.config` | Read one io-guard setting, or write it into your config or the project's |
 
 The three that change a file write it once, only when every place they name matched once, and a failed one
 writes nothing and names the lines it nearly matched. Two subagents editing one file take turns. After one of
@@ -197,6 +198,10 @@ works in, and for the project's files only: a file outside it gets your settings
 `checks.verify.write.ascii_only` or `checks.win.paths.prefixes`, where a longer list is stricter, adds to
 yours and can't drop anything from it. Its list for any other key replaces yours, and each key's description
 says which. `ascii_only` takes whole file names, such as `LICENSE` or `.gitignore`, beside extensions.
+
+To change a setting without opening the file, ask Claude, such as "turn off shell.lint for this project".
+`io.config` writes it into your file or the project's, checked the way io-guard checks the whole file, so a
+value the file couldn't load is refused and nothing is written. A change applies from the next tool call.
 
 io-guard's folder is `~/.claude/io-guard`, or `io-guard` inside `CLAUDE_CONFIG_DIR` when you've moved `~/.claude`,
 or wherever `IOGUARD_HOME` points. It holds your `config.json`, the file locks that keep two sessions from
