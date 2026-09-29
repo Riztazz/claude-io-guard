@@ -130,6 +130,10 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
                                           "your own config sets it, since every project's telemetry shares "
                                           "one folder.", project_may_set=False),
     "telemetry.debug": ConfigKey(bool, False, "Write tracebacks to the debug log."),
+    "io.saved_days": ConfigKey(int, 7, "Days io-guard keeps the tool results, io.run bodies and logs, and "
+                               "command bodies it saves in its folder, checked when the io server starts. 0 "
+                               "keeps them. Only your own config sets it, since every project's files share "
+                               "one folder.", project_may_set=False),
     "skip_trees": ConfigKey(list, [], "Globs, from the repository root, such as Content/**, whose changes a "
                             "shell command's report leaves out. A project's list replaces it."),
     "verify": ConfigKey(dict, {}, "The command io-guard runs on a file after each Edit or Write, per file "

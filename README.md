@@ -203,8 +203,8 @@ project, from any subfolder a session works in, and for the project's files only
 settings alone. A project's list replaces yours. `checks.verify.write.ascii_only` takes whole file names, such
 as `LICENSE` or `.gitignore`, beside extensions.
 
-Three settings stay yours alone, because they reach every project: `telemetry.retention_days`, and the
-variables the session probe exports, `checks.session.probe.env` and `env_windows`.
+Four settings stay yours alone, because they reach every project: `telemetry.retention_days`,
+`io.saved_days`, and the variables the session probe exports, `checks.session.probe.env` and `env_windows`.
 
 **A project's commands wait for your yes.** `verify` and `format` name programs io-guard starts, and any
 repository you clone can ship a `.claude/io-guard.json`. So a project's commands don't run until you approve
@@ -239,7 +239,9 @@ from the telemetry in io-guard's folder and never leave your machine.
 To reset the stats, press Start from now: the page counts only what happens after it, and Show everything
 brings the rest back. Nothing is deleted. Delete all... deletes every project's telemetry after two
 confirmations, and it can't be undone. io-guard also deletes a session's telemetry 90 days after its last line,
-or after `telemetry.retention_days` in your config, and 0 keeps it all.
+or after `telemetry.retention_days` in your config, and 0 keeps it all. The tool results, `io.run` bodies and
+logs, and moved command bodies io-guard saves in its folder hold your projects' content, so it deletes them 7
+days after their last change, or after `io.saved_days`, and 0 keeps them.
 
 io-guard's folder is `~/.claude/io-guard`, or `io-guard` inside `CLAUDE_CONFIG_DIR` when you've moved `~/.claude`,
 or wherever `IOGUARD_HOME` points. It holds your `config.json`, the file locks that keep two sessions from

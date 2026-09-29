@@ -19,7 +19,7 @@ from ioguard.lib.heartbeat import parse
 from ioguard.lib.results import Code
 from ioguard.mcp.progress import CancelToken
 from ioguard.mcp.protocol import Protocol
-from ioguard.mcp.server import SERVER_INFO, Server, expire_telemetry
+from ioguard.mcp.server import SAVED, SERVER_INFO, Server, expire
 from ioguard.mcp.toolspec import ToolCall, ToolRegistry, ToolSpec
 from tests import PLUGIN_SCRIPTS, REPO
 from tests.support import injected
@@ -140,9 +140,37 @@ class TheServerDeletesOldTelemetry(unittest.TestCase):
             stamp = (now - timedelta(days=days)).timestamp()
             os.utime(path, (stamp, stamp))
         config = Config({**defaults().values, "telemetry.retention_days": 30})
-        gone = expire_telemetry(data, lambda: Context.fake(config=config, data_dir=data), now)
+        gone = expire(data, lambda: Context.fake(config=config, data_dir=data), now)
         self.assertEqual(([path.stem for path in gone], (data / "events" / "2026-01" / "new.jsonl").exists()),
                          (["old"], True), "a file past the user's 30 days goes, and a newer one stays")
+
+    def test_saved_results_runs_and_bodies_go_after_the_users_days(self):
+        data = Path(tempfile.mkdtemp(prefix="ioguard-retention-"))
+        self.addCleanup(shutil.rmtree, data, True)
+        now = datetime.now(timezone.utc)
+
+        def kept(path: Path, days: int) -> None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"secret\n")
+            stamp = (now - timedelta(days=days)).timestamp()
+            os.utime(path, (stamp, stamp))
+        kept(data / "results" / "old.json", 8)
+        kept(data / "results" / "new.json", 6)
+        kept(data / "runs" / "old" / "body.py", 8)
+        kept(data / "runs" / "old" / "output.log", 9)
+        kept(data / "runs" / "live" / "body.py", 30)
+        kept(data / "runs" / "live" / "output.log", 0)
+        kept(data / "bodies" / "old.sh", 8)
+
+        def left_after(days: int) -> list[str]:
+            config = Config({**defaults().values, "io.saved_days": days})
+            expire(data, lambda: Context.fake(config=config, data_dir=data), now)
+            return sorted(path.relative_to(data).as_posix() for folder in SAVED
+                          for path in (data / folder).iterdir())
+        self.assertEqual(len(left_after(0)), 5, "0 keeps all five entries")
+        self.assertEqual(left_after(7), ["results/new.json", "runs/live"],
+                         "an entry whose newest file is past 7 days goes, and a run still writing its log "
+                         "stays")
 
 
 @dataclass(frozen=True)

@@ -986,8 +986,8 @@ Three layers merge in this order, and a later layer overrides an earlier one key
 | User | `config.json` in io-guard's folder, `~/.claude/io-guard` by default (D30) | every key |
 | Project | `<project>/.claude/io-guard.json`, then `<project>/.claude/io-guard.local.json` | every key but three, and its commands wait for approval |
 
-A project file overrides the user's for that project. Three keys reach every project, so only the user's file
-sets them: `telemetry.retention_days`, since every project's telemetry shares one folder, and
+A project file overrides the user's for that project. Four keys reach every project, so only the user's file
+sets them: `telemetry.retention_days` and `io.saved_days`, since every project's files share one folder, and
 `checks.session.probe.env` and `env_windows`, which the session probe exports before any prompt could ask.
 `ConfigKey.project_may_set` marks them.
 
@@ -1707,7 +1707,7 @@ another server is safe across processes.
 | workers, 4 | run hook tools and io tools | block on another worker |
 | a waiter per run, task 25 | waits on the run's process, whose stdout and stderr go straight to its log, and settles its handle when it ends | parse output |
 | watchdog | writes the heartbeat file every 5 seconds, and marks it stopped at the end | anything on the request path |
-| retention, once | deletes the telemetry files past `telemetry.retention_days` when the server starts, then ends | delay the first request |
+| retention, once | deletes the telemetry files past `telemetry.retention_days`, and the entries of `results/`, `runs/` and `bodies/` whose newest file is past `io.saved_days` (7, task 89, `lib.retention`), when the server starts, then ends | delay the first request |
 
 Telemetry has no thread of its own. One lock in `Telemetry` serialises the appends, and each line is on disk
 before `record` returns, so a crash loses none. `sys.stdout` points at stderr inside the server, so a stray

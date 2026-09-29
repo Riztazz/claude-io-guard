@@ -15,12 +15,12 @@ import sys
 import threading
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor, wait
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, BinaryIO
 
 from ioguard import PLUGIN_VERSION
-from ioguard.lib import bytesio, telemetry
+from ioguard.lib import bytesio, retention, telemetry
 from ioguard.lib.context import Context, home_folder, session_file
 from ioguard.lib.heartbeat import Heartbeat
 from ioguard.mcp import (tools_dashboard, tools_edit, tools_format, tools_history, tools_hook, tools_read,
@@ -35,6 +35,7 @@ SERVER_INFO = {"name": "io-guard", "version": PLUGIN_VERSION}
 WORKERS = 4
 BEAT_S = 5.0
 DRAIN_S = 2.0
+SAVED = ("results", "runs", "bodies")      # the folders of io-guard's where a project's content is saved
 
 
 def registry() -> ToolRegistry:
@@ -153,15 +154,22 @@ class Server:
         self.workers.shutdown(wait=False, cancel_futures=True)
 
 
-def expire_telemetry(data: Path, context: Callable[[], Context], now: datetime) -> list[Path]:
-    """Delete the telemetry files past telemetry.retention_days, from the user's config. The files deleted."""
+def expire(data: Path, context: Callable[[], Context], now: datetime) -> list[Path]:
+    """Delete the telemetry files past telemetry.retention_days, and the entries of SAVED past io.saved_days,
+    both from the user's config. The paths deleted."""
+    config = context().config
     try:
-        gone = telemetry.expire(data, context().config.get("telemetry.retention_days"), now)
+        gone = telemetry.expire(data, config.get("telemetry.retention_days"), now)
+        days = config.get("io.saved_days")
+        if days > 0:
+            cutoff = now - timedelta(days=days)
+            old = [entry for name in SAVED for entry in retention.older(data / name, cutoff)]
+            gone += retention.delete(old)
     except OSError as failure:
-        log.warning("io-guard could not delete its old telemetry in %s: %s", data, failure)
+        log.warning("io-guard could not delete what it kept in %s: %s", data, failure)
         return []
     if gone:
-        log.info("io-guard deleted %d telemetry files past their retention", len(gone))
+        log.info("io-guard deleted %d files and folders past their retention", len(gone))
     return gone
 
 
@@ -179,7 +187,7 @@ def main() -> int:
 
     protocol = Protocol(registry(), SERVER_INFO, lambda cancel: ToolCall(context, cancel, cwd, spill,
                                                                          session=named))
-    threading.Thread(target=expire_telemetry, args=(data, context, datetime.now(timezone.utc)),
+    threading.Thread(target=expire, args=(data, context, datetime.now(timezone.utc)),
                      name="io-guard retention", daemon=True).start()
     watchdog = None
     if session:
