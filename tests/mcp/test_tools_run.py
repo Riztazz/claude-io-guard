@@ -30,14 +30,16 @@ RULES = {"permissions": {"deny": ["Bash(git push *)"], "ask": ["Bash(git fetch *
 
 
 class RunTest(unittest.TestCase):
-    """A test with a project folder, a plugin data folder, and a store of its own handles."""
+    """A test with a project folder, a plugin data folder, a store of its own handles, and SETTINGS as the
+    project's Claude Code settings."""
+    SETTINGS: dict = {}
 
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="ioguard-run-"))
         self.addCleanup(shutil.rmtree, self.root, True)
         self.project = self.root / "project"
         (self.project / ".claude").mkdir(parents=True)
-        (self.project / ".claude" / "settings.json").write_text(json.dumps(RULES), encoding="utf-8")
+        (self.project / ".claude" / "settings.json").write_text(json.dumps(self.SETTINGS), encoding="utf-8")
         self.store = handles.HandleStore()
         patch = mock.patch.object(handles, "STORE", self.store)
         patch.start()
@@ -114,6 +116,14 @@ class AProgramRunsWithNoShell(RunTest):
 
 
 class TheUsersRulesHold(RunTest):
+    SETTINGS = RULES
+
+    def test_a_body_that_names_a_rules_program_asks(self):
+        given = RunInput(lang="python", code="import subprocess\nsubprocess.run(['git', 'push'])")
+        self.assertEqual(self.refusal(run, given, self.context()).code, Code.RULE_ASKED,
+                         "no rule can see what a body does with git, so it runs only on the user's yes")
+        self.assertEqual(self.call(run, RunInput(lang="python", code="print(1)"), self.context()).exit, 0,
+                         "a body naming no rule's program runs")
     def test_a_deny_rule_refuses_the_run(self):
         result = self.refusal(run, RunInput(argv=["git", "push", "origin"]), self.context())
         self.assertEqual((result.code, result.severity), (Code.RULE_DENIED, Severity.REFUSED),

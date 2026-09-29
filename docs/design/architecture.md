@@ -934,6 +934,12 @@ def settings_files(env: Mapping[str, str], project: Path, platform: Platform) ->
                                                             # managed, user, project, project local
 def load(files: Sequence[Path], read: Callable[[Path], Optional[bytes]]) -> Rules   # deny and ask rules
 def match_argv(rules: Rules, argv: Sequence[str]) -> RuleMatch   # deny, then ask, then none
+def match_command(rules: Rules, argv: Sequence[str], depth: int = 0) -> RuleMatch
+                              # task 83: match_argv, and each command a shell string in argv runs, NESTED (4)
+                              # deep, then "unread" for a string io-guard cannot read that names a rule's program
+def wrapped(words: Sequence[str]) -> Optional[Wrapped]      # bash -c, pwsh -Command or -EncodedCommand,
+                                                            # powershell's bare command, cmd /c, python -c...
+def rule_named(rules: Rules, text: str) -> Optional[Rule]   # the rule whose program text names as a word
 def command_text(words: Sequence[str]) -> str               # a word with a space or quote in single quotes
 def unwrapped(words: Sequence[str]) -> list[str]            # timeout, nohup, NAME=value and the rest stripped
 def named(words: Sequence[str]) -> list[str]                # the program by its bare name
@@ -1359,6 +1365,13 @@ io.read_log(path, since_line = None) -> LogOutput(path, first_line, last_line, t
   records the call's `runs.key` in the session. `io.run` checks again: a deny rule refuses, and an ask rule's
   command runs only when the hook recorded it, once. Elicitation cannot carry the question, because no
   surface shows its form (section 7, "Elicitation in both eras").
+- **A shell string is read too (task 83, D41).** `rules.match_command` also matches each command a shell in
+  the argv is given, such as `bash -c "git push"`, `pwsh -Command`, a decoded `-EncodedCommand`, or a bare
+  command to Windows PowerShell, through nested shells. A string io-guard cannot read, such as one with a
+  command substitution or an `eval`, a `cmd /c` line, an interpreter's code string such as `python -c`, or a
+  `code` body, asks with `RULE_ASKED` when it names the program of a deny or ask rule as a word, since the
+  rule cannot see what the code does. Code can build a program's name from parts, and a script file an argv
+  runs is not read at all, as Claude Code's own Bash matching reads neither.
 - **No shell.** `argv` runs as given. A `code` body is written byte for byte to `runs/<id>/body.<ext>` in the
   io-guard's folder, a PowerShell body with a UTF-8 BOM for Windows PowerShell, and runs with
   `runs.interpreter` for its `lang`: the probe's Python, bash, pwsh or Windows PowerShell, or node. The

@@ -147,7 +147,10 @@ writes nothing and returns each file's diff, so you see what the formatter would
 takes each file's own lines in one call.
 
 `io.run` meets your deny and ask rules for Bash and PowerShell, from every settings file Claude Code reads. A
-deny rule refuses the run, and an ask rule brings up Claude Code's own permission prompt. A background run's
+deny rule refuses the run, and an ask rule brings up Claude Code's own permission prompt. That holds for a
+command inside `bash -c` or `pwsh -Command` too. A script body or a `python -c` string that mentions a rule's
+program, such as `git` for `Bash(git push *)`, also brings up the prompt, since no rule can see what code does
+with it. A background run's
 handle lasts an hour past the program's end.
 
 `io.snapshot` keeps its copies in io-guard's folder, up to 5,000 files and 512 MB each, and deletes them after

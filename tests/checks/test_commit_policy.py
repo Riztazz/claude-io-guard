@@ -42,7 +42,12 @@ class AForbiddenMessageIsRefused(unittest.TestCase):
                  "here-string": ("PowerShell", {"command": "git commit -m @'\nfeat: p\n\nGenerated with "
                                                            "x\n'@"}, {}),
                  "io.run": (callable_name("io.run"), {"argv": ["git", "commit", "-m", "Co-Authored-By: a"]},
-                            {})}
+                            {}),
+                 "io.run bash -c": (callable_name("io.run"), {"argv": [
+                     "bash", "-c", "git add . && git commit -m 'Co-Authored-By: a'"]}, {}),
+                 "io.run bash body": (callable_name("io.run"), {"lang": "bash", "code": HEREDOC}, {}),
+                 "io.run powershell body": (callable_name("io.run"), {"lang": "powershell", "code":
+                                            "git commit -m @'\nfeat: p\n\nGenerated with x\n'@"}, {})}
         for name, (tool, tool_input, files) in cases.items():
             with self.subTest(name):
                 outcome = decided(tool, tool_input, files=files)

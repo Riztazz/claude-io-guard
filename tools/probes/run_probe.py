@@ -222,6 +222,10 @@ RUN_DENIED = (f"Do these in order. 1. {LOAD_RUN} 2. Call {IO_RUN} with argv [\"g
               "\"main\"]. Then quote its result word for word and reply DONE.")
 RUN_ASKED = (f"Do these in order. 1. {LOAD_RUN} 2. Call {IO_RUN} with argv [\"git\", \"fetch\", "
              "\"--dry-run\"]. Then quote its result, or any refusal, word for word and reply DONE.")
+RUN_WRAPPED = (f"Do these in order, one tool call each. 1. {LOAD_RUN} 2. Call {IO_RUN} with argv [\"bash\", "
+               f"\"-c\", \"git push origin main\"]. 3. Call {IO_RUN} with lang python and this code: import "
+               "subprocess; subprocess.run(['git', 'fetch', '--dry-run']) Then quote each result, or any "
+               "refusal, word for word and reply DONE.")
 IO_SNAPSHOT = "mcp__plugin_io-guard_io__io_snapshot"
 IO_RESTORE = "mcp__plugin_io-guard_io__io_restore"
 IO_STAGE = "mcp__plugin_io-guard_io__io_stage"
@@ -545,6 +549,9 @@ PROBES = {
     "live-run-asked": Probe(0, "record", guard="", server=True, extra_args=PERMIT,
                             allowed=("ToolSearch", IO_RUN, IO_STATUS), prompt=RUN_ASKED,
                             setup={".claude/settings.json": json.dumps(RUN_RULES).encode("ascii")}),
+    "live-run-wrapped": Probe(0, "record", guard="", server=True, extra_args=PERMIT,
+                              allowed=("ToolSearch", IO_RUN, IO_STATUS), prompt=RUN_WRAPPED,
+                              setup={".claude/settings.json": json.dumps(RUN_RULES).encode("ascii")}),
     "live-restore": Probe(0, "record", guard="", server=True, extra_args=PERMIT,
                           allowed=("ToolSearch", IO_SNAPSHOT, IO_EDIT, IO_RESTORE), prompt=RESTORE_STEPS,
                           check=("notes.txt",), setup={"notes.txt": b"one\r\ntwo\r\n"}),
@@ -1096,6 +1103,18 @@ def run_asked(summary: dict, name: str) -> bool:
     return prompted and asked and not refused
 
 
+def run_wrapped(summary: dict, name: str) -> bool:
+    """bash -c "git push" was refused with RULE_DENIED, and the Python body that names git went to the
+    permission prompt with RULE_ASKED."""
+    folder, _ = latest(name)
+    permit = folder / "permit.jsonl"
+    lines = permit.read_bytes().decode("utf-8").splitlines() if permit.is_file() else []
+    prompted = any("probe_permit" in line and IO_RUN in line and "subprocess" in line for line in lines)
+    denied = "RULE_DENIED" in json.dumps(summary["hook_events"])
+    asked = "RULE_ASKED" in json.dumps(summary["hook_events"])
+    return prompted and denied and asked
+
+
 def trust_asked(summary: dict, name: str) -> bool:
     """The first write heard PROJECT_COMMANDS_UNTRUSTED and ran nothing, the hook answered ask with
     TRUST_ASKED, the permission prompt tool received the io.trust call, and the project's command ran once,
@@ -1358,6 +1377,7 @@ VERDICTS = {
     "live-run-background": ran_in_background,
     "live-run-denied": lambda s, n: "RULE_DENIED: io.run would run git push origin main" in seen(s),
     "live-run-asked": run_asked,
+    "live-run-wrapped": run_wrapped,
     "live-restore": restore_asked,
     "live-trust": trust_asked,
     "live-stage": staged_one_hunk,

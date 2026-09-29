@@ -5,12 +5,13 @@ writes it again the next time. The policy is two keys: commit_policy.forbid, tex
 matched without case, such as Co-Authored-By, and commit_policy.ascii_only. Both are empty by default, so
 the check refuses nothing until a user or a project names them. The message comes from each -m, from a -F
 file, from the heredoc a -F - reads, and from a PowerShell here-string, which arrives as the -m word. An
-io.run call's argument list is read the same way, so a commit through io.run meets the same policy.
+io.run call's argument list is read the same way, and so is the string a shell in it is given and a Bash or
+PowerShell body, so a commit through io.run meets the same policy.
 """
 from pathlib import Path
 
 from ioguard.checks.base import Check, CheckMeta, Cost
-from ioguard.lib import commit_message, pwsh, runs, shell
+from ioguard.lib import commit_message, pwsh, rules, runs, shell
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
@@ -23,13 +24,36 @@ FILE_BYTES = 64 * 1024
 def messages(event: Event, ctx: Context) -> list[str]:
     """The message text of each git commit the call runs."""
     if event.tool_name == RUN:
-        argv = runs.argv_of(event.tool_input, ctx.probe, ctx.platform)
-        found = commit_message.sources(argv or ())
-        return [] if found is None else [text(found, (), event.cwd, ctx)]
-    command = event.command or ""
+        return run_messages(event.tool_input, event.cwd, ctx)
     if event.tool is Tool.POWERSHELL:
-        return [text(found, (), event.cwd, ctx) for simple in pwsh.commands(command)
-                if (found := commit_message.sources(simple.words)) is not None]
+        return powershell_messages(event.command or "", event.cwd, ctx)
+    return bash_messages(event.command or "", event.cwd, ctx)
+
+
+def run_messages(given: dict, cwd: Path, ctx: Context) -> list[str]:
+    """The messages an io.run call commits: from its argv, from the string a shell in it is given, or from a
+    Bash or PowerShell body. A body in another language is left unread."""
+    match given.get("lang") if given.get("code") else None:
+        case "bash":
+            return bash_messages(str(given["code"]), cwd, ctx)
+        case "powershell":
+            return powershell_messages(str(given["code"]), cwd, ctx)
+    argv = runs.argv_of(given, ctx.probe, ctx.platform) or ()
+    found = commit_message.sources(argv)
+    if found is not None:
+        return [text(found, (), cwd, ctx)]
+    inside = rules.wrapped(rules.unwrapped(argv))
+    if inside is None or inside.text is None:
+        return []
+    return (bash_messages if inside.dialect == "bash" else powershell_messages)(inside.text, cwd, ctx)
+
+
+def powershell_messages(command: str, cwd: Path, ctx: Context) -> list[str]:
+    return [text(found, (), cwd, ctx) for simple in pwsh.commands(command)
+            if (found := commit_message.sources(simple.words)) is not None]
+
+
+def bash_messages(command: str, cwd: Path, ctx: Context) -> list[str]:
     heredocs = shell.scan(command).heredocs
     out = []
     for simple in shell.commands(command):
@@ -37,7 +61,7 @@ def messages(event: Event, ctx: Context) -> list[str]:
         if found is not None:
             start, end = simple.span
             stdin = tuple(heredoc.body for heredoc in heredocs if start <= heredoc.operator[0] < end)
-            out.append(text(found, stdin, event.cwd, ctx))
+            out.append(text(found, stdin, cwd, ctx))
     return out
 
 

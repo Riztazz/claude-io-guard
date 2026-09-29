@@ -1,5 +1,6 @@
 """A Bash or PowerShell deny or ask rule meets an argument list the way Claude Code's rule meets a command, so
 io.run is no way around it (D14)."""
+import base64
 import json
 import unittest
 from pathlib import Path
@@ -7,6 +8,7 @@ from pathlib import Path
 from ioguard.lib import rules
 from ioguard.lib.platform import Platform
 
+ENCODED_PUSH = base64.b64encode("git push".encode("utf-16-le")).decode("ascii")
 SOURCE = Path("C:/Users/u/.claude/settings.json")
 
 
@@ -58,6 +60,74 @@ class ARuleMeetsTheCommandItNames(unittest.TestCase):
     def test_a_word_with_a_space_is_quoted(self):
         self.assertEqual(rules.command_text(["git", "commit", "-m", "a b"]), "git commit -m 'a b'",
                          "the argument list reads as the command a person would write")
+
+
+class AShellStringIsReadAsTheCommandsItRuns(unittest.TestCase):
+    def test_each_shell_given_a_string_names_it(self):
+        cases = {("bash", "-c", "git push"): ("bash -c", "git push"),
+                 ("C:/Git/bin/bash.exe", "-lc", "git push"): ("bash -lc", "git push"),
+                 ("bash", "-o", "pipefail", "-c", "ls"): ("bash -c", "ls"),
+                 ("pwsh", "-NoProfile", "-Command", "git", "push"): ("pwsh -Command", "git push"),
+                 ("powershell", "-ExecutionPolicy", "Bypass", "git push"): ("powershell with a command",
+                                                                            "git push")}
+        for argv, (what, text) in cases.items():
+            with self.subTest(argv=argv):
+                found = rules.wrapped(argv)
+                self.assertEqual(found.text, text, "the string the shell runs is read")
+                self.assertTrue(found.what.startswith(what.split()[0]), "and named by its shell")
+
+    def test_a_script_file_or_a_plain_program_is_not_a_string(self):
+        for argv in (("bash", "build.sh", "-c"), ("pwsh", "-File", "x.ps1"), ("pwsh", "x.ps1"),
+                     ("git", "push"), ("python", "tool.py", "-c")):
+            with self.subTest(argv=argv):
+                self.assertIsNone(rules.wrapped(argv),
+                                  "a file or a program's own flag is not a command string")
+
+    def test_code_strings_a_broken_encoded_command_and_cmd_are_unread(self):
+        for argv in (("python3.12", "-c", "import os"), ("node", "-e", "1"), ("pwsh", "-enc", "not base64!"),
+                     ("cmd", "/c", "git push"), ("perl", "-e", "1")):
+            with self.subTest(argv=argv):
+                found = rules.wrapped(argv)
+                self.assertEqual((found is not None, found.text), (True, None),
+                                 "io-guard names a code string it cannot read")
+
+    def test_a_rule_meets_a_command_inside_the_string_at_any_depth(self):
+        found = loaded(deny=["Bash(git push *)"], ask=["Bash(git fetch *)"])
+        cases = {("bash", "-c", "git push origin"): "deny",
+                 ("bash", "-c", "echo hi && git push"): "deny",
+                 ("bash", "-c", "bash -c 'git push'"): "deny",
+                 ("pwsh", "-Command", "& git push origin"): "deny",
+                 ("sh", "-c", "git fetch"): "ask",
+                 ("bash", "-c", "ls -la"): "none",
+                 ("bash", "-c", "echo $(git push)"): "unread",
+                 ("bash", "-c", "eval \"git $X\""): "unread",
+                 ("bash", "-c", "eval \"$X\""): "none",
+                 ("python", "-c", "import subprocess; subprocess.run(['git', 'push'])"): "unread",
+                 ("python", "-c", "import subprocess"): "none",
+                 ("pwsh", "-EncodedCommand", ENCODED_PUSH): "deny",
+                 ("git", "push"): "deny"}
+        for argv, decision in cases.items():
+            with self.subTest(argv=argv):
+                self.assertEqual(rules.match_command(found, argv).decision, decision,
+                                 "a wrapped command meets the rules as if it ran on its own")
+
+    def test_a_rules_program_is_named_only_as_a_whole_word(self):
+        found = loaded(deny=["Bash(git push *)"], ask=["PowerShell(Remove-Item:*)"])
+        cases = {"subprocess.run(['git', 'push'])": "Bash(git push *)", "x = 'legit'": None,
+                 "git-lfs pull": None, "remove-item x": "PowerShell(Remove-Item:*)"}
+        for text, rule in cases.items():
+            with self.subTest(text=text):
+                named = rules.rule_named(found, text)
+                self.assertEqual(named.text if named else None, rule, "a program counts only as a word")
+        self.assertEqual(rules.rule_named(loaded(ask=["Bash"]), "print(1)").text, "Bash",
+                         "a bare rule meets every command, so it names every text")
+
+    def test_nesting_past_the_limit_is_unread(self):
+        argv = ["git", "status"]
+        for _ in range(rules.NESTED + 1):
+            argv = ["bash", "-c", rules.command_text(argv)]
+        self.assertEqual(rules.match_command(loaded(deny=["Bash(git push *)"]), argv).decision, "unread",
+                         "a string nested past NESTED shells is not followed")
 
 
 class DenyOutranksAsk(unittest.TestCase):
