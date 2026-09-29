@@ -354,10 +354,10 @@ class LiveFs:
         return tuple(sorted(found)[:limit + 1])
 
 
-def read_or_none(fs: FsPort, path: Path) -> bytes | None:
-    """path's bytes, or None when it is gone or cannot be read."""
+def read_or_none(fs: FsPort, path: Path, limit: int | None = None) -> bytes | None:
+    """path's bytes, at most limit of them, or None when it is gone or cannot be read."""
     try:
-        return fs.read_bytes(path)
+        return fs.read_bytes(path, limit)
     except OSError:
         return None
 

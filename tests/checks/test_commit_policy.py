@@ -59,6 +59,31 @@ class AForbiddenMessageIsRefused(unittest.TestCase):
         self.assertIn("Co-Authored-By on line 4", result.render(), "the model sees the text and its line")
         self.assertIn("commit again", result.fix.text, "and the call to make instead")
 
+    def test_a_message_file_io_guard_cannot_read_first_is_refused(self):
+        cases = {"written by the command": ("printf 'Co-Authored-By: x' > m.txt && git commit -F m.txt",
+                                            {PROJECT / "m.txt": b"feat: old\n"}),
+                 "not there yet": ("git commit --file=new.txt", {})}
+        for name, (command, files) in cases.items():
+            with self.subTest(name):
+                outcome = decided("Bash", {"command": command}, files=files)
+                result = outcome.decisions[0].results[0]
+                self.assertEqual((outcome.verdict, result.code), (Verdict.DENY, Code.COMMIT_POLICY),
+                                 "a message io-guard cannot read before the commit is not let through")
+                self.assertIn("then commit", result.fix.text, "the fix commits in a second command")
+
+    def test_a_message_file_a_heredoc_writes_is_read_from_the_heredoc(self):
+        command = "cat > \"$TEMP/m.txt\" <<'EOF'\nfeat: {}\nEOF\ngit commit -F \"$TEMP/m.txt\""
+        verdicts = [decided("Bash", {"command": command.format(body)}).verdict
+                    for body in ("clean", "x\n\nCo-Authored-By: a")]
+        self.assertEqual(verdicts, [Verdict.OBSERVE, Verdict.DENY],
+                         "the heredoc is the file git reads, so the check reads it too")
+
+    def test_a_message_file_resolves_after_the_commands_cd(self):
+        outcome = decided("Bash", {"command": "cd sub && git commit -F m.txt"},
+                          files={PROJECT / "sub" / "m.txt": b"feat: z\n\nCo-Authored-By: a\n",
+                                 PROJECT / "m.txt": b"feat: clean\n"})
+        self.assertEqual(outcome.verdict, Verdict.DENY, "git reads sub/m.txt, and so does the check")
+
     def test_a_non_ascii_character_is_refused_when_the_policy_asks(self):
         outcome = decided("Bash", {"command": "git commit -m 'fix: a \u2014 b'"})
         self.assertIn("U+2014 on line 1", outcome.decisions[0].results[0].message,

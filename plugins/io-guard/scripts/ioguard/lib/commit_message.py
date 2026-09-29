@@ -2,8 +2,10 @@
 
 git reads its own options before the subcommand, so -C, -c, --git-dir and --work-tree each take a value
 there. After commit, -m and --message give the message, once or more, and -F and --file name a file, - for
-stdin. A cluster of short options such as -am ends in m, which takes the next word, and -mtext takes the
-rest of its own word. Words arrive unquoted, as lib.shell and lib.pwsh give them.
+stdin. git takes a long option by any start that names one option, such as --mess. A start two options
+share, such as --fi, is an error in git, so reading it as --file refuses nothing git would run. A cluster of
+short options such as -am ends in m, which takes the next word, and -mtext takes the rest of its own word.
+Words arrive unquoted, as lib.shell and lib.pwsh give them.
 """
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -45,12 +47,15 @@ def sources(words: Sequence[str]) -> Sources | None:
     while index < len(rest):
         word = rest[index]
         index += 1
+        option, equals, value = word.partition("=")
         for name, found in (("--message", texts), ("--file", files)):
-            if word == name and index < len(rest):
+            if len(option) < 3 or not name.startswith(option):
+                continue
+            if equals:
+                found.append(value)
+            elif index < len(rest):
                 found.append(rest[index])
                 index += 1
-            elif word.startswith(name + "="):
-                found.append(word[len(name) + 1:])
         if not word.startswith("-") or word.startswith("--") or word == "-":
             continue
         for position, letter in enumerate(word[1:], 1):

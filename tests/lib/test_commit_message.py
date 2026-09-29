@@ -18,6 +18,15 @@ class TheMessageSourcesAreFound(unittest.TestCase):
             with self.subTest(words=words):
                 self.assertEqual(sources(words), expected, "-m, --message, -F and --file, alone or clustered")
 
+    def test_a_long_option_git_takes_by_its_start(self):
+        cases = {("git", "commit", "--mess", "a"): Sources(("a",), ()),
+                 ("git", "commit", "--me=a"): Sources(("a",), ()),
+                 ("git", "commit", "--fil", "m.txt"): Sources((), ("m.txt",)),
+                 ("git", "commit", "--fi=m.txt", "--m", "b"): Sources(("b",), ("m.txt",))}
+        for words, expected in cases.items():
+            with self.subTest(words=words):
+                self.assertEqual(sources(words), expected, "git reads a unique start of --message or --file")
+
     def test_git_options_before_the_subcommand_are_skipped(self):
         self.assertEqual((subcommand(("git", "-C", "sub", "-c", "a=b", "commit")),
                           subcommand(("C:/Git/bin/git.exe", "--no-pager", "commit")), subcommand(("gitk",))),

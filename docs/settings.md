@@ -195,9 +195,12 @@ exec python "<plugin folder>/scripts/precommit.py"
 **Your commit policy:** list the texts no commit message may hold in `commit_policy.forbid`, such as
 `["Co-Authored-By", "Generated with"]`, and set `commit_policy.ascii_only` to keep messages ASCII. io-guard then
 refuses a `git commit` whose message breaks either, from Bash, PowerShell or `io.run`, and the agent commits
-again without it. It reads the message from `-m`, from a `-F` file or heredoc, and from a PowerShell
-here-string. Both are off by default. `forbid` is yours alone, and a project file may only turn `ascii_only`
-on.
+again without it. It reads the message from `-m` or `--message`, and from `-F` or `--file`, by any start git
+accepts, such as `--mess`. It reads a `-F` file after the command's `cd`, reads one the command writes with
+`cat > file <<'EOF'` from that heredoc, and reads a PowerShell here-string. A `-F` file the command writes
+another way, or one that isn't there yet, can't be read before the commit runs, so the commit is refused and
+the agent writes the file first. Both are off by default, and a project's own file can set either for that
+project.
 
 **Commits and pushes you approve:** a plugin cannot ship permission rules, so add these to your own
 `settings.json` to be asked before every commit and every push, auto mode included, and to never have
