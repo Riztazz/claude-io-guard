@@ -13,9 +13,13 @@ from ioguard.lib import proc
 
 
 def git_folder() -> Path | None:
-    """Git for Windows' install folder, from the git on PATH: <folder>/cmd/git.exe or <folder>/bin/git.exe."""
+    """Git for Windows' install folder, from the git on PATH: <folder>/cmd/git.exe, <folder>/bin/git.exe, or
+    <folder>/mingw64/bin/git.exe, which Git Bash's own PATH finds first."""
     git = proc.on_path("git", os.environ)
-    return None if git is None else Path(git).resolve().parents[1]
+    if git is None:
+        return None
+    folder = Path(git).resolve().parents[1]
+    return folder.parent if folder.name.lower() == "mingw64" else folder
 
 
 def windows_shell(name: str) -> str | None:

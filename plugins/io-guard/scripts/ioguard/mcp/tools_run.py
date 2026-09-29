@@ -219,8 +219,12 @@ def run(given: RunInput, call: ToolCall) -> RunOutput:
         data = given.code.encode("utf-8")
         ctx.fs.write_atomic(body, BOM + data if given.lang == "powershell" else data)
     command = rules.command_text(argv)
+    env = environment(given, ctx)
+    if ctx.platform.windows:
+        program = proc.located(argv, env)
+        env = env if program is None else runs.with_git_tools(env, program[0])
     try:
-        pump = proc.background(argv, cwd, environment(given, ctx), folder / "output.log",
+        pump = proc.background(argv, cwd, env, folder / "output.log",
                                cap=ctx.config.get("io.run.log_max_bytes"))
     except OSError as error:
         raise failure(Code.PATH_NOT_FOUND, f"io.run could not start {argv[0]}: {error.strerror or error}.",

@@ -926,6 +926,8 @@ def interpreter(lang: str, probe: Probe, platform: Platform) -> Optional[tuple[s
 def argv_of(given: Mapping[str, Any], probe: Probe, platform: Platform, body: Optional[str] = None)
     -> Optional[tuple[str, ...]]                            # argv, or the interpreter and the body's file
 def key(given: Mapping[str, Any]) -> str                    # one per command, which run.rules records
+def git_tools(program: str) -> tuple[str, ...]              # task 142: Git's tool folders for its bash
+def with_git_tools(env: Mapping[str, str], program: str) -> dict[str, str]   # those first on PATH
 
 # patterns.py, task 25
 def problem(pattern: str) -> Optional[str]                  # does not compile, over 200 characters, nested,
@@ -1459,7 +1461,10 @@ io.read_log(path, since_line = None) -> LogOutput(path, first_line, last_line, t
   io-guard's folder, a PowerShell body with a UTF-8 BOM for Windows PowerShell, and runs with
   `runs.interpreter` for its `lang`: the probe's Python, bash, pwsh or Windows PowerShell, or node. The
   program starts in `cwd` with the session's variables, `session.probe`'s UTF-8 ones over them and the call's
-  `env` over both, an empty stdin, and stdout and stderr in `runs/<id>/output.log`. The output reaches the
+  `env` over both, an empty stdin, and stdout and stderr in `runs/<id>/output.log`. On Windows, a run of Git's
+  bash, a `lang: bash` body or an argv that starts it, gets `mingw64/bin`, `usr/local/bin` and `usr/bin` of
+  that Git first on PATH, and `MSYSTEM=MINGW64` unless set, as the Bash tool's bash has them. bash started
+  straight keeps the Windows PATH, which holds none of Git's tools (task 142). The output reaches the
   log through `lib.logcap`, a copier in its own process, which stops the log at `io.run.log_max_bytes`,
   64 MB, a user setting, with one line that says so, and lets the program go on. The result's `log_cut` says
   when that happened (task 124).

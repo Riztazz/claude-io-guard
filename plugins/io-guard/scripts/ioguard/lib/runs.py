@@ -5,6 +5,7 @@ so a rule the hook asked about is the rule the tool finds.
 import hashlib
 import os
 from collections.abc import Mapping
+from pathlib import PureWindowsPath
 from typing import Any
 
 from ioguard.lib import proc
@@ -33,6 +34,31 @@ def interpreter(lang: str, probe: Probe, platform: Platform) -> tuple[str, ...] 
             found = proc.on_path("node", os.environ)
             return None if found is None else (found,)
     return None
+
+
+def git_tools(program: str) -> tuple[str, ...]:
+    """The folders Git for Windows' own login shell puts first on PATH, mingw64/bin, usr/local/bin and
+    usr/bin, when program is that install's bash, at usr/bin/bash.exe or bin/bash.exe. Empty for any other
+    program. bash started straight, as io.run starts it, keeps the Windows PATH as it is, which holds none of
+    Git's tools, so tr, diff or sed are not found where the Bash tool finds them."""
+    path = PureWindowsPath(program)
+    if path.stem.lower() != "bash" or path.parent.name.lower() != "bin":
+        return ()
+    root = path.parents[2] if path.parents[1].name.lower() == "usr" else path.parents[1]
+    if not root.name:
+        return ()
+    return (str(root / "mingw64" / "bin"), str(root / "usr" / "local" / "bin"), str(root / "usr" / "bin"))
+
+
+def with_git_tools(env: Mapping[str, str], program: str) -> dict[str, str]:
+    """env with git_tools(program) first on its PATH, whatever case its key is spelled in, and MSYSTEM set to
+    MINGW64 as the Bash tool sets it, unless env names one. env as it is for any other program."""
+    folders = git_tools(program)
+    if not folders:
+        return dict(env)
+    key = next((name for name in env if name.upper() == "PATH"), "PATH")
+    rest = [env[key]] if env.get(key) else []
+    return {**env, key: ";".join((*folders, *rest)), "MSYSTEM": env.get("MSYSTEM") or "MINGW64"}
 
 
 def argv_of(given: Mapping[str, Any], probe: Probe, platform: Platform, body: str | None = None

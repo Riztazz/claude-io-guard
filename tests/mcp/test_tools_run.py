@@ -23,6 +23,7 @@ from ioguard.mcp import handles
 from ioguard.mcp.progress import CancelToken, ProgressReporter
 from ioguard.mcp.tools_run import HandleInput, LogInput, RunInput, read_log, run, status
 from ioguard.mcp.toolspec import InvalidArguments, ToolCall, ToolFailure
+from tests.support import shells
 from tests.support.events import TOOL_USE_ID
 
 BACKSLASHES = "print(len(r'\\\\n'), 'C:\\\\temp\\\\new', \"say \\\"hi\\\"\")\n"
@@ -98,6 +99,27 @@ class AProgramRunsWithNoShell(RunTest):
                           self.context(**{"io.run.log_max_bytes": 1000}))
         self.assertEqual((found.exit, found.log_cut), (0, True),
                          "the run ends as it would have, and the answer says its log stopped at the cap")
+
+    @unittest.skipUnless(sys.platform == "win32" and shells.git_folder(), "Git Bash runs on Windows only")
+    def test_a_bash_body_finds_git_s_own_tools_and_runs_in_its_folder(self):
+        git = shells.git_folder()
+        ctx = self.context()
+        key = next(name for name in ctx.env if name.upper() == "PATH")
+        inside = str(git).lower()
+        windows_only = ";".join(entry for entry in ctx.env[key].split(";")
+                                if not entry.lower().startswith(inside) or entry.lower().endswith("cmd"))
+        bash = ToolVersion(str(git / "usr" / "bin" / "bash.exe"), "5.2")
+        ctx = replace(ctx, env={**ctx.env, key: windows_only}, probe=replace(ctx.probe, bash=bash))
+        body = ("printf 'a\\n' | tr a b\ndiff <(echo x) <(echo x) && echo SAME\n"
+                "printf '1\\n2\\n' | tail -1\necho s | sed s/s/t/\necho g | grep -c g\npwd -W\n")
+        found = self.call(run, RunInput(lang="bash", code=body), ctx)
+        self.assertEqual((found.exit, found.tail),
+                         (0, ["b", "SAME", "2", "t", "1", self.project.as_posix()]),
+                         "tr, diff, tail, sed and grep are found, as in the Bash tool, and the body runs in "
+                         "its folder")
+        direct = self.call(run, RunInput(argv=[bash.path, "-c", "echo s | sed s/s/t/"]), ctx)
+        self.assertEqual((direct.exit, direct.tail), (0, ["t"]),
+                         "an argv that starts Git's bash gets the same")
 
     def test_the_utf8_defaults_reach_the_program(self):
         program = "import os; print(os.environ['PYTHONUTF8'], os.environ['X'])"
