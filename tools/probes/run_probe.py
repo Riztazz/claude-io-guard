@@ -1289,6 +1289,11 @@ def commit_refused(summary: dict, name: str) -> bool:
             and "co-authored-by" not in landed[0].lower())
 
 
+class NoVerdict(Exception):
+    """A run whose model skipped the step the probe needs, so it says nothing about io-guard. The message
+    says which step."""
+
+
 def invisible_named(summary: dict, name: str) -> bool:
     """The Write put an invisible character inside line 2 of strip.py, U+FEFF as asked or another one a model
     picked instead, and the model read INVISIBLE_ADDED naming that character and line 2 (task 39)."""
@@ -1296,7 +1301,10 @@ def invisible_named(summary: dict, name: str) -> bool:
     line = written.split("\n")[1] if written.count("\n") >= 1 else ""
     found = [f"U+{ord(char):04X}" for char in line
              if ord(char) in (0xFEFF, 0xA0) or 0x2000 <= ord(char) <= 0x206F]
-    return bool(found) and context_reached(name, f"INVISIBLE_ADDED: This Write added [{found[0]}] on line 2")
+    if not found:
+        raise NoVerdict("the model wrote no invisible character on line 2 of strip.py, so io-guard had none "
+                        "to name. Run the probe again.")
+    return context_reached(name, f"INVISIBLE_ADDED: This Write added [{found[0]}] on line 2")
 
 
 def results_shown(summary: dict, name: str) -> bool:
@@ -1423,9 +1431,12 @@ VERDICTS = {
 
 def verdict(name: str) -> str:
     folder, summary = latest(name)
-    check = VERDICTS.get(name)
-    outcome = "no verdict" if check is None else ("pass" if check(summary, name) else "FAIL")
-    return f"{outcome:<10} {name:<16} claude {summary.get('claude')}  {folder.name}"
+    check, why = VERDICTS.get(name), ""
+    try:
+        outcome = "no verdict" if check is None else ("pass" if check(summary, name) else "FAIL")
+    except NoVerdict as skipped:
+        outcome, why = "no verdict", f"  {skipped}"
+    return f"{outcome:<10} {name:<16} claude {summary.get('claude')}  {folder.name}{why}"
 
 
 def print_json(value: dict) -> None:
