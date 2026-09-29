@@ -7,6 +7,7 @@ from pathlib import Path
 
 SESSION_ID = "00000000-0000-4000-8000-000000000000"
 TOOL_USE_ID = "toolu_01TEST"
+TRANSCRIPT = Path.home() / ".claude" / "projects" / "project" / f"{SESSION_ID}.jsonl"   # Claude Code's place
 
 
 def base(hook_event_name: str, cwd: Path, permission_mode: str = "default") -> dict:
@@ -14,7 +15,7 @@ def base(hook_event_name: str, cwd: Path, permission_mode: str = "default") -> d
     return {
         "session_id": SESSION_ID,
         "prompt_id": SESSION_ID,
-        "transcript_path": str(cwd / ".transcript.jsonl"),
+        "transcript_path": str(TRANSCRIPT),
         "cwd": str(cwd),
         "scratchpad_dir": str(cwd / ".scratchpad"),
         "permission_mode": permission_mode,

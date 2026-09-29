@@ -51,6 +51,19 @@ class EventsFromTheHarness(unittest.TestCase):
         self.assertEqual((harness.transcript, mapped.transcript), (Path(raw["transcript_path"]),) * 2,
                          "the transcript path arrives as the harness JSON and as the mcp_tool map carry it")
 
+    def test_a_session_id_that_is_not_a_plain_name_is_refused(self):
+        for session_id in ("../../../ESCAPED", "a/b", "a\\b", "..", "s:1", "s 1"):
+            with self.subTest(session_id=session_id):
+                raw = {**events.bash("ls", Path("C:/p")), "session_id": session_id}
+                with self.assertRaises(EventError, msg="a session id names io-guard's files, so it stays a "
+                                                       "plain name"):
+                    Event.from_hook_json(raw, Surface.MCP_HOOK, WINDOWS)
+        for session_id in (events.SESSION_ID, "offline-check", "io_server"):
+            with self.subTest(session_id=session_id):
+                raw = {**events.bash("ls", Path("C:/p")), "session_id": session_id}
+                self.assertEqual(Event.from_hook_json(raw, Surface.MCP_HOOK, WINDOWS).session_id, session_id,
+                                 "Claude Code's ids and io-guard's own names read as they are")
+
     def test_a_failed_read_carries_its_error(self):
         event = Event.from_hook_json(recorded("post_tool_use_failure_read"), Surface.COMMAND_HOOK, WINDOWS)
         self.assertTrue(event.error.startswith("File does not exist."),

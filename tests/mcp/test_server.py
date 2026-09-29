@@ -112,6 +112,16 @@ class TheHookToolsRunThePipeline(ServerTest):
                          "the check's refusal reaches Claude Code as a deny in the tool's text")
         self.assertNotIn("isError", result, "a hook tool never sets isError, which would notice every call")
 
+    def test_a_hook_tool_called_with_a_tool_use_id_is_the_models_and_runs_nothing(self):
+        line = json.loads(hook_call(8, f"echo {injected.REFUSE}", self.data))
+        line["params"]["_meta"] = {"claudecode/toolUseId": "toolu_forged"}
+        answers = exchange([json.dumps(line).encode("ascii")], self.data, "refuse")
+        result = answers["8"]["result"]
+        self.assertEqual((result.get("isError"), list(self.data.rglob(f"{SESSION}.jsonl"))), (True, []),
+                         "a hook's own call carries no tool use id, so one that does came from the model, "
+                         "which gets an error and no check runs")
+        self.assertIn("hook", result["content"][0]["text"], "the error says the tool answers hooks only")
+
     def test_a_broken_check_warns_once_per_session_across_calls(self):
         answers = exchange([hook_call(6, "echo one", self.data), hook_call(7, "echo two", self.data)],
                            self.data, "broken")

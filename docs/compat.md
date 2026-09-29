@@ -88,6 +88,7 @@ reference names no version for that, so the floor rests on the probes instead. O
 | An MCP call still running after 2 minutes moves to the background | 2.1.212, docs | not probed | `io.run` hands back a handle first (task 25) |
 | MCP Apps, a tool's `ui://` page | No release renders one | `mcp-features`, the desktop check | The same view as text and as a local page (task 33) |
 | The MCP Tasks extension | No Claude client declares it | `era-legacy`, `era-auto` | Handles for background runs (task 25) |
+| An `mcp_tool` hook's `tools/call` carries no `_meta` `claudecode/toolUseId`, where a model's call does | 2.1.281 | the probe logs of 2026-09-27 and 28, `live-empty` and `live-answers` | If a release adds the id to a hook's call, the hook tools refuse it and every check stops, so `live-empty` after each release catches it |
 | MCP tools prompt in default mode, whatever their annotations | 2.1.281 | `mcp-prompts`, `mcp-permit` | The README's settings snippet allows the read-only io tools |
 | A plugin enabled on claude.ai loads in Claude Code | 2.1.273, docs | the desktop loaded `@synced` plugins | Install from the marketplace |
 | On Windows an MCP server's `command` naming a file with no extension starts the `.cmd` file beside it through `cmd.exe`, each argument whole | 2.1.281 | `live-server`, which starts io-guard through `pyrun` | None on Windows: the server doesn't start, and `/mcp` shows why |

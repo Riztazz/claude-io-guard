@@ -16,6 +16,7 @@ A Read past the limit gets parts that fit, a pattern ripgrep rejects gets its re
 and a search that timed out gets narrowed. A lock is write.locks' to name.
 """
 import json
+import logging
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -25,12 +26,14 @@ from typing import Any
 from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.lib import anchors, paths, text, transcript
 from ioguard.lib.config import ConfigKey
-from ioguard.lib.context import Context
+from ioguard.lib.context import Context, claude_folder
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.git import GitError
 from ioguard.lib.profile import profile
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity
+
+log = logging.getLogger("ioguard.checks.diagnose")
 
 MISSING = re.compile(r"^(?:File|Path|Directory) does not exist")
 TOO_LARGE = re.compile(r"exceeds maximum allowed (?:size|tokens)")
@@ -331,6 +334,11 @@ class DiagnoseRefused(Check):
 
     def run(self, event: Event, ctx: Context) -> Decision:
         if event.transcript is None:
+            return Decision.observe(self.meta.id)
+        projects = paths.normalise(str(claude_folder(ctx.env) / "projects"), event.cwd, ctx.platform)
+        if paths.inside(paths.normalise(str(event.transcript), event.cwd, ctx.platform), [projects],
+                        ctx.platform) is None:
+            log.debug("io-guard left %s unread: it is not under %s", event.transcript, projects)
             return Decision.observe(self.meta.id)
         try:
             tail = ctx.fs.read_tail(event.transcript, self.options["tail_bytes"])

@@ -1,5 +1,6 @@
 """One hook event as io-guard sees it, from the harness JSON or from an mcp_tool hook's substituted map."""
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from enum import Enum
@@ -59,6 +60,7 @@ class Surface(Enum):
 SCALAR_FIELDS = ("hook_event_name", "session_id", "tool_use_id", "prompt_id", "tool_name", "cwd",
                  "scratchpad_dir", "transcript_path", "permission_mode", "agent_id", "error")
 WHOLE_FIELDS = ("tool_input", "tool_response")
+SESSION_ID = re.compile(r"[A-Za-z0-9_-]+")      # it names io-guard's files for the session
 
 
 def text(value: Any) -> str | None:
@@ -106,6 +108,8 @@ class Event:
         missing = [key for key in ("hook_event_name", "session_id", "cwd") if not text(raw.get(key))]
         if missing:
             raise EventError(f"The hook event lacks {', '.join(missing)}.")
+        if not SESSION_ID.fullmatch(raw["session_id"]):
+            raise EventError(f"The hook event's session_id {raw['session_id']!r} is not a plain name.")
         tool_input = raw.get("tool_input", {})
         if not isinstance(tool_input, Mapping):
             raise EventError(f"The hook event's tool_input is a {type(tool_input).__name__}, not an object.")

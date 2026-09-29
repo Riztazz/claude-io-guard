@@ -190,7 +190,7 @@ class Event:
     tool_input: Mapping[str, Any]
     tool_response: Optional[Mapping[str, Any]]
     error: Optional[str]
-    session_id: str
+    session_id: str                  # letters, digits, - and _ only, since it names io-guard's files
     tool_use_id: Optional[str]
     prompt_id: Optional[str]
     cwd: Path
@@ -1193,6 +1193,7 @@ An Edit or Write that Claude Code rejects as a `<tool_use_error>`, such as an `o
 no hook at all (`context.md`, "Hooks and MCP", row 30). The transcript still records the call and its error.
 So at the session's next hook, `diagnose.refused` reads the transcript's last 256 KB from `transcript_path`,
 takes the refusals after the last call that ran, and answers each once, before the model tries again (D28).
+It reads a transcript only under Claude Code's `projects` folder (task 99).
 
 `hooks.bridge.call` receives the map, runs `run_event` with `Surface.MCP_HOOK`, which reads it through
 `Event.from_fields`, and returns the answer JSON as the tool's text content. The harness reads that text exactly
@@ -1367,7 +1368,10 @@ schema turns a new field into a failed call. `annotations` come from the three b
 Each tool is one module with its input and output dataclasses, its `ToolSpec` and its handler. The handler
 takes the input dataclass and a `ToolCall` holding the `Context`, the `CancelToken` and the
 `ProgressReporter`, and returns the output dataclass. The `hook.*` tools are registered last, with the
-description "Called by Claude Code hooks. Not for the model."
+description "Called by Claude Code hooks. Not for the model." A hook's `tools/call` carries no `_meta`
+`claudecode/toolUseId` and a model's does (`context.md`, "Hooks and MCP", row 42), so a hook tool called
+with one answers an error and runs nothing, and the model cannot hand the pipeline an event it wrote (task
+99).
 
 `markdown()` gives the skill page its tool table, and `mcp/skill.py` writes it and the code table from `CODES`
 between the page's marker lines, run as `python tools/skill.py`. A test fails while the shipped page differs,

@@ -16,7 +16,7 @@ from ioguard.lib.results import Code
 from tests.support import events
 
 CWD = Path("C:/game")
-TRANSCRIPT = CWD / ".transcript.jsonl"
+TRANSCRIPT = events.TRANSCRIPT
 WINDOWS = Platform("win32", True)
 REGISTRY = default_registry()
 SOURCE = b"void f()\r\n{\r\n\tint a = 1;\r\n\tint b = 2;\r\n\tint a = 1;\r\n}\r\n"
@@ -93,6 +93,17 @@ class ARefusedEditIsAnsweredAtTheNextHook(unittest.TestCase):
                                                 "a linter. Read it again before attempting to write it.")
         self.assertEqual(found[0].code, Code.STALE_VIEW, "the file changed after the Read")
         self.assertIn("Line 4 read now", found[0].message, "the lines as they are now follow")
+
+    def test_a_transcript_outside_claude_codes_projects_folder_is_not_read(self):
+        given = {"file_path": str(CWD / "a.cpp"), "old_string": "    int b = 2;", "new_string": "x"}
+        elsewhere = CWD / "notes.jsonl"
+        ctx = context({CWD / "a.cpp": SOURCE,
+                       elsewhere: refusal("Edit", given, "String to replace not found")})
+        raw = {**events.read(CWD / "a.cpp", CWD), "transcript_path": str(elsewhere)}
+        outcome = Pipeline(REGISTRY).run(Event.from_hook_json(raw, Surface.MCP_HOOK, WINDOWS), ctx)
+        self.assertEqual(results(outcome, "diagnose.refused"), [],
+                         "Claude Code keeps a session's transcript under its projects folder, so a path "
+                         "anywhere else is not a transcript to quote")
 
     def test_a_refusal_is_answered_once(self):
         _, ctx = refused_edit("    int b = 2;", "String to replace not found in file.")

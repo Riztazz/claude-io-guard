@@ -10,6 +10,8 @@ BACKSLASH_TRANSPORT warning. The user's rewrite mode decides how a move is answe
 is written in every mode, so a refusal's fix points at a file that exists.
 """
 import hashlib
+import ntpath
+import posixpath
 from pathlib import Path
 
 from ioguard.checks.base import Check, CheckMeta, Cost
@@ -31,9 +33,12 @@ def budget_for(ctx: Context) -> int | None:
 
 
 def body_folder(event: Event, ctx: Context) -> Path | None:
-    """The session scratchpad's io-guard folder, or bodies in io-guard's own, or None with neither."""
-    if event.scratchpad is not None:
-        return event.scratchpad / "io-guard"
+    """The session scratchpad's io-guard folder, or bodies in io-guard's own, or None with neither. Claude
+    Code's scratchpad is an absolute folder outside the project, so any other scratchpad_dir is left out."""
+    scratchpad, module = event.scratchpad, ntpath if ctx.platform.windows else posixpath
+    if scratchpad is not None and module.isabs(str(scratchpad)) and not (
+            ctx.project is not None and scratchpad.is_relative_to(ctx.project)):
+        return scratchpad / "io-guard"
     return None if ctx.data_dir is None else ctx.data_dir / "bodies"
 
 

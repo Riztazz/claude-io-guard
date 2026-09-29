@@ -101,6 +101,15 @@ class ABodyMovesToAFile(unittest.TestCase):
         _, outcome, ctx = run(heredoc(BIG_BODY), ctx, scratchpad=None)
         self.assertEqual(ctx.fs.writes[0].parent, Path("C:/data/bodies"), "the body goes to the data folder")
 
+    def test_a_scratchpad_inside_the_project_or_relative_is_not_written(self):
+        for scratchpad in (CWD / "src", Path("scratch")):
+            with self.subTest(scratchpad=scratchpad):
+                ctx = context(data_dir=Path("C:/data"), project=CWD)
+                _, outcome, ctx = run(heredoc(BIG_BODY), ctx, scratchpad=scratchpad)
+                self.assertEqual(ctx.fs.writes[0].parent, Path("C:/data/bodies"),
+                                 "Claude Code's scratchpad is an absolute folder outside the project, so any "
+                                 "other one the event names is not where io-guard writes")
+
     def test_a_moved_command_moves_nothing_the_second_time(self):
         _, first, ctx = run(heredoc(BIG_BODY))
         _, second, _ = run(first.tool_input["command"], ctx)
