@@ -3,40 +3,308 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>io-guard settings</title>
 <style>
-  body { font: 14px/1.5 system-ui, sans-serif; margin: 16px; }
-  table { border-collapse: collapse; width: 100%; }
-  td, th { text-align: left; padding: 4px 8px; border-bottom: 1px solid #ccc; vertical-align: top; }
-  code { font-family: ui-monospace, monospace; }
+  :root { --bg: #ffffff; --fg: #1a1a1a; --muted: #5f5f5f; --line: #d9d9d9; --card: #fafafa; --fill: #1a1a1a;
+          --on-fill: #ffffff; --soft: #ececec; --bad: #a32d2d; color-scheme: light; }
+  :root[data-theme="dark"] { --bg: #151515; --fg: #ececec; --muted: #a3a3a3; --line: #3a3a3a; --card: #1e1e1e;
+          --fill: #ececec; --on-fill: #151515; --soft: #2a2a2a; --bad: #f09595; color-scheme: dark; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #151515; --fg: #ececec; --muted: #a3a3a3; --line: #3a3a3a;
+          --card: #1e1e1e; --fill: #ececec; --on-fill: #151515; --soft: #2a2a2a; --bad: #f09595;
+          color-scheme: dark; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, -apple-system, sans-serif; }
+  main { max-width: 820px; margin: 0 auto; padding: 16px; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+           border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; background: var(--card); }
+  h1 { font-size: 18px; font-weight: 600; margin: 0; }
+  h2 { font-size: 15px; font-weight: 600; margin: 28px 0 2px; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .group-about { color: var(--muted); font-size: 12px; margin: 0 0 8px; }
+  input[type=search], input[type=number], input[type=text], textarea {
+    background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px;
+    padding: 5px 8px; font: inherit; }
+  input[type=search] { width: 100%; margin: 12px 0 0; }
+  textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 12px; min-height: 64px; }
+  button { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line);
+           border-radius: 999px; padding: 2px 12px; cursor: pointer; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 2px; gap: 2px; }
+  .seg button { border: 0; background: transparent; }
+  .seg button[aria-pressed="true"] { background: var(--fill); color: var(--on-fill); }
+  .switch { width: 44px; height: 24px; padding: 0; position: relative; }
+  .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px;
+                   border-radius: 50%; background: var(--muted); transition: left 0.15s; }
+  .switch[aria-pressed="true"] { background: var(--fill); border-color: var(--fill); }
+  .switch[aria-pressed="true"]::after { left: 23px; background: var(--on-fill); }
+  .card { border: 1px solid var(--line); border-radius: 10px; background: var(--card); padding: 10px 14px;
+          margin: 8px 0; }
+  .row { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .name { font-weight: 600; position: relative; }
+  .name .tip { display: none; position: absolute; left: 0; top: 100%; margin-top: 4px; z-index: 5;
+               background: var(--fill); color: var(--on-fill); font-weight: 400; font-size: 12px;
+               padding: 4px 8px; border-radius: 6px; white-space: nowrap; }
+  .name:hover .tip, .name:focus .tip { display: block; }
+  .help-button { border-radius: 50%; width: 20px; height: 20px; padding: 0; font-size: 12px; margin-left: 6px; }
+  .help { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
+  .project { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .chip { background: var(--soft); border-radius: 999px; padding: 1px 4px 1px 10px; font-size: 12px;
+          font-family: ui-monospace, monospace; }
+  .chip button { border: 0; background: transparent; padding: 0 6px; }
+  .err { color: var(--bad); font-size: 12px; margin-top: 6px; }
+  .banner { border: 1px solid var(--bad); color: var(--bad); border-radius: 8px; padding: 8px 12px; margin: 12px 0; }
 </style>
 </head>
 <body>
-<h1>io-guard settings</h1>
-<p id="where">Loading.</p>
-<table><thead><tr><th>Setting</th><th>In force</th><th>Yours</th><th>Project</th></tr></thead>
-<tbody id="rows"></tbody></table>
+<main>
+<header>
+  <div><h1>io-guard settings</h1><div class="muted" id="project">Loading.</div></div>
+  <div class="seg" role="group" aria-label="Theme">
+    <button type="button" data-theme-pick="light">Light</button>
+    <button type="button" data-theme-pick="dark">Dark</button>
+  </div>
+</header>
+<input type="search" id="search" placeholder="Filter, such as shell.lint or rewrite" aria-label="Filter settings">
+<div id="banners"></div>
+<div id="list"></div>
+<p class="muted">Hover an option for its key and default, and press ? for its whole help. A change saves at once and
+applies from the next tool call. Greyed means the project can't set it, and the line says why.</p>
+</main>
 <script>
+"use strict";
 const token = new URLSearchParams(location.search).get("token") || "";
-const shown = value => value === null || value === undefined ? "" : JSON.stringify(value);
-fetch("/api/settings", {headers: {"X-IOGuard-Token": token}})
-  .then(response => response.json())
-  .then(data => {
-    document.getElementById("where").textContent = "Project: " + data.project;
-    const rows = document.getElementById("rows");
-    for (const row of data.settings) {
-      const line = document.createElement("tr");
-      for (const text of [row.key, shown(row.applies), shown(row.user), shown(row.project)]) {
-        const cell = document.createElement("td");
-        const code = document.createElement("code");
-        code.textContent = text;
-        cell.appendChild(code);
-        line.appendChild(cell);
-      }
-      rows.appendChild(line);
+const GLOBAL_ABOUT = {
+  transport: "What happens to a command io-guard fixed, and when a long command body moves into a file.",
+  pipeline: "How long the checks may take on one tool call.",
+  io: "The limits of io-guard's own io tools.",
+  telemetry: "What io-guard records about its own decisions.",
+  commit_policy: "What a git commit message may not hold.",
+  other: "Commands, patterns and lists that apply across checks."
+};
+let data = null;
+
+function theme(pick) {
+  if (pick) {
+    document.documentElement.dataset.theme = pick;
+    try { localStorage.setItem("io-guard-theme", pick); } catch (error) { }
+  }
+  const now = document.documentElement.dataset.theme ||
+    (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  for (const button of document.querySelectorAll("[data-theme-pick]")) {
+    button.setAttribute("aria-pressed", String(button.dataset.themePick === now));
+  }
+}
+
+function make(tag, attrs, ...children) {
+  const node = document.createElement(tag);
+  for (const [name, value] of Object.entries(attrs || {})) {
+    if (name === "text") node.textContent = value;
+    else if (name.startsWith("on")) node.addEventListener(name.slice(2), value);
+    else if (value !== undefined && value !== null && value !== false) {
+      node.setAttribute(name, value === true ? "" : value);
     }
-  })
-  .catch(error => { document.getElementById("where").textContent = "The settings did not load: " + error; });
+  }
+  for (const child of children) if (child) node.append(child);
+  return node;
+}
+
+const shown = value => typeof value === "boolean" ? (value ? "on" : "off") : JSON.stringify(value);
+const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const firstSentence = text => (text.match(/^.*?[.!?](?=\s|$)/) || [text])[0];
+
+function groupName(row) {
+  if (row.key.startsWith("checks.")) return row.group;
+  if (row.key.startsWith("transport.rewrite_mode.")) return "rewrite mode";
+  const siblings = data.settings.filter(other => other.group === row.group);
+  return siblings.length > 1 ? row.group : "other";
+}
+
+function label(row) {
+  if (row.key.startsWith("transport.rewrite_mode.")) return "In " + row.key.split(".").pop() + " mode";
+  const own = row.key.startsWith("checks.") ? row.key.slice(("checks." + row.group + ".").length)
+    : row.key === row.group ? row.key : row.key.slice(row.group.length + 1);
+  const words = own.replace(/[._]/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+const MODES = ["default", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions"];
+
+function place(row) {
+  if (row.key.endsWith(".enabled")) return -1;
+  const mode = MODES.indexOf(row.key.split(".").pop());
+  return row.key.startsWith("transport.rewrite_mode.") ? mode : 0;
+}
+
+const byPlace = (a, b) => place(a) - place(b) || a.key.localeCompare(b.key);
+
+function groupAbout(name) {
+  if (name === "rewrite mode") return "What happens to a command io-guard fixed, in each permission mode.";
+  return data.groups[name] || GLOBAL_ABOUT[name] || "";
+}
+
+const refusals = new Map();
+
+async function send(card, body) {
+  refusals.delete(body.key);
+  try {
+    const answer = await fetch("/api/setting", {
+      method: "POST", headers: {"Content-Type": "application/json", "X-IOGuard-Token": token},
+      body: JSON.stringify(body)});
+    const result = await answer.json();
+    if (!answer.ok) refusals.set(body.key, result.message || "The setting was not saved.");
+    await load();
+  } catch (failure) {
+    card.querySelector(".err").textContent =
+      "The page lost io-guard's server: " + failure + ". Ask Claude for io.dashboard again.";
+  }
+}
+
+function control(row, value, save, forbids) {
+  if (row.type === "bool") {
+    const blocked = forbids.includes(!value);
+    return make("button", {type: "button", class: "switch", "aria-pressed": String(value),
+      "aria-label": label(row), disabled: blocked, onclick: () => save(!value)});
+  }
+  if (row.choices.length) {
+    const group = make("div", {class: "seg", role: "group", "aria-label": label(row)});
+    for (const choice of row.choices) {
+      group.append(make("button", {type: "button", "aria-pressed": String(choice === value), text: choice,
+        disabled: forbids.includes(choice), onclick: () => save(choice)}));
+    }
+    return group;
+  }
+  if (row.type === "int") {
+    return make("input", {type: "number", value: String(value), step: "1", "aria-label": label(row),
+      onchange: event => save(parseInt(event.target.value, 10))});
+  }
+  if (row.type === "list") {
+    const chips = make("div", {class: "chips"});
+    const text = item => typeof item === "string" ? item : JSON.stringify(item);
+    value.forEach((item, at) => chips.append(make("span", {class: "chip"}, text(item),
+      make("button", {type: "button", "aria-label": "Remove " + item, text: "x",
+        onclick: () => save(value.filter((_, other) => other !== at))}))));
+    const input = make("input", {type: "text", placeholder: "Add, then Enter", "aria-label": "Add to " + label(row),
+      onkeydown: event => {
+        const added = event.target.value.trim();
+        if (event.key === "Enter" && added) save([...value, added]);
+      }});
+    chips.append(input);
+    return chips;
+  }
+  const box = make("textarea", {"aria-label": label(row)});
+  box.value = JSON.stringify(value, null, 2);
+  const wrap = make("div", {style: "width: 100%"}, box);
+  wrap.append(make("button", {type: "button", text: "Save", onclick: () => {
+    try { save(JSON.parse(box.value)); }
+    catch (failure) {
+      wrap.closest(".card").querySelector(".err").textContent = "That is not JSON: " + failure.message;
+    }
+  }}));
+  return wrap;
+}
+
+function card(row) {
+  const words = (row.key + " " + row.about + " " + label(row)).toLowerCase();
+  const node = make("div", {class: "card", "data-search": words});
+  const yours = row.user === null ? row.default : row.user;
+  const help = make("p", {class: "help", text: firstSentence(row.about)});
+  const name = make("span", {class: "name", tabindex: "0"}, label(row),
+    make("span", {class: "tip", text: row.key + ", default " + shown(row.default)}));
+  const helpButton = make("button", {type: "button", class: "help-button", text: "?", "aria-label": "Help",
+    onclick: () => { help.textContent = help.textContent === row.about ? firstSentence(row.about) : row.about; }});
+  const source = row.user === null ? "Yours: the default" : "Yours";
+  const reset = row.user === null ? null : make("button", {type: "button", text: "Reset",
+    onclick: () => send(node, {key: row.key, scope: "user", remove: true})});
+  const top = make("div", {class: "row"}, make("div", {}, name, helpButton),
+    make("div", {class: "row"}, make("span", {class: "muted", text: source}), reset,
+      control(row, yours, value => send(node, {key: row.key, scope: "user", value: value}), [])));
+  node.append(top, help);
+  const project = make("div", {class: "project row"});
+  project.append(make("span", {class: "muted", text: "This project"}));
+  if (!row.project_may_set) {
+    project.append(make("span", {class: "muted", text: "Only your own config sets this."}));
+  } else {
+    const overridden = row.project !== null;
+    const pick = make("div", {class: "seg", role: "group", "aria-label": "This project"},
+      make("button", {type: "button", text: "Same as yours", "aria-pressed": String(!overridden),
+        onclick: () => overridden && send(node, {key: row.key, scope: "project", remove: true})}),
+      make("button", {type: "button", text: "Override", "aria-pressed": String(overridden),
+        onclick: () => overridden || send(node, {key: row.key, scope: "project",
+          value: row.project_forbids.some(forbidden => sameValue(forbidden, yours)) ? row.default : yours})}));
+    project.append(pick);
+    if (overridden) {
+      project.append(control(row, row.project,
+        value => send(node, {key: row.key, scope: "project", value: value}), row.project_forbids));
+    }
+    if (row.project_forbids.length) {
+      project.append(make("span", {class: "muted",
+        text: "A project can't pick " + row.project_forbids.map(shown).join(" or ")}));
+    }
+  }
+  node.append(project, make("div", {class: "err", text: refusals.get(row.key) || ""}));
+  return node;
+}
+
+function render() {
+  document.getElementById("project").textContent = "Project: " + data.project;
+  const banners = document.getElementById("banners");
+  banners.replaceChildren(...Object.entries(data.errors).map(([scope, message]) =>
+    make("div", {class: "banner", text: (scope === "user" ? "Your config: " : "The project's config: ") + message})));
+  const groups = new Map();
+  for (const row of data.settings) {
+    const name = groupName(row);
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(row);
+  }
+  const rank = name => name === "rewrite mode" ? -1 : name === "other" ? 1 : 0;
+  const order = [...groups.keys()].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  const list = document.getElementById("list");
+  list.replaceChildren();
+  for (const name of order) {
+    const section = make("section", {}, make("h2", {text: name}),
+      make("p", {class: "group-about", text: groupAbout(name)}));
+    for (const row of groups.get(name).sort(byPlace)) section.append(card(row));
+    list.append(section);
+  }
+  filter();
+}
+
+function filter() {
+  const words = document.getElementById("search").value.toLowerCase().split(/\s+/).filter(Boolean);
+  for (const section of document.querySelectorAll("#list section")) {
+    let any = false;
+    for (const node of section.querySelectorAll(".card")) {
+      const heading = section.firstChild.textContent;
+      const hit = words.every(word => node.dataset.search.includes(word) || heading.includes(word));
+      node.hidden = !hit;
+      any = any || hit;
+    }
+    section.hidden = !any;
+  }
+}
+
+async function load() {
+  const answer = await fetch("/api/settings", {headers: {"X-IOGuard-Token": token}});
+  if (!answer.ok) {
+    document.getElementById("project").textContent = "This page needs the URL io.dashboard gave, token and all.";
+    return;
+  }
+  data = await answer.json();
+  render();
+}
+
+try { const saved = localStorage.getItem("io-guard-theme"); if (saved) document.documentElement.dataset.theme = saved; }
+catch (error) { }
+for (const button of document.querySelectorAll("[data-theme-pick]")) {
+  button.addEventListener("click", () => theme(button.dataset.themePick));
+}
+document.getElementById("search").addEventListener("input", filter);
+theme();
+load().catch(error => { document.getElementById("project").textContent = "The settings did not load: " + error; });
 </script>
 </body>
 </html>

@@ -1573,6 +1573,12 @@ from it. A background run keeps running when its call is cancelled, because its 
   `CONFIG_REFUSED` with its message.
 - **Where it opens.** The tool's note tells the model to open the URL in the desktop app's browser pane, or any
   browser on this machine.
+- **The page.** One list of every setting, grouped by check, with the rewrite modes first. Each option shows
+  your value with the control its type takes, a one-line help that `?` opens in full, and a tooltip with its
+  key and default. The line under it, "This project", is "Same as yours" or "Override" with the project's own
+  value. A key the project may not set says so, and a value it may not pick is greyed. A change saves at once
+  and the page reads the settings again, so a refused value goes back to the saved one and its message stays
+  on the card. It follows the system's light or dark scheme until a pick at the top, kept in `localStorage`.
 
 ### The ui resource
 

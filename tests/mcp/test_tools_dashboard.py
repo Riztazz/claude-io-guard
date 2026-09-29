@@ -3,6 +3,7 @@ accept it, refuses what the file may not hold, and the next hook call runs with 
 import http.client
 import json
 import os
+import re
 import shutil
 import tempfile
 import unittest
@@ -16,6 +17,7 @@ from ioguard.hooks import entry
 from ioguard.lib.context import Context, LiveFs, project_root
 from ioguard.lib.platform import detect
 from ioguard.lib.results import Code
+from ioguard.mcp.dashboard_http import PAGE
 from ioguard.mcp.progress import CancelToken
 from ioguard.mcp.tools_dashboard import BOARDS, ConfigInput, DashboardInput, configure, dashboard
 from ioguard.mcp.toolspec import ToolCall, ToolFailure
@@ -160,6 +162,19 @@ class ThePageServerAnswersOnlyItsOwnPage(ConfigTest):
         self.assertEqual(cases, {"no token": 403, "a wrong token": 403, "another host name": 403,
                                  "a form post": 415},
                          "only the page io.dashboard gave can read or change a setting")
+
+    def test_the_page_is_ascii_loads_nothing_from_outside_and_calls_only_the_api(self):
+        page = PAGE.read_bytes()
+        calls = sorted(set(re.findall(rb'fetch\("([^"]+)"', page)))
+        self.assertEqual((page.isascii(), re.findall(rb"https?://", page), calls),
+                         (True, [], [b"/api/setting", b"/api/settings"]),
+                         "one self-contained file, which calls the two paths the server answers")
+
+    def test_the_settings_carry_each_checks_description_for_its_heading(self):
+        status, body = self.request("GET", "/api/settings", token=self.token)
+        groups = json.loads(body)["groups"]
+        self.assertIn("quoting, escaping or dialect", groups["shell.lint"],
+                      "a group heading says what it does")
 
     def test_the_answer_names_the_checks_turned_off(self):
         self.request("POST", "/api/setting", json.dumps({"key": "checks.shell.lint.enabled", "value": False,

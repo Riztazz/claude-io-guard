@@ -146,10 +146,12 @@ def file_state(file: Path, ctx: Context) -> tuple[dict, str | None]:
 def settings(ctx: Context, cwd: Path) -> dict:
     """Every setting with what the user's file and the project's file set, what applies, and what each file
     may set, for the dashboard page. Plain JSON, since the page reads it."""
-    check_keys = default_registry().keys()
+    registry = default_registry()
+    check_keys = registry.keys()
     keys = all_keys(check_keys)
     root = project_root(cwd)
     files = {name: file_for(scope, ctx, root) for name, scope in SCOPES.items()}
+    groups = {check_id: check_class.meta.description for check_id, check_class in registry.classes.items()}
     states = {name: file_state(file, ctx) for name, file in files.items()}
     applies = load(config_layers(ctx.data_dir, root), check_keys).config.values
     rows = [{"key": key, "group": group_of(key), "about": spec.doc, "type": spec.type.__name__,
@@ -159,7 +161,8 @@ def settings(ctx: Context, cwd: Path) -> dict:
              "project_may_set": spec.project_may_set, "project_forbids": list(spec.project_forbids)}
             for key, spec in sorted(keys.items()) if key != "schema"]
     return {"project": root.as_posix(), "files": {name: file.as_posix() for name, file in files.items()},
-            "errors": {name: error for name, (_, error) in states.items() if error}, "settings": rows}
+            "errors": {name: error for name, (_, error) in states.items() if error}, "groups": groups,
+            "settings": rows}
 
 
 @dataclass(frozen=True)
