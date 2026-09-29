@@ -91,12 +91,19 @@ class LoadReport:
     def user_message(self) -> str | None:
         """The one message the user sees: the first dropped file and its first error, then each setting the
         project's files change from the user's own, so a cloned repository never turns a check off
-        unseen."""
+        unseen. A check turned off and the time budget come first, since those skip checks, then the rest
+        by key."""
         first = next((error for error in self.errors if not error.warning), None)
         dropped = (f"io-guard ignored {first.file.as_posix()} because of an error in it. {first.render()}"
                    if first else None)
+
+        def first_named(item: tuple[str, tuple[Any, Any]]) -> tuple[bool, str]:
+            key, (_, now) = item
+            skips = (key.endswith(".enabled") and now is False) or key.startswith("pipeline.")
+            return not skips, key
+
         named = [f"{key} {shown(now)} (yours {shown(was)})"
-                 for key, (was, now) in sorted(self.changed.items())[:CHANGES_NAMED]]
+                 for key, (was, now) in sorted(self.changed.items(), key=first_named)[:CHANGES_NAMED]]
         more = len(self.changed) - len(named)
         changes = (f"This project's .claude/io-guard.json changes {len(self.changed)} of your io-guard "
                    f"settings here: {'; '.join(named)}{f' and {more} more' if more else ''}."

@@ -119,6 +119,17 @@ class AProjectFileOverridesTheUsers(ConfigFiles):
             with self.subTest(part=part):
                 self.assertIn(part, message, "the message says what the project turned off or loosened")
 
+    def test_a_change_that_turns_checks_off_is_named_before_the_rest(self):
+        changed = {f"checks.shell.results.{name}": (5, 6) for name in "abcdefgh"}
+        changed |= {"pipeline.hard_ms": (2000, 0), "checks.shell.lint.enabled": (True, False),
+                    "checks.shell.writes.enabled": (False, True)}
+        message = config.LoadReport(config.defaults(), (), (), (), changed=changed).user_message
+        for part in ("settings here: checks.shell.lint.enabled false (yours true); pipeline.hard_ms 0 "
+                     "(yours 2000); checks.shell.results.a", "and 3 more"):
+            with self.subTest(part=part):
+                self.assertIn(part, message, "a check turned off and the time budget come first, then the "
+                                             "rest by key")
+
     def test_a_project_file_that_changes_nothing_says_nothing(self):
         report = config.load((self.layer(Scope.PROJECT, "p.json", {"pipeline": {"hard_ms": 2000}}),),
                              REAL_KEYS)

@@ -1038,7 +1038,8 @@ one folder, `io.server.workers`, since one server serves every project a session
 `transport.rewrite_mode.*`, since `allow` approves a rewritten command in Claude Code's place (task 84, D43).
 `ConfigKey.project_may_set` marks them. `LoadReport.changed` holds each value the project's files change from
 the user's, and `LoadReport.user_message` names them, up to `CHANGES_NAMED` (8), in the one message the hooks
-give once per session and project, such as `checks.commit.policy.enabled false (yours true)`.
+give once per session and project, such as `checks.commit.policy.enabled false (yours true)`. A check turned
+off and a `pipeline.*` key come first, since those skip checks, then the rest by key (task 118).
 
 `<project>` is `lib.context.project_root` of the hook's `cwd`: the nearest folder at or above it that holds one
 of the two project files, else the nearest that holds `.git`, else `cwd` itself. The hooks keep one Context per

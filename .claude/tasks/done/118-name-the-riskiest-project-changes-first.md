@@ -3,7 +3,7 @@ title: Name the project changes that matter most first
 stage: I
 area: lib
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: []
 platforms: [windows, macos]
@@ -30,3 +30,15 @@ last as "and 1 more".
 ## Done when
 
 - The test passes, and `live-project-override` still shows the message.
+
+## What changed
+
+- `lib/config.py`: `LoadReport.user_message` sorts the changes with a check's `enabled` set false and every
+  `pipeline.*` key first, then the rest by key. A check turned on is not moved up.
+- Test, failing first: eight `checks.shell.results.*` changes, `pipeline.hard_ms` 0, `checks.shell.lint.enabled`
+  false and `checks.shell.writes.enabled` true. The message names lint's `enabled` and `pipeline.hard_ms`
+  first, then the results keys, and counts `3 more` (`tests/lib/test_config.py`). The suite of 1,034 passes on
+  Windows, 2 skipped.
+- `live-project-override` passed on the CLI 2.1.283.
+- Docs: `docs/design/architecture.md` (the order the message names changes in).
+- Checked on Windows on 2026-09-29.
