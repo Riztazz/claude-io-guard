@@ -2,9 +2,9 @@
 io-guard's folder.
 
 A line holds codes, timings and names, never file content: no old_string, no new_string, and at most 200
-characters of a command. The trace context joins the PreToolUse decision, an io tool call and the PostToolUse
-check of one tool use. Tracebacks go to the debug log instead, debug.log in the same folder, and only when
-telemetry.debug is true.
+characters of a command, cut to the program's name once telemetry.cmd_head_days pass. The trace context
+joins the PreToolUse decision, an io tool call and the PostToolUse check of one tool use. Tracebacks go to
+the debug log instead, debug.log in the same folder, and only when telemetry.debug is true.
 """
 import hashlib
 import json
@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ioguard import TELEMETRY_SCHEMA
+from ioguard.lib import bytesio
 
 COMMAND_HEAD = 200
 TRACEPARENT = re.compile(r"^[0-9a-f]{2}-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$")
@@ -122,6 +123,49 @@ class Telemetry:
 def session_files(data_dir: Path) -> list[Path]:
     """Every session's telemetry file in io-guard's folder, oldest month first."""
     return sorted((data_dir / "events").glob("*/*.jsonl"))
+
+
+def program_of(command: str) -> str:
+    """A command's program by its bare name, such as git.exe for "C:/Git/cmd/git.exe" push: the first word,
+    or the first quoted text, with its folder taken off."""
+    text = command.strip()
+    quote = text[:1] if text[:1] in ("'", '"') else ""
+    end = text.find(quote, 1) if quote else -1
+    word = text[1:end] if end > 0 else (text.split(maxsplit=1) or [""])[0]
+    return re.split(r"[\\/]", word)[-1]
+
+
+def shrink_heads(data_dir: Path, days: int, now: datetime) -> list[Path]:
+    """Keep only the program of each line's cmd_head in every session file whose last line is more than days
+    old, and keep the file's time, which expire reads. 0 keeps every head whole. The files rewritten."""
+    if days <= 0:
+        return []
+    cutoff = (now - timedelta(days=days)).timestamp()
+    rewritten = []
+    for path in session_files(data_dir):
+        stat = path.stat()
+        if stat.st_mtime >= cutoff:
+            continue
+        lines = path.read_bytes().split(b"\n")
+        shrunk = [shrunk_line(line) for line in lines]
+        if shrunk != lines:
+            bytesio.write_atomic(path, b"\n".join(shrunk))
+            os.utime(path, (stat.st_atime, stat.st_mtime))
+            rewritten.append(path)
+    return rewritten
+
+
+def shrunk_line(line: bytes) -> bytes:
+    """One telemetry line with its cmd_head cut to the program, or the line as it was."""
+    try:
+        record = json.loads(line)
+    except ValueError:
+        return line
+    head = record.get("cmd_head") if isinstance(record, dict) else None
+    if not isinstance(head, str) or head == program_of(head):
+        return line
+    record["cmd_head"] = program_of(head)
+    return json.dumps(record).encode("ascii")
 
 
 def expire(data_dir: Path, days: int, now: datetime) -> list[Path]:

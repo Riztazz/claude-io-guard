@@ -68,7 +68,7 @@ def measure(event: Event, ctx: Context, dirty_wanted: bool) -> tuple[Probe, tupl
              "pwsh": proc.on_path("pwsh", env), "git": proc.on_path("git", env)}
     if ctx.platform.windows and env.get("CLAUDE_CODE_GIT_BASH_PATH"):
         paths["bash"] = env["CLAUDE_CODE_GIT_BASH_PATH"]
-    with ThreadPoolExecutor(max_workers=4) as pool:
+    with ThreadPoolExecutor(max_workers=min(4, ctx.config.get("io.server.workers"))) as pool:
         versions = {name: pool.submit(probing.tool_version, path, VERSIONS[name], getattr(previous, name))
                     for name, path in paths.items() if path}
         dirty = pool.submit(dirty_files, ctx.git, event.cwd) if dirty_wanted else None

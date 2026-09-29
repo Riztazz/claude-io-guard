@@ -113,6 +113,10 @@ def shown(value: Any) -> str:
     return json.dumps(value, ensure_ascii=True)
 
 
+def at_least_one(value: int) -> str | None:
+    return None if value >= 1 else "The value must be 1 or more."
+
+
 REWRITE_MODES = ("refuse", "ask", "allow")
 REWRITE_DEFAULTS = {"default": "ask", "acceptEdits": "ask", "plan": "ask", "auto": "refuse",
                     "dontAsk": "refuse", "bypassPermissions": "allow"}
@@ -149,6 +153,15 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
                                           "your own config sets it, since every project's telemetry shares "
                                           "one folder.", project_may_set=False),
     "telemetry.debug": ConfigKey(bool, False, "Write tracebacks to the debug log."),
+    "io.server.workers": ConfigKey(int, 4, "Threads each session's io server runs tool calls and hooks on, "
+                                   "and the session probe measures with, at least 1. At 1, a long io.run "
+                                   "holds back every hook until it ends. A change applies from the next "
+                                   "session. Only your own config sets it, since one server serves every "
+                                   "project a session touches.", project_may_set=False, shape=at_least_one),
+    "telemetry.cmd_head_days": ConfigKey(int, 7, "Days a telemetry line keeps the first 200 characters of "
+                                         "its command, checked when the io server starts. After that only "
+                                         "the program's name stays. 0 keeps them whole. Only your own config "
+                                         "sets it.", project_may_set=False),
     "io.saved_days": ConfigKey(int, 7, "Days io-guard keeps the tool results, io.run bodies and logs, and "
                                "command bodies it saves in its folder, checked when the io server starts. 0 "
                                "keeps them. Only your own config sets it, since every project's files share "

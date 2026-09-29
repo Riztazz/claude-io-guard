@@ -80,10 +80,10 @@ class Watchdog(threading.Thread):
 class Server:
     """The loop between stdin and stdout for one protocol."""
 
-    def __init__(self, protocol: Protocol, out: BinaryIO) -> None:
+    def __init__(self, protocol: Protocol, out: BinaryIO, workers: int = WORKERS) -> None:
         self.protocol, self.out = protocol, out
         self.write_lock = threading.Lock()
-        self.workers = ThreadPoolExecutor(WORKERS, thread_name_prefix="io-guard worker")
+        self.workers = ThreadPoolExecutor(workers, thread_name_prefix="io-guard worker")
         self.tokens: dict[Any, CancelToken] = {}
         self.running: set[Future] = set()
         self.state_lock = threading.Lock()
@@ -156,10 +156,14 @@ class Server:
 
 def expire(data: Path, context: Callable[[], Context], now: datetime) -> list[Path]:
     """Delete the telemetry files past telemetry.retention_days, and the entries of SAVED past io.saved_days,
-    both from the user's config. The paths deleted."""
+    and cut the command heads of the telemetry files past telemetry.cmd_head_days, all from the user's
+    config. The paths deleted."""
     config = context().config
     try:
         gone = telemetry.expire(data, config.get("telemetry.retention_days"), now)
+        shrunk = telemetry.shrink_heads(data, config.get("telemetry.cmd_head_days"), now)
+        if shrunk:
+            log.info("io-guard cut the command heads of %d telemetry files to their programs", len(shrunk))
         days = config.get("io.saved_days")
         if days > 0:
             cutoff = now - timedelta(days=days)
@@ -194,7 +198,7 @@ def main() -> int:
         watchdog = Watchdog(session_file(data, session, "alive"), session, protocol.era)
         watchdog.start()
     try:
-        Server(protocol, out).serve(sys.stdin.buffer)
+        Server(protocol, out, context().config.get("io.server.workers")).serve(sys.stdin.buffer)
     finally:
         if watchdog is not None:
             watchdog.stop()

@@ -8,7 +8,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ioguard import TELEMETRY_SCHEMA
-from ioguard.lib.telemetry import Telemetry, TelemetryEvent, erase, expire, session_files, trace_from
+from ioguard.lib.telemetry import (Telemetry, TelemetryEvent, erase, expire, program_of, session_files,
+                                   shrink_heads, trace_from)
 
 WHEN = datetime(2026, 9, 27, 14, 3, 11, 412000, tzinfo=timezone.utc)
 NOW = datetime(2026, 10, 5, 12, tzinfo=timezone.utc)
@@ -88,6 +89,51 @@ class OldTelemetryIsDeleted(unittest.TestCase):
         folders = sorted(path.name for path in (self.data / "events").iterdir())
         self.assertEqual((len(gone), self.left(), folders), (2, [], ["2026-10"]),
                          "every file goes, and a session writing this month still has its folder")
+
+
+class OldCommandHeadsShrink(unittest.TestCase):
+    LINES = [{"ts": "2026-09-01T00:00:00+00:00", "cmd_head": "git commit -m 'token=abc123'", "code": "X"},
+             {"ts": "2026-09-01T00:00:01+00:00", "cmd_head": "\"C:/Git/cmd/git.exe\" push", "code": None},
+             {"ts": "2026-09-01T00:00:02+00:00", "cmd_head": None}]
+
+    def setUp(self):
+        self.data = Path(tempfile.mkdtemp(prefix="ioguard-heads-"))
+        self.addCleanup(shutil.rmtree, self.data, True)
+
+    def written(self, name: str, days_ago: float) -> Path:
+        path = self.data / "events" / "2026-09" / f"{name}.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"".join(json.dumps(line).encode("ascii") + b"\n" for line in self.LINES))
+        stamp = (NOW - timedelta(days=days_ago)).timestamp()
+        os.utime(path, (stamp, stamp))
+        return path
+
+    @staticmethod
+    def heads(path: Path) -> list:
+        return [json.loads(line).get("cmd_head") for line in path.read_bytes().splitlines()]
+
+    def test_a_file_past_the_days_keeps_only_each_program_and_its_time(self):
+        old, new = self.written("old", 8), self.written("new", 6)
+        before = old.stat().st_mtime
+        self.assertEqual(shrink_heads(self.data, 7, NOW), [old], "only the file past 7 days is rewritten")
+        self.assertEqual((self.heads(old), self.heads(new)[0], old.stat().st_mtime),
+                         (["git", "git.exe", None], "git commit -m 'token=abc123'", before),
+                         "the old heads keep their program, the new file keeps its words, and the old file "
+                         "keeps the time expire reads")
+        self.assertEqual(json.loads(old.read_bytes().splitlines()[0])["code"], "X", "every other field stays")
+        self.assertEqual(shrink_heads(self.data, 7, NOW), [], "a file already cut is not written again")
+
+    def test_zero_keeps_every_head(self):
+        old = self.written("old", 80)
+        self.assertEqual((shrink_heads(self.data, 0, NOW), self.heads(old)[0]),
+                         ([], "git commit -m 'token=abc123'"), "0 keeps the heads whole")
+
+    def test_the_program_is_the_first_word_without_quotes_or_folder(self):
+        cases = {"git push": "git", "'C:\\Program Files\\x.exe' -v": "x.exe", "   ": "",
+                 "/usr/bin/python3 -c 1": "python3", "\"C:/Git/cmd/git.exe\" push": "git.exe"}
+        for command, program in cases.items():
+            with self.subTest(command=command):
+                self.assertEqual(program_of(command), program, "the bare first word")
 
 
 class TraceContexts(unittest.TestCase):

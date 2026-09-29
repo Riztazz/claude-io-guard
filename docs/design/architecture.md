@@ -988,7 +988,8 @@ Three layers merge in this order, and a later layer overrides an earlier one key
 | Project | `<project>/.claude/io-guard.json`, then `<project>/.claude/io-guard.local.json` | every key but the user-only ones below, and its commands wait for approval |
 
 A project file overrides the user's for that project. Some keys only the user's file sets:
-`telemetry.retention_days` and `io.saved_days`, since every project's files share one folder,
+`telemetry.retention_days`, `telemetry.cmd_head_days` and `io.saved_days`, since every project's files share
+one folder, `io.server.workers`, since one server serves every project a session touches,
 `checks.session.probe.env` and `env_windows`, which the session probe exports before any prompt could ask, and
 `transport.rewrite_mode.*`, since `allow` approves a rewritten command in Claude Code's place (task 84, D43).
 `ConfigKey.project_may_set` marks them. `LoadReport.changed` holds each value the project's files change from
@@ -1710,10 +1711,10 @@ another server is safe across processes.
 |---|---|---|
 | reader | reads stdin, parses, answers every method but `tools/call` itself so their order holds, hands each `tools/call` to a worker, sets cancel events | run a tool or a check |
 | writer lock | serialises `stdout.write` and `flush` | hold the lock across a tool |
-| workers, 4 | run hook tools and io tools | block on another worker |
+| workers, `io.server.workers`, 4 (task 75) | run hook tools and io tools. The key is user-only, read once at the server's start, at least 1, and the session probe measures with as many threads, up to 4. At 1 a long `io.run` holds back every hook | block on another worker |
 | a waiter per run, task 25 | waits on the run's process, whose stdout and stderr go straight to its log, and settles its handle when it ends | parse output |
 | watchdog | writes the heartbeat file every 5 seconds, and marks it stopped at the end | anything on the request path |
-| retention, once | deletes the telemetry files past `telemetry.retention_days`, and the entries of `results/`, `runs/` and `bodies/` whose newest file is past `io.saved_days` (7, task 89, `lib.retention`), when the server starts, then ends | delay the first request |
+| retention, once | deletes the telemetry files past `telemetry.retention_days`, and the entries of `results/`, `runs/` and `bodies/` whose newest file is past `io.saved_days` (7, task 89, `lib.retention`), and cuts each `cmd_head` to its program in the telemetry files past `telemetry.cmd_head_days` (7, task 75), keeping their times, when the server starts, then ends | delay the first request |
 
 Telemetry has no thread of its own. One lock in `Telemetry` serialises the appends, and each line is on disk
 before `record` returns, so a crash loses none. `sys.stdout` points at stderr inside the server, so a stray
@@ -1966,7 +1967,7 @@ Boxes, io-guard group:
 - `Checks`: location, transport, bytes, stale, read, output.
 - `lib`: profile, anchors, shell, paths, git, locks, proc, results, config, rules.
 - `Context`: config, probe, platform, git, fs, clock, session, telemetry.
-- `io server`: stdio JSON-RPC, dual era, four workers.
+- `io server`: stdio JSON-RPC, dual era, four workers by default (`io.server.workers`).
 - `Protocol`: framing, _meta, era, errors.
 - `ToolRegistry`: io.* and hook.* specs with generated schemas.
 - `io tools`: read, edit, splice, append, run, status, read_log, format, snapshot, restore, compare, stage.

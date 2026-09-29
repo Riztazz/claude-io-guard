@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from ioguard.lib.config import Config, defaults
+from ioguard.lib.config import Config, Scope, all_keys, defaults, validate
 from ioguard.lib.context import Context
 from ioguard.lib.heartbeat import parse
 from ioguard.lib.results import Code
@@ -201,6 +201,44 @@ class ACancelledCallAnswersCancelled(unittest.TestCase):
         answer = json.loads(out.getvalue())
         self.assertEqual((answer["result"]["isError"], answer["result"]["structuredContent"]["code"]),
                          (True, Code.CANCELLED.value), "the call the client cancelled answers CANCELLED")
+
+
+class TheWorkerCountIsASetting(unittest.TestCase):
+    def test_a_server_with_one_worker_runs_one_call_at_a_time(self):
+        order, gate = [], threading.Event()
+        started = {1: threading.Event(), 2: threading.Event()}
+
+        def step(arguments, call):
+            order.append(("start", arguments.n))
+            started[arguments.n].set()
+            gate.wait(10)
+            order.append(("end", arguments.n))
+            return {"content": []}
+
+        tools = ToolRegistry()
+        tools.register(ToolSpec("test.step", "Step", "Waits for the gate.", input=Numbered, output=None,
+                                read_only=True, destructive=False, idempotent=True, handler=step))
+        protocol = Protocol(tools, SERVER_INFO, lambda cancel: ToolCall(lambda: None, cancel, REPO, None))
+        server = Server(protocol, io.BytesIO(), 1)
+        for number in (1, 2):
+            server.take(request(number, "tools/call", {"name": "test.step", "arguments": {"n": number}}))
+        started[1].wait(10)
+        second_ran_alongside = started[2].wait(0.3)
+        gate.set()
+        started[2].wait(10)
+        server.stop()
+        self.assertEqual((second_ran_alongside, order),
+                         (False, [("start", 1), ("end", 1), ("start", 2), ("end", 2)]),
+                         "with io.server.workers at 1 the second call waits for the first to end")
+
+    def test_the_key_takes_one_or_more(self):
+        found = validate({"io": {"server": {"workers": 0}}}, Scope.USER, all_keys({}), Path("c.json"))
+        self.assertEqual([error.key for error in found], ["io.server.workers"], "0 workers would run nothing")
+
+
+@dataclass(frozen=True)
+class Numbered:
+    n: int = 0
 
 
 if __name__ == "__main__":
