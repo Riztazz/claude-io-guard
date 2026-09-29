@@ -3,7 +3,8 @@ title: Check the file a mv or cp into a folder writes, not the folder
 stage: I
 area: checks
 created: 2026-09-28
-status: open
+status: done
+claimed-by: Pala Elektroniczna, session 7eeb509f
 depends-on: [12]
 findings: []
 platforms: [windows, macos]
@@ -43,3 +44,28 @@ file either.
 ## Done when
 
 - A `mv` of a new file into a folder of tracked files runs with no `SHELL_WRITE`.
+
+## What changed
+
+- `checks/shell_writes.py`:
+  - `landed(words, cwd, ctx)` gives the files a `cp` or `mv` writes: the last operand, or each source's last
+    name inside the folder. The folder comes from `-t` or `--target-directory`, a trailing slash, or a folder on
+    disk.
+  - `into_folder` and `inside_folder` do the same for PowerShell's `Copy-Item` and `Move-Item`, with the source
+    from `-Path`, `-LiteralPath` or the first operand.
+  - `tracked` is unchanged. A folder no longer reaches it as a target.
+- `lib/context.py`, `lib/fakes.py`: `FsPort.is_dir`, on `LiveFs` and `FakeFs`. A folder holding only folders
+  lists no files, so `list_dir` could not tell it from a file.
+- Tests: `tests/checks/test_shell_writes.py` (1, eight moves and copies for both tools). Its `FolderGit` answers
+  for a folder as git does, tracked when it holds a tracked file, since `FakeGit` alone let the old code pass.
+  Against the HEAD `shell_writes.py` it fails: `mv new.md src/` and `mv new.md src` were refused.
+- Docs: `docs/design/architecture.md` (`FsPort`).
+
+Evidence:
+
+- `python tests/run_all.py` from Git Bash ran 870 tests, all passing, up from 869.
+- The corpus: 807 recorded `cp` and `mv` commands, 167 of them into a folder, 161 by a trailing slash and 6 to
+  a folder still on disk. Those are the calls this changes. The refusals before and after could not be
+  counted, since that needs each recorded folder's git state at the time.
+- `python tools/ioguard.py check` with this repository's real git:
+  `mv .claude/tasks/open/65-... .claude/tasks/done/` passes, and a `mv` onto the tracked `README.md` is refused.

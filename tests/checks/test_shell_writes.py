@@ -89,6 +89,27 @@ class EveryWriteFormIsFound(unittest.TestCase):
                         "the moved body still writes a tracked file")
 
 
+class FolderGit(FakeGit):
+    """git as it answers ls-files --error-unmatch for a folder: tracked when it holds a tracked file."""
+
+    def is_tracked(self, path: Path) -> bool:
+        return any(path == file or path in file.parents for file in self.tracked)
+
+
+class AMoveIntoAFolderWritesTheFileItLandsAs(unittest.TestCase):
+    def test_the_file_a_move_or_copy_lands_as_is_what_is_checked(self):
+        on_disk = {ROOT / "src" / "a.py": b"x\n"}
+        cases = {("mv new.md src/", "Bash"): False, ("mv new.md src", "Bash"): False,
+                 ("cp -t src new.md", "Bash"): False, ("mv ../other/a.py src/", "Bash"): True,
+                 ("cp -t src lib/a.py", "Bash"): True, ("mv new.md src/a.py", "Bash"): True,
+                 ("Move-Item new.md -Destination src", "PowerShell"): False,
+                 ("Copy-Item lib/a.py src", "PowerShell"): True}
+        git = FolderGit(root=ROOT, tracked=TRACKED)
+        found = {case: refused(*case, git=git, files=on_disk) for case in cases}
+        self.assertEqual(found, cases, "a new file moved into a tracked folder passes, and one that lands on "
+                                       "a tracked file is refused")
+
+
 class EverythingElsePasses(unittest.TestCase):
     def test_writes_io_guard_cannot_stop_pass(self):
         for command in ("echo x > notes.txt", "echo x > /dev/null", "echo x > $S/a.py", "ls 2>&1 | head",

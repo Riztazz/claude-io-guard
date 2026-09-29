@@ -56,7 +56,11 @@ class FakeFs:
 
     def exists(self, path: Path) -> bool:
         """A file given to the fake, or a folder that holds one or was made."""
-        return path in self.files or path in self.folders or any(path in file.parents for file in self.files)
+        return path in self.files or self.is_dir(path)
+
+    def is_dir(self, path: Path) -> bool:
+        """A folder that was made, or that holds a file given to the fake."""
+        return path in self.folders or any(path in file.parents for file in self.files)
 
     def holders(self, path: Path) -> tuple[Process, ...]:
         return self.held.get(path, ())

@@ -114,8 +114,8 @@ def bash_writes(command: str, event: Event, ctx: Context) -> list[Write]:
             writes += [Write(target, f"{simple.name} -i", cwd) for target in files]
         elif simple.name == "tee":
             writes += [Write(target, "tee", cwd) for target in arguments]
-        elif simple.name in ("cp", "mv") and len(arguments) >= 2:
-            writes.append(Write(arguments[-1], simple.name, cwd))
+        elif simple.name in ("cp", "mv"):
+            writes += [Write(target, simple.name, cwd) for target in landed(simple.words[1:], cwd, ctx)]
         elif shell.INTERPRETERS.match(simple.name) and not interpreter:
             interpreter, script_cwd = True, cwd
     bodies = [heredoc.body for heredoc in found.heredocs] if interpreter else []
@@ -126,6 +126,40 @@ def bash_writes(command: str, event: Event, ctx: Context) -> list[Write]:
     writes += [Write(target, "a script file", script.cwd)
                for script in script_files(command, event, ctx) for target in script_targets(script.body)]
     return writes
+
+
+def landed(words: list[str], cwd: Path | None, ctx: Context) -> list[str]:
+    """The files a cp or mv writes: its last argument, or each source's name inside the folder it names, by
+    -t, by a trailing slash, or by being a folder on disk."""
+    folder, operands, given = None, [], iter(words)
+    for word in given:
+        if word in ("-t", "--target-directory"):
+            folder = next(given, None)
+        elif word.startswith("--target-directory="):
+            folder = word.split("=", 1)[1]
+        elif not word.startswith("-"):
+            operands.append(word)
+    if folder is None:
+        if len(operands) < 2:
+            return []
+        *operands, target = operands
+        if not into_folder(target, cwd, ctx):
+            return [target]
+        folder = target
+    return [inside_folder(folder, source) for source in operands]
+
+
+def into_folder(raw: str, cwd: Path | None, ctx: Context) -> bool:
+    """Whether a copy or move names a folder to put its sources in, by a trailing slash or on disk."""
+    if raw.endswith(("/", "\\")):
+        return True
+    path = resolve(raw, cwd, ctx)
+    return path is not None and ctx.fs.is_dir(path)
+
+
+def inside_folder(folder: str, source: str) -> str:
+    """The path a source lands at in folder: the folder, then the source's own last name."""
+    return f"{folder.rstrip('/\\')}/{re.split(r'[\\/]', source.rstrip('/\\'))[-1]}"
 
 
 def sed_files(arguments: list[str]) -> list[str]:
@@ -172,8 +206,11 @@ def powershell_writes(command: str, event: Event, ctx: Context) -> list[Write]:
                 writes.append(Write(target, simple.words[0], cwd))
         elif name in PS_MOVERS:
             target = named(arguments, ("-destination",))
-            others = [word for word in arguments if not word.startswith("-")]
+            others = [word for word in arguments if not word.startswith("-") and word != target]
+            source = named(arguments, ("-path", "-literalpath")) or (others[0] if others else None)
             target = target or (others[1] if len(others) >= 2 else None)
+            if target and source and into_folder(target, cwd, ctx):
+                target = inside_folder(target, source)
             if target:
                 writes.append(Write(target, simple.words[0], cwd))
     return writes
