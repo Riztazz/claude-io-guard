@@ -41,6 +41,16 @@ class ResultsRender(unittest.TestCase):
                          "a file name or a command cannot clear, overwrite or reverse the text around it, "
                          "and a tab and a newline stay")
 
+    def test_every_invisible_character_shows_as_its_escape(self):
+        cases = {0xE0041: "\\U000e0041", 0x200B: "\\u200b", 0x200F: "\\u200f", 0x2028: "\\u2028",
+                 0x2029: "\\u2029", 0xFEFF: "\\ufeff", 0xA0: "\\u00a0", 0xAD: "\\u00ad", 0x2060: "\\u2060",
+                 0xE000: "\\ue000", 0xF0000: "\\U000f0000"}
+        for code, shown in cases.items():
+            with self.subTest(character=f"U+{code:04X}"):
+                result = Result.of(Code.GUARD_ERROR, f"a{chr(code)}b", "Edit", "win32")
+                self.assertEqual(result.message, f"a{shown}b",
+                                 "hidden text in a file name or a command shows as its escape")
+
     def test_without_a_fix_the_codes_own_advice_follows(self):
         result = Result.of(Code.GUARD_ERROR, "A check failed.", "Edit", "darwin")
         self.assertEqual(render(result), f"GUARD_ERROR: A check failed. {spec(Code.GUARD_ERROR).fix}",

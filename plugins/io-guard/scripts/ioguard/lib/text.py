@@ -19,8 +19,15 @@ FORMAT_RANGES = ((0xAD, 0xAD), (0x600, 0x605), (0x61C, 0x61C), (0x6DD, 0x6DD), (
                  (0x13430, 0x1343F), (0x1BCA0, 0x1BCA3), (0x1D173, 0x1D17A), (0xE0001, 0xE0001),
                  (0xE0020, 0xE007F))              # Unicode category Cf, 16.0
 SPACES = ((0xA0, 0xA0), (0x2028, 0x2029))       # a no-break space, and the line and paragraph separators
-INVISIBLE = re.compile("[" + "".join(f"{chr(first)}-{chr(last)}" for first, last in
-                                     (*FORMAT_RANGES, *SPACES, (0xE000, 0xF8FF), (0xF0000, 0x10FFFD))) + "]")
+INVISIBLE_RANGES = (*FORMAT_RANGES, *SPACES, (0xE000, 0xF8FF), (0xF0000, 0x10FFFD))
+
+
+def character_class(ranges: tuple[tuple[int, int], ...]) -> str:
+    """The inside of a regular expression's [...] for each range of code points, first and last included."""
+    return "".join(re.escape(chr(first)) + "-" + re.escape(chr(last)) for first, last in ranges)
+
+
+INVISIBLE = re.compile(f"[{character_class(INVISIBLE_RANGES)}]")
 
 
 def invisible_added(before: str, after: str,

@@ -461,8 +461,9 @@ class Result:
 `CODES` is the one declaration. The `Code` enum, the skill's code table, the telemetry vocabulary and the
 meta test that demands one producing test per code all read it. `Result.of(code, message, tool, platform)`
 builds a result with the severity its code declares, and writes each control character in the message but
-tab and newline, and each direction override, as its `\u` escape, since a file name or a command from a
-repository can carry one (task 88).
+tab and newline, and each character in `lib.text.INVISIBLE_RANGES`, the direction overrides, the zero-width
+and tag characters, U+2028, U+2029 and U+FEFF among them, as its `\u` or `\U` escape, since a file name or a
+command from a repository can carry one (tasks 88 and 115).
 
 **`CODES` holds the codes that something already produces.** The meta test fails on a code no test names, so
 a code enters `CODES` in the task that builds its check, with that check's tests. Task 07 settled the full
