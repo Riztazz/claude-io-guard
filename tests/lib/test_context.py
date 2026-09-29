@@ -182,6 +182,12 @@ class LiveContexts(unittest.TestCase):
                                  "a broken probe file is left for the session probe to write again, and "
                                  "never stops the server starting")
 
+    def test_a_path_the_system_rejects_has_no_stat(self):
+        (self.project / "file.txt").write_bytes(b"x")
+        for path in (self.project / "a?b", self.project / ("x" * 300), self.project / "file.txt" / "x"):
+            with self.subTest(path=str(path)[-20:]):
+                self.assertIsNone(LiveFs().stat(path), "a name no file can have is a file that is not there")
+
     def test_live_file_ports_round_trip_bytes(self):
         target = self.project / "a.txt"
         LiveFs().write_atomic(target, b"\xef\xbb\xbfone\r\n")

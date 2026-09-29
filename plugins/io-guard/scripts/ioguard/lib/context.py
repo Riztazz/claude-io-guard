@@ -3,6 +3,7 @@
 A check receives a Context and reads it. No check writes into it except the session state, through its typed
 fields. Context.live builds the real ports, and Context.fake builds in-memory ones for tests.
 """
+import errno
 import json
 import logging
 import os
@@ -148,6 +149,7 @@ class ShellSnapshot:
 
 SNAPSHOTS_KEPT = 16     # a call the user refuses leaves its snapshot, so the oldest one past this goes
 ASK_LIFETIME = timedelta(minutes=10)    # a yes to a prompt left open longer than this runs nothing
+NO_SUCH_PATH = {errno.ENOENT, errno.ENOTDIR, errno.EINVAL, errno.ENAMETOOLONG}   # a stat no file can answer
 
 
 @dataclass(eq=False)
@@ -273,9 +275,14 @@ class LiveFs:
         return bytesio.write_atomic(path, data)
 
     def stat(self, path: Path) -> FileStat | None:
+        """path's size, time and read-only flag, or None when no file can be there: missing, through a
+        file, or a name the system rejects, such as one holding ? on Windows or one too long."""
         try:
             found = os.stat(path)
-        except FileNotFoundError:
+        except OSError as error:
+            if error.errno not in NO_SUCH_PATH:
+                raise
+            log.debug("io-guard found no file at %s: %s", path, error)
             return None
         return FileStat(found.st_size, found.st_mtime_ns, not found.st_mode & stat_module.S_IWRITE)
 

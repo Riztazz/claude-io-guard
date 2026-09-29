@@ -3,7 +3,7 @@ title: Never read a device or a pipe as a file, and answer a path the system rej
 stage: I
 area: lib
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: [PTH-5]
 platforms: [windows, macos]
@@ -52,3 +52,23 @@ in an environment key, and a lone surrogate in `code`. The one `GUARD_ERROR` of 
 
 - Each device and pipe case answers within 100 ms, on both CI runners.
 - Each bad path and argument gets `PATH_NOT_FOUND` or `INVALID_ARGUMENTS`, never `GUARD_ERROR`.
+
+## What changed
+
+- `lib/bytesio.py`: `regular(path)` raises `OSError` for anything `stat` does not call a regular file, and
+  `read_bytes`, `read_from` and `read_tail` open only what it passes. On Windows `stat` gives `CON`, `COM1`,
+  `AUX` and `nul` as character devices, measured on 2026-09-29, so one check covers them, a FIFO and
+  `/dev/zero`. Every read of a path a call or a command names goes through `ctx.fs` and so through it:
+  `io.read`, `io.snapshot`, `io.compare`, the script files `shell.writes` reads, and a commit's `-F` file.
+  The reads that bypass it open io-guard's own files: sessions, the journal and telemetry.
+- `lib/context.py`: `LiveFs.stat` answers `None` for the errors no file can answer, `ENOENT`, `ENOTDIR`,
+  `EINVAL` and `ENAMETOOLONG`, and still raises the others, such as a permission error.
+- `mcp/tools_run.py`: `unrunnable` refuses, with `INVALID_ARGUMENTS`, a NUL in argv or in an env name or value,
+  a name that is empty or holds `=`, and code UTF-8 cannot write.
+- Tests, each failing first: `CON` read from a process with no console blocked past its 10 s limit, and a
+  FIFO on macOS is the same test; `?`, a 300-character name and a path through a file each raised from
+  `stat`; the three `io.run` inputs each raised `ValueError` or `UnicodeEncodeError`. All pass now, and the
+  suite of 1,001 passes on Windows with 2 skipped.
+- `live-empty` passed on the CLI 2.1.283, so ordinary reads still work.
+- Docs: `docs/design/architecture.md` (`regular`, `read_bytes`, `stat`).
+- Checked on Windows on 2026-09-29. The FIFO case runs on the macOS CI runner.

@@ -174,12 +174,31 @@ def checked(given: RunInput, call: ToolCall) -> dict:
     return fields
 
 
+def unrunnable(given: RunInput) -> str | None:
+    """Why the system could not start this call, as one sentence, or None: a NUL in argv or env, a variable
+    name with = in it or none at all, or code that is not text UTF-8 can hold."""
+    if any("\0" in word for word in given.argv):
+        return "An argv item holds a NUL character, which no program can be given."
+    for name, value in given.env.items():
+        if not name or "=" in name or "\0" in name or "\0" in value:
+            return (f"The variable {name!r} cannot be set: its name is empty or holds = or NUL, or its value "
+                    f"holds NUL.")
+    try:
+        given.code.encode("utf-8")
+    except UnicodeEncodeError as error:
+        return f"code holds a character UTF-8 cannot write, at position {error.start}."
+    return None
+
+
 def run(given: RunInput, call: ToolCall) -> RunOutput:
     ctx, tool = call.context, "io.run"
     if bool(given.argv) == bool(given.code):
         raise InvalidArguments("io.run takes argv, or lang and code, and not both.")
     if given.code and given.lang not in runs.SUFFIXES:
         raise InvalidArguments(f"lang must be one of {', '.join(runs.SUFFIXES)}.")
+    problem = unrunnable(given)
+    if problem:
+        raise InvalidArguments(problem)
     fields = checked(given, call)
     folder = runs_folder(ctx) / uuid.uuid4().hex
     body = folder / f"body{runs.SUFFIXES.get(given.lang, '')}"

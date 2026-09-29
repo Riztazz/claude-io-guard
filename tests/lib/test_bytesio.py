@@ -2,12 +2,15 @@
 import os
 import shutil
 import stat
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from ioguard.lib import bytesio
+from tests import PLUGIN_SCRIPTS
 
 
 class AtomicWrites(unittest.TestCase):
@@ -40,6 +43,22 @@ class AtomicWrites(unittest.TestCase):
         bytesio.write_atomic(self.target, b"new")
         self.assertEqual((self.target.is_symlink(), real.read_bytes()), (True, b"new"),
                          "a write through a link lands in the file it points to, and the link stays")
+
+    def test_a_device_or_a_pipe_is_refused_at_once_never_read(self):
+        if os.name == "posix":
+            target = self.folder / "pipe"
+            os.mkfifo(target)
+        else:
+            target = self.folder / "CON"
+        program = (f"import sys; sys.path.insert(0, {str(PLUGIN_SCRIPTS)!r}); from pathlib import Path; "
+                   f"from ioguard.lib import bytesio\ntry:\n    bytesio.read_bytes(Path({str(target)!r}))\n"
+                   f"except OSError:\n    print('refused')")
+        try:
+            done = subprocess.run([sys.executable, "-c", program], stdin=subprocess.PIPE, capture_output=True,
+                                  timeout=10, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except subprocess.TimeoutExpired:
+            self.fail("reading a device or a pipe blocked, where it should be refused")
+        self.assertEqual(done.stdout.strip(), b"refused", "a read of anything but a regular file is refused")
 
     def test_an_existing_file_is_replaced_whole(self):
         self.target.write_bytes(b"old content that is longer")

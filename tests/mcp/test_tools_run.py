@@ -109,7 +109,9 @@ class AProgramRunsWithNoShell(RunTest):
 
     def test_arguments_that_do_not_make_one_program_are_refused(self):
         for given in (RunInput(), RunInput(argv=["x"], lang="python", code="1"),
-                      RunInput(lang="cobol", code="1")):
+                      RunInput(lang="cobol", code="1"), RunInput(argv=[sys.executable, "-c", "print(1)\x00"]),
+                      RunInput(argv=[sys.executable, "-V"], env={"A=B": "1"}),
+                      RunInput(lang="python", code="print('\ud800')")):
             with self.subTest(given=given):
                 with self.assertRaises(InvalidArguments, msg="argv, or lang and code, one of them"):
                     self.call(run, given, self.context())

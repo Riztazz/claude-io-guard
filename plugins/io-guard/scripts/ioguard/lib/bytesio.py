@@ -4,6 +4,7 @@ write_atomic writes a temporary file beside the target and renames it over the t
 the old bytes or the new ones and never half a file. open(path, "w") truncates first, which is how a file
 ends up empty.
 """
+import errno
 import os
 import stat
 import tempfile
@@ -19,15 +20,23 @@ class WriteReport:
     attempts: int
 
 
+def regular(path: Path) -> Path:
+    """path, when it names a regular file. OSError otherwise: a device such as CON or /dev/zero, a pipe, or a
+    folder, which a read would block on, read without end, or fail on."""
+    if not stat.S_ISREG(os.stat(path).st_mode):
+        raise OSError(errno.EINVAL, "not a regular file", str(path))
+    return path
+
+
 def read_bytes(path: Path, limit: int | None = None) -> bytes:
     """The file's bytes, or its first limit bytes."""
-    with open(path, "rb") as source:
+    with open(regular(path), "rb") as source:
         return source.read() if limit is None else source.read(limit)
 
 
 def read_from(path: Path, offset: int, limit: int) -> bytes:
     """Up to limit bytes of the file from byte offset on."""
-    with open(path, "rb") as source:
+    with open(regular(path), "rb") as source:
         source.seek(offset)
         return source.read(limit)
 
@@ -35,7 +44,7 @@ def read_from(path: Path, offset: int, limit: int) -> bytes:
 def read_tail(path: Path, limit: int) -> bytes:
     """The file's last limit bytes, from the first line break in them when the file is longer, so every line
     in the result is whole."""
-    with open(path, "rb") as source:
+    with open(regular(path), "rb") as source:
         size = source.seek(0, os.SEEK_END)
         source.seek(max(0, size - limit))
         data = source.read()

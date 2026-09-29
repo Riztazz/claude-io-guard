@@ -253,7 +253,7 @@ class FsPort(Protocol):
     def read_tail(self, path: Path, limit: int) -> bytes: ...       # the last whole lines in limit bytes
     def read_from(self, path: Path, offset: int, limit: int) -> bytes: ...   # task 25, for io.read_log
     def write_atomic(self, path: Path, data: bytes) -> WriteReport: ...
-    def stat(self, path: Path) -> Optional[FileStat]: ...
+    def stat(self, path: Path) -> Optional[FileStat]: ...     # None for a path no file can have, task 106
     def exists(self, path: Path) -> bool: ...
     def is_dir(self, path: Path) -> bool: ...
     def holders(self, path: Path) -> tuple[Process, ...]: ...     # OSError when the platform cannot answer
@@ -744,7 +744,8 @@ Each module lists its public functions. Every one takes values and returns value
 
 ```python
 # bytesio.py
-def read_bytes(path: Path, limit: Optional[int] = None) -> bytes
+def regular(path: Path) -> Path                             # task 106: OSError for a device, a pipe or a folder
+def read_bytes(path: Path, limit: Optional[int] = None) -> bytes   # every read goes through regular first
 def read_tail(path: Path, limit: int) -> bytes               # task 20: from the first line break it holds
 def write_atomic(path: Path, data: bytes, retries: int = 5) -> WriteReport   # task 104: through a symlink
                                                             # to its file, and on macOS with the old mode
