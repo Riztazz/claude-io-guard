@@ -292,10 +292,10 @@ def dashboard(given: DashboardInput, call: ToolCall) -> DashboardOutput:
     again = callable_name("io.dashboard")
     stops = (f" The page stops {minutes:g} minutes after it closes, and calling {again} again opens a new "
              f"one." if minutes else "")
-    return DashboardOutput(url, root.as_posix(), off,
-                           "Open the URL in the desktop app's browser pane, and give it to the user as a "
-                           "Markdown link, token and all, which opens in any browser on this machine. A "
-                           f"change there applies from the next tool call.{stops}")
+    note = ("Open the URL in the desktop app's browser pane, and give it to the user as the Markdown link "
+            "[Open io-guard's settings page](URL), token and all, which opens in any browser on this "
+            "machine. A change there applies from the next tool call.")
+    return DashboardOutput(url, root.as_posix(), off, note + stops)
 
 
 SPECS = (ToolSpec("io.dashboard", "Open io-guard's settings page",

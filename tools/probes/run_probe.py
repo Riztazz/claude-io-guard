@@ -1116,7 +1116,8 @@ def config_written(summary: dict, name: str) -> bool:
 
 def settings_linked(summary: dict, name: str) -> bool:
     """The settings skill called io.dashboard, and its reply links the URL, token included, in Markdown."""
-    link = re.search(r"\]\(http://127\.0\.0\.1:\d+/\?token=[\w-]+\)", json.dumps(summary["final"]))
+    link = re.search(r"\[Open io-guard's settings page\]\(http://127\.0\.0\.1:\d+/\?token=[\w-]+\)",
+                     json.dumps(summary["final"]))
     return '\\"url\\":\\"http://127.0.0.1:' in json.dumps(summary["results"]) and link is not None
 
 

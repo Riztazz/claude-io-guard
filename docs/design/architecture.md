@@ -1594,8 +1594,8 @@ from it. A background run keeps running when its call is cancelled, because its 
   `POST /api/stats/from` takes `{"from": "now"}` or `{"from": null}` and writes `stats-from.json` in io-guard's
   folder. `POST /api/stats/delete` takes `{"confirm": true}` and deletes every telemetry file (task 72).
 - **Where it opens.** The tool's note and the `settings` skill tell the model to open the URL in the desktop
-  app's browser pane, and to give it to the user as a Markdown link, token and all, for any browser on this
-  machine (task 73).
+  app's browser pane, and to give it to the user as the Markdown link "Open io-guard's settings page", whose
+  target holds the token, for any browser on this machine (tasks 73 and 77).
 - **When it stops.** The open page asks `GET /api/ping` every 30 seconds. A watcher stops the server once no
   request came for `io.dashboard.idle_minutes`, 5 by default, and drops it, so the next `io.dashboard` starts a
   new one on a new port with a new token (task 68). 0 keeps it up until the io server stops. An open page whose
