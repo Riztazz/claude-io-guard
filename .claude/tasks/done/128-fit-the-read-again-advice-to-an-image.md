@@ -3,7 +3,7 @@ title: Fit the read-again advice to an image or other binary file
 stage: I
 area: checks
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: [STL-1]
 platforms: [windows, macos]
@@ -39,3 +39,17 @@ twice, 330 characters each, where a path from the session's scratchpad could be 
 ## Done when
 
 - The case above reads with a step that fits an image, and `live-touched` still passes.
+
+## What changed
+
+- `checks/touched.py`: a read file whose last profile is binary gets `Read <file> again to see what the
+  command made of it.`, and a text one keeps `Read <file> again before the next Edit.`, each step naming only
+  its own files. Every path in the message goes through `paths.shown` with the event's scratchpad.
+- `lib/paths.py`: `shown` takes an optional scratchpad, and a path under it, and not under the current
+  folder, shows as `scratchpad/<rest>`. Callers that pass none are unchanged.
+- Test, failing first: a PNG in the scratchpad, read and then redrawn by `python draw.py`, reads `This command
+  changed scratchpad/fab/board.png, read before it.` with `Read scratchpad/fab/board.png again to see what the
+  command made of it.` (`tests/checks/test_touched.py`). The suite of 1,056 passes on Windows, 2 skipped.
+- `live-touched` passed on the CLI 2.1.283.
+- Docs: none quote this step or the path form.
+- Checked on Windows on 2026-09-29.

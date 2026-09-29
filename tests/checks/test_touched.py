@@ -263,6 +263,25 @@ class TheAdviceFitsWhatTheCommandDid(unittest.TestCase):
                          "a read file changed and a file created each bring their step")
 
 
+class AnImageTheCommandRedrewIsNamedForWhatItIs(unittest.TestCase):
+    def test_an_image_in_the_scratchpad_is_read_again_to_be_seen(self):
+        scratch = Path("C:/tmp/claude/s1/scratchpad")
+        png = scratch / "fab" / "board.png"
+        session = Session()
+        session.fs.files[png] = b"\x89PNG\r\n\x1a\n\x00\x00old"
+        session.ctx.session.read_profiles[png] = profile(session.fs.files[png])
+        session.run(events.bash("python draw.py", CWD, scratchpad_dir=str(scratch)))
+        session.fs.write_atomic(png, b"\x89PNG\r\n\x1a\n\x00\x00new!")
+        raw = events.post_tool_use("Bash", {"command": "python draw.py"}, events.bash_result(""), CWD,
+                                   scratchpad_dir=str(scratch))
+        found = [result for decision in session.run(raw).decisions if decision.check_id == "shell.touched"
+                 for result in decision.results]
+        self.assertEqual((found[0].message, found[0].fix.text),
+                         ("This command changed scratchpad/fab/board.png, read before it.",
+                          "Read scratchpad/fab/board.png again to see what the command made of it."),
+                         "no Edit applies to an image, and a scratchpad path is short")
+
+
 class WhatTheCommandDidToTheBytes(unittest.TestCase):
     def test_a_script_that_converted_the_endings_is_reported(self):
         session = Session(b"int a;\r\nint b;\r\n")

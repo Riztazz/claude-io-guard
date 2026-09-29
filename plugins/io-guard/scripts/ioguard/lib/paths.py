@@ -32,11 +32,14 @@ def normalise(raw: str, cwd: Path, platform: Platform) -> Path:
     return Path(folded)
 
 
-def shown(path: Path, cwd: Path) -> str:
-    """path as a message names it: from cwd when under it, whole otherwise, and cwd itself in words."""
+def shown(path: Path, cwd: Path, scratchpad: Path | None = None) -> str:
+    """path as a message names it: from cwd when under it, from the session's scratchpad as scratchpad/...
+    when under that, whole otherwise, and cwd itself in words."""
     try:
         relative = path.relative_to(cwd).as_posix()
     except ValueError:
+        if scratchpad is not None and path.is_relative_to(scratchpad):
+            return f"scratchpad/{path.relative_to(scratchpad).as_posix()}"
         return path.as_posix()
     return "the current folder" if relative == "." else relative
 

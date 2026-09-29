@@ -14,10 +14,11 @@ status's rename or by a path gone and a new one with the same name and size, is 
 when the command itself names a move, such as git mv, mv or Move-Item, even when a commit in it hides where
 the file went. A file the session's own Edit, Write or io tool wrote while the command ran is not the
 command's, and when another shell command started while it ran, the message says either one may have made
-the change. The advice holds one step for each kind of change that needs one: read a read file again, delete
-a new file the task does not need, and use a moved file's new path. A tracked file that changed
-while an interpreter ran a script file also gets SHELL_WRITE, because that write skipped the checks an Edit
-gets, unless a git command in the same command could have changed it.
+the change. The advice holds one step for each kind of change that needs one: read a read file again, before
+the next Edit, or to see it when it is an image or other binary file, delete a new file the task does not
+need, and use a moved file's new path. A path in the session's scratchpad is shown from it. A tracked file
+that changed while an interpreter ran a script file also gets SHELL_WRITE, because that write skipped the
+checks an Edit gets, unless a git command in the same command could have changed it.
 """
 import fnmatch
 from pathlib import Path
@@ -139,9 +140,9 @@ def in_words(items: list[str]) -> str:
     return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
 
 
-def named(found: list[Path], cwd: Path, limit: int) -> str:
+def named(found: list[Path], cwd: Path, limit: int, scratchpad: Path | None = None) -> str:
     """Paths for a message: "a.cpp", "a.cpp and b.h", "a, b, c and 4 more"."""
-    shown = [paths.shown(path, cwd) for path in found[:limit]]
+    shown = [paths.shown(path, cwd, scratchpad) for path in found[:limit]]
     rest = len(found) - len(shown)
     return in_words(shown + [f"{rest} more"] if rest else shown)
 
@@ -228,17 +229,25 @@ class Touched(Check):
             deleted = [path for path in deleted if path in by_status]
         created = [path for path in created if path not in {new for _, new in moved}]
         changed += [path for path in added if path not in {new for _, new in moved}]
-        limit, cwd = self.options["listed"], event.cwd
-        shown_moves = [] if named_move else [f"{paths.shown(old, cwd)} to {paths.shown(new, cwd)}"
-                                             for old, new in moved]
-        parts = ([f"changed {named(read, cwd, limit)}, read before it"] if read else []) + \
-                ([f"changed {named(changed, cwd, limit)}"] if changed else []) + \
-                ([f"created {named(created, cwd, limit)}"] if created else []) + \
-                ([f"deleted {named(deleted, cwd, limit)}"] if deleted else []) + \
+        limit, cwd, scratch = self.options["listed"], event.cwd, event.scratchpad
+
+        def listed(found: list[Path]) -> str:
+            return named(found, cwd, limit, scratch)
+
+        shown_moves = [] if named_move else [f"{paths.shown(old, cwd, scratch)} to "
+                                             f"{paths.shown(new, cwd, scratch)}" for old, new in moved]
+        parts = ([f"changed {listed(read)}, read before it"] if read else []) + \
+                ([f"changed {listed(changed)}"] if changed else []) + \
+                ([f"created {listed(created)}"] if created else []) + \
+                ([f"deleted {listed(deleted)}"] if deleted else []) + \
                 ([f"moved {in_words(shown_moves[:limit])}"] if shown_moves else [])
         if not parts:
             return ()
-        steps = ([f"Read {named(read, cwd, limit)} again before the next Edit."] if read else []) + \
+        with ctx.session.lock:
+            binary = [path for path in read if (seen := ctx.session.read_profiles.get(path)) and seen.binary]
+        text = [path for path in read if path not in binary]
+        steps = ([f"Read {listed(text)} again before the next Edit."] if text else []) + \
+                ([f"Read {listed(binary)} again to see what the command made of it."] if binary else []) + \
                 (["Delete any new file the task does not need, and keep the rest on purpose."]
                  if created else []) + \
                 (["Use the files' new paths from now on."] if shown_moves else [])
