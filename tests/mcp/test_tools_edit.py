@@ -241,6 +241,16 @@ class ABatchIsRefusedWhole(EditTest):
                 self.assertEqual(self.refusal(edit, given, self.context(files, **options)).code, code,
                                  "the model reads why, and nothing is written")
 
+    def test_a_windows_device_name_is_refused_by_every_io_write(self):
+        ctx = self.context({CWD / "nul.txt": b"x\n"})
+        cases = {"io.edit": (edit, EditInput("nul.txt", (EditPair("x", "y"),))),
+                 "io.append": (append, AppendInput("nul.txt", "more"))}
+        for name, (handler, given) in cases.items():
+            with self.subTest(name):
+                self.assertEqual(self.refusal(handler, given, ctx).code, Code.RESERVED_NAME,
+                                 "an io tool refuses a device name as write.location refuses the Write tool")
+        self.assertEqual(ctx.fs.files[CWD / "nul.txt"], b"x\n", "nothing was written")
+
     def test_io_edit_refuses_a_read_only_file_before_writing(self):
         ctx = Context.fake(platform=WINDOWS, data_dir=self.data,
                            fs=FakeFs({CWD / "a.txt": b"x\n"}, readonly=frozenset({CWD / "a.txt"})))

@@ -107,6 +107,11 @@ def lock_folder(ctx: Context) -> Path:
 def load(path: Path, ctx: Context, tool: str, expect_hash: str = "") -> Loaded:
     """The file's bytes and text, or the refusal that names why the tool cannot change it."""
     name = path.name
+    device = paths.reserved(path) if ctx.platform.windows else None
+    if device is not None:
+        raise refused(Code.RESERVED_NAME, f"{name} names the Windows device {device.upper()}, which Windows "
+                      f"tools cannot open or delete as a file, so {tool} wrote nothing.", tool, path, ctx,
+                      Fix(callable_name(tool), {}, "Give the file another name."))
     found = ctx.fs.stat(path)
     if found is None:
         glob = Fix("Glob", {"pattern": f"**/{name}"},

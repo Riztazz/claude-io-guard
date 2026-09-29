@@ -468,10 +468,11 @@ class Context:
 
     def for_file(self, path: Path | None) -> "Context":
         """This context for a call on path: a file outside the project takes the config without the
-        project's layers, so one project's rules never govern another's files."""
+        project's layers, and none of the project's commands waiting for approval, so one project's rules
+        never govern another's files."""
         if path is None or self.project is None or self.outside is None or path.is_relative_to(self.project):
             return self
-        return replace(self, config=self.outside)
+        return replace(self, config=self.outside, held={})
 
     def project_name(self, cwd: Path) -> str | None:
         """The project a telemetry line names: the root's folder name, else the working folder's."""

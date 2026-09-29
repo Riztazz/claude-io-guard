@@ -5,12 +5,13 @@ The value is a JSON object. A key that starts with a dot is an extension, and it
 list of strings, the program first. Any other key is the absolute root of one project, and its value is an
 object of extensions to commands for that project only. A project's own command for an extension wins over
 the top-level one. {file} in an argument becomes the file's path, and an argument that holds {first} and
-{last} repeats once per line range. Only the user's config.json may hold either key (D24), because io-guard
-starts each command.
+{last} repeats once per line range. The program is a bare name io-guard finds on PATH, or an absolute path:
+a relative one would run from whatever folder the session is in. A project's file may hold either key, and
+its commands wait for the user's approval (D38), because io-guard starts each command.
 """
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 from ioguard.lib import paths
@@ -46,7 +47,17 @@ def command_problem(kind: Kind, extension: str, command: Any) -> str | None:
             or not any(all(mark in part for mark in kind.marks) for part in command)):
         return (f"The command for {extension} must be a list of strings, the program first, with "
                 f"{kind.need}, such as {kind.example}.")
+    if relative(command[0]):
+        return (f"The program {command[0]!r} for {extension} is a relative path, which would run from "
+                f"whatever folder the session is in. Give its absolute path, or its bare name to find it on "
+                f"PATH.")
     return None
+
+
+def relative(program: str) -> bool:
+    """Whether program names a folder without being an absolute path, on either platform."""
+    return (("/" in program or "\\" in program) and not PurePosixPath(program).is_absolute()
+            and not PureWindowsPath(program).is_absolute())
 
 
 def shape_problem(kind: Kind, value: Mapping[str, Any]) -> str | None:

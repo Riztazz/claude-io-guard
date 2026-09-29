@@ -327,8 +327,10 @@ to the model. Name them by extension in your own `config.json`, and add a projec
 }
 ```
 
-`{file}` becomes the file's path, and the command runs with no shell, stopped after 10 seconds. A project's
-`.claude/io-guard.json` can't name one, because a repository you clone must not make io-guard run its programs.
+`{file}` becomes the file's path, and the command runs with no shell, stopped after 10 seconds. The program is
+a bare name io-guard finds on `PATH` or an absolute path, since a relative one would run from whatever folder
+the session is in. A project's `.claude/io-guard.json` can name commands too, and they wait for your yes, as
+the settings section says.
 
 **Your formatter:** `io.format` runs clang-format for C and C++ files by default, found on your `PATH`, with the
 project's `.clang-format` and no style at all where the project has none. To use another clang-format, or to

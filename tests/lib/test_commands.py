@@ -26,10 +26,19 @@ class TheShapeIsChecked(unittest.TestCase):
                  "bad key": ({"py": PY}, "neither a file extension"),
                  "relative root": ({"work/app": {".py": PY}}, "absolute project folder"),
                  "project not an object": ({HERE: PY}, "object of extensions"),
-                 "bad project command": ({HERE: {".py": []}}, "list of strings")}
+                 "bad project command": ({HERE: {".py": []}}, "list of strings"),
+                 "relative program": ({".py": ["tools/check.exe", "{file}"]}, "relative path"),
+                 "relative Windows program": ({".py": ["..\\bin\\lint.cmd", "{file}"]}, "relative path")}
         for name, (value, words) in cases.items():
             with self.subTest(name):
                 self.assertIn(words, verify_problem(value), "the message says what to fix")
+
+    def test_a_program_by_its_bare_name_or_an_absolute_path_passes(self):
+        for program in ("python", "C:/Python314/python.exe", "C:\\tools\\lint.exe", "/usr/bin/python3",
+                        "\\\\server\\share\\lint.exe"):
+            with self.subTest(program=program):
+                self.assertIsNone(verify_problem({".py": [program, "{file}"]}),
+                                  "PATH finds a bare name, and an absolute path runs from anywhere")
 
     def test_a_format_command_holds_both_ends_of_a_range_in_one_argument(self):
         self.assertIsNone(format_problem(FORMAT_DEFAULT), "the default clang-format commands pass")

@@ -753,6 +753,7 @@ def restored(data: bytes, eol: Optional[Eol], bom: Bom) -> Optional[bytes]   # N
 
 # commands.py, task 18 as verify.py, and task 26
 def verify_problem(value: Mapping[str, Any]) -> Optional[str]           # ConfigKey.shape of the verify key
+                                                   # task 90: a program with a folder must be absolute
 def format_problem(value: Mapping[str, Any]) -> Optional[str]           # and of the format key
 def command_for(value: Mapping[str, Any], path: Path, platform: Platform) -> Optional[tuple[str, ...]]
 def filled(command: Sequence[str], path: Path, ranges: Sequence[tuple[int, int]] = ()) -> tuple[str, ...]
@@ -994,7 +995,8 @@ sets them: `telemetry.retention_days` and `io.saved_days`, since every project's
 `<project>` is `lib.context.project_root` of the hook's `cwd`: the nearest folder at or above it that holds one
 of the two project files, else the nearest that holds `.git`, else `cwd` itself. The hooks keep one Context per
 session and project root, and telemetry names the project by the root. A call on a file outside the root runs
-with `Context.for_file`, whose config holds the defaults and the user layer alone (task 57).
+with `Context.for_file`, whose config holds the defaults and the user layer alone (task 57), and whose `held`
+is empty, so no project's waiting command is named for it. `io.format` takes it for each file (task 90).
 
 A list replaces the list below it, a project's too, and every list key's text says so, which a test holds.
 
@@ -1434,7 +1436,8 @@ with that edit corrected, and it never offers `replace_all`, which the io tools 
 own tools' reads and writes only. `io.read` returns the `sha256` that `expect_hash` compares, which a caller
 passes only when the rest of the file must be as it read it: in `live-edit-parallel` models passed each
 result's hash on unasked, and the other subagents' writes refused them. Steps 1, 2 and 4 live in
-`mcp/in_place.py`, which `io.format` shares.
+`mcp/in_place.py`, which `io.format` shares. Its `load` refuses a Windows device name such as `nul.txt` with
+`RESERVED_NAME`, as `write.location` refuses the Write tool (task 90).
 
 ### Format the changed lines
 

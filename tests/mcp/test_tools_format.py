@@ -5,6 +5,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType
 
@@ -113,6 +114,19 @@ class AFileWithNothingToFormatStaysAsItIs(FormatTest):
                              "each file says why nothing ran")
             self.assertEqual(((root / "a.cpp").read_bytes(), (root / "b.md").read_bytes()),
                              (b"a\n", b"# b\n"), "neither file is written")
+
+
+    def test_a_file_outside_the_project_takes_no_command_from_the_projects_file(self):
+        with (TemporaryProject(git=True) as project,
+              TemporaryProject({"a.cpp": b"a\nb\n"}, git=True) as other):
+            mine = Config(MappingProxyType({**defaults().values, "format": {}}))
+            ctx = replace(self.context(), project=project, outside=mine,
+                          held={"format": {".cpp": ["x", "{first}-{last}"]}})
+            found = self.call(project, FormatInput([str(other / "a.cpp")], {str(other / "a.cpp"):
+                                                                          [Place(1, 2)]}), ctx)
+            self.assertEqual(((other / "a.cpp").read_bytes(), found.files[0].reason, found.waiting),
+                             (b"a\nb\n", "the format key in config.json names no command for .cpp", ""),
+                             "one project's format command and waiting commands never reach another's files")
 
 
 class AFailureWritesNothing(FormatTest):

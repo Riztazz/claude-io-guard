@@ -114,7 +114,7 @@ def format_files(given: FormatInput, call: ToolCall) -> FormatOutput:
         path = paths.normalise(raw, call.cwd, ctx.platform)
         targets.setdefault(paths.resolved(path), path)
     named = lines_by_file(given, call, targets)
-    notices = (untrusted(ctx, "format", path, TOOL, ctx.platform) for path in targets.values())
+    notices = (untrusted(ctx.for_file(path), "format", path, TOOL, ctx.platform) for path in targets.values())
     found = next(filter(None, notices), None)
     waiting = "" if found is None else render(found)
     with ExitStack() as stack:
@@ -163,7 +163,9 @@ def diffed(each: Planned) -> str:
 
 
 def plan(path: Path, named: list[Place], ctx: Context) -> Planned:
-    """The file's bytes once its lines are formatted, or as they are with the reason no formatter ran."""
+    """The file's bytes once its lines are formatted, or as they are with the reason no formatter ran. A file
+    outside the project takes the config without the project's file."""
+    ctx = ctx.for_file(path)
     loaded = load(path, ctx, TOOL)
     unchanged = FormattedFile(path.as_posix(), "", [], "", False, [], [], "", "")
     command = commands.command_for(ctx.config.get("format"), path, ctx.platform)
