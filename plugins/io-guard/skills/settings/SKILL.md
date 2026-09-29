@@ -7,9 +7,11 @@ description: Opens io-guard's settings page, where each check turns on or off, e
 
 1. Call `mcp__plugin_io-guard_io__io_dashboard` with no arguments. When only its name is listed, load it first
    with ToolSearch and the query `select:mcp__plugin_io-guard_io__io_dashboard`.
-2. Open the `url` it returns for the user in the desktop app's browser pane. Where no browser pane is
-   available, give the user the URL to open in a browser on this machine.
-3. Tell the user, in two lines, which checks the result says are off for this project, and that the page stops
+2. Open the `url` it returns for the user in the desktop app's browser pane, where one is available.
+3. Give the user the whole `url`, token and all, as a Markdown link whose text is the URL itself, such as
+   `[http://127.0.0.1:PORT/?token=TOKEN](http://127.0.0.1:PORT/?token=TOKEN)`. A click opens the page in their
+   own browser on this machine.
+4. Tell the user, in two lines, which checks the result says are off for this project, and that the page stops
    a few minutes after it closes.
 
 The page writes through `io.config`, so a change applies from the next tool call. To change one setting

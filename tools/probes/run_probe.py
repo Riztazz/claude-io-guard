@@ -1105,6 +1105,12 @@ def config_written(summary: dict, name: str) -> bool:
     return summary["files"][".claude/io-guard.json"] == CONFIG_FILE and "CONFIG_REFUSED" in seen(summary)
 
 
+def settings_linked(summary: dict, name: str) -> bool:
+    """The settings skill called io.dashboard, and its reply links the URL, token included, in Markdown."""
+    link = re.search(r"\]\(http://127\.0\.0\.1:\d+/\?token=[\w-]+\)", json.dumps(summary["final"]))
+    return '\\"url\\":\\"http://127.0.0.1:' in json.dumps(summary["results"]) and link is not None
+
+
 def formatted_changed_lines(summary: dict, name: str) -> bool:
     """io.format formatted the edited line, left the committed line 1 as badly formatted as it was, and kept
     the BOM and every CRLF although the style names LF. Its own result names the lines it changed, so the
@@ -1294,7 +1300,7 @@ VERDICTS = {
     "live-format": formatted_changed_lines,
     "live-config": config_written,
     "live-dashboard": lambda s, n: "<title>io-guard settings</title>" in json.dumps(s["results"]),
-    "live-settings-skill": lambda s, n: '\\"url\\":\\"http://127.0.0.1:' in json.dumps(s["results"]),
+    "live-settings-skill": settings_linked,
     "live-format-dry": dry_run_shown,
     "live-skill": recovered_once,
     "live-commit-asked": commit_asked,
