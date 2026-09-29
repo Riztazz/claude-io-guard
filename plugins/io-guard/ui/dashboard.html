@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>io-guard settings</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 16px; }
+  table { border-collapse: collapse; width: 100%; }
+  td, th { text-align: left; padding: 4px 8px; border-bottom: 1px solid #ccc; vertical-align: top; }
+  code { font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<h1>io-guard settings</h1>
+<p id="where">Loading.</p>
+<table><thead><tr><th>Setting</th><th>In force</th><th>Yours</th><th>Project</th></tr></thead>
+<tbody id="rows"></tbody></table>
+<script>
+const token = new URLSearchParams(location.search).get("token") || "";
+const shown = value => value === null || value === undefined ? "" : JSON.stringify(value);
+fetch("/api/settings", {headers: {"X-IOGuard-Token": token}})
+  .then(response => response.json())
+  .then(data => {
+    document.getElementById("where").textContent = "Project: " + data.project;
+    const rows = document.getElementById("rows");
+    for (const row of data.settings) {
+      const line = document.createElement("tr");
+      for (const text of [row.key, shown(row.applies), shown(row.user), shown(row.project)]) {
+        const cell = document.createElement("td");
+        const code = document.createElement("code");
+        code.textContent = text;
+        cell.appendChild(code);
+        line.appendChild(cell);
+      }
+      rows.appendChild(line);
+    }
+  })
+  .catch(error => { document.getElementById("where").textContent = "The settings did not load: " + error; });
+</script>
+</body>
+</html>

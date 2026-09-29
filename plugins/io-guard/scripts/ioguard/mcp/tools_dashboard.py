@@ -1,12 +1,15 @@
 """io.config: read one setting, or write it into your config.json or the project's .claude/io-guard.json.
+io.dashboard: the settings page, served on 127.0.0.1 by this io server, which writes through the same call.
 
 A write is checked the way the loader checks the whole file, so a value the file could not load is never
 written, and a project file never sets what only the user may (docs/design/architecture.md, section 5). The
 file is written whole through write_atomic, under the file lock every io-guard process shares, and each
-session's hooks load it again from their next call.
+session's hooks load it again from their next call. The page server starts on the first io.dashboard call for
+a project and runs as long as this io server does.
 """
 import difflib
 import json
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,7 +20,8 @@ from ioguard.lib import config_edit, locks
 from ioguard.lib.config import ConfigKey, Scope, all_keys, flatten, load, validate, widened
 from ioguard.lib.context import Context, config_layers, project_root
 from ioguard.lib.results import Code, Fix, Result, callable_name
-from ioguard.mcp.toolspec import ToolCall, ToolFailure, ToolSpec, doc
+from ioguard.mcp.dashboard_http import Dashboard, Rejected
+from ioguard.mcp.toolspec import ToolCall, ToolFailure, ToolSpec, doc, structured
 
 NAME = "io.config"
 SCOPES = {"user": Scope.USER, "project": Scope.PROJECT}
@@ -90,8 +94,8 @@ def problem(new: dict, scope: Scope, keys: dict[str, ConfigKey], file: Path, bel
     return errors[0].render() if errors else None
 
 
-def configure(given: ConfigInput, call: ToolCall) -> ConfigOutput:
-    ctx = call.context
+def setting(ctx: Context, cwd: Path, given: ConfigInput) -> ConfigOutput:
+    """Read or write one setting for the project cwd belongs to. io.config and the dashboard both call it."""
     check_keys = default_registry().keys()
     keys = all_keys(check_keys)
     spec, scope = keys.get(given.key), SCOPES.get(given.scope)
@@ -101,7 +105,7 @@ def configure(given: ConfigInput, call: ToolCall) -> ConfigOutput:
         raise refused(f"io-guard has no setting {given.key}.{hint}", ctx)
     if scope is None:
         raise refused(f"scope is {given.scope!r}, and it takes user or project.", ctx)
-    root = project_root(call.cwd)
+    root = project_root(cwd)
     file = file_for(scope, ctx, root)
     layers = config_layers(ctx.data_dir, root)
     below = load([layer for layer in layers if layer.scope < scope], check_keys).config.values
@@ -122,7 +126,93 @@ def configure(given: ConfigInput, call: ToolCall) -> ConfigOutput:
                         spec.project_may_set, before, config_edit.value_at(new, given.key), applies, written)
 
 
-SPECS = (ToolSpec(NAME, "Read or change one io-guard setting",
+def configure(given: ConfigInput, call: ToolCall) -> ConfigOutput:
+    return setting(call.context, call.cwd, given)
+
+
+def group_of(key: str) -> str:
+    """The heading a setting sits under on the page: its check's id, or the first part of its key."""
+    return key[len("checks."):].rsplit(".", 1)[0] if key.startswith("checks.") else key.split(".")[0]
+
+
+def file_state(file: Path, ctx: Context) -> tuple[dict, str | None]:
+    """A config file's JSON, or an empty object and the reason it could not be read."""
+    try:
+        return read_raw(file, ctx), None
+    except ToolFailure as failure:
+        return {}, failure.result.message
+
+
+def settings(ctx: Context, cwd: Path) -> dict:
+    """Every setting with what the user's file and the project's file set, what applies, and what each file
+    may set, for the dashboard page. Plain JSON, since the page reads it."""
+    check_keys = default_registry().keys()
+    keys = all_keys(check_keys)
+    root = project_root(cwd)
+    files = {name: file_for(scope, ctx, root) for name, scope in SCOPES.items()}
+    states = {name: file_state(file, ctx) for name, file in files.items()}
+    applies = load(config_layers(ctx.data_dir, root), check_keys).config.values
+    rows = [{"key": key, "group": group_of(key), "about": spec.doc, "type": spec.type.__name__,
+             "choices": list(spec.choices), "default": spec.default, "applies": applies.get(key),
+             "user": config_edit.value_at(states["user"][0], key),
+             "project": config_edit.value_at(states["project"][0], key),
+             "project_may_set": spec.project_may_set, "project_forbids": list(spec.project_forbids)}
+            for key, spec in sorted(keys.items()) if key != "schema"]
+    return {"project": root.as_posix(), "files": {name: file.as_posix() for name, file in files.items()},
+            "errors": {name: error for name, (_, error) in states.items() if error}, "settings": rows}
+
+
+@dataclass(frozen=True)
+class DashboardInput:
+    pass
+
+
+@dataclass(frozen=True)
+class DashboardOutput:
+    url: str = doc("The page, on 127.0.0.1, with the token it needs.")
+    project: str = doc("The project whose settings the page shows beside yours.")
+    checks_off: tuple[str, ...] = doc("The checks turned off for this project.")
+    note: str = doc("Where to open the page.")
+
+    def render(self) -> str:
+        off = ", ".join(self.checks_off) if self.checks_off else "none"
+        return f"io-guard's settings page: {self.url}\nChecks off for {self.project}: {off}.\n{self.note}"
+
+
+BOARD_LOCK = threading.Lock()
+BOARDS: dict[Path, Dashboard] = {}
+
+
+def written(ctx: Context, cwd: Path, given: dict) -> dict:
+    """A setting the page sent, written as io.config writes it, as the JSON the page reads."""
+    known = {name: given[name] for name in ("key", "scope", "value", "remove") if name in given}
+    try:
+        return structured(setting(ctx, cwd, ConfigInput(**known)))
+    except ToolFailure as failure:
+        raise Rejected({"code": failure.result.code.value, "message": failure.result.message}) from None
+
+
+def dashboard(given: DashboardInput, call: ToolCall) -> DashboardOutput:
+    ctx, root = call.context, project_root(call.cwd)
+    with BOARD_LOCK:
+        if root not in BOARDS:
+            BOARDS[root] = Dashboard(lambda: settings(ctx, root), lambda sent: written(ctx, root, sent))
+        url = BOARDS[root].start()
+    rows = settings(ctx, root)["settings"]
+    off = tuple(row["group"] for row in rows if row["key"].endswith(".enabled") and row["applies"] is False)
+    return DashboardOutput(url, root.as_posix(), off,
+                           "Open the URL in the desktop app's browser pane, or in any browser on this "
+                           "machine. A change there applies from the next tool call.")
+
+
+SPECS = (ToolSpec("io.dashboard", "Open io-guard's settings page",
+                  "Starts io-guard's settings page on this machine and returns its URL. The page turns "
+                  "checks on or off and changes rewrite modes and lists, in your config or the project's. "
+                  "Use it when the user wants to see or change io-guard's settings, then open the URL for "
+                  "them.",
+                  DashboardInput, DashboardOutput, read_only=True, destructive=False, idempotent=True,
+                  handler=dashboard),
+         ToolSpec(NAME, "Read or change one io-guard setting",
                   "Reads one io-guard setting, or writes it into your own config.json or the project's "
                   ".claude/io-guard.json, checked as io-guard checks the whole file. Use it to turn a check "
                   "off or on, or to change a rewrite mode or a list. It applies from the next tool call.",

@@ -272,6 +272,11 @@ CONFIG_STEPS = (f"Do these in order, one tool call each. 1. Load {IO_CONFIG} wit
                 f"{IO_CONFIG} with these exact arguments: "
                 '{"key": "transport.rewrite_mode.auto", "value": "allow", "scope": "project"} '
                 "Then quote each result's first line word for word.")
+IO_DASHBOARD = "mcp__plugin_io-guard_io__io_dashboard"
+DASHBOARD_STEPS = (f"Do these in order, one tool call each. 1. Load {IO_DASHBOARD} with the ToolSearch tool, "
+                   f"with the query select:{IO_DASHBOARD} 2. Call {IO_DASHBOARD} with no arguments. 3. Run "
+                   "this Bash command, with URL replaced by the exact url the result gave, token and all: "
+                   "curl -s \"URL\" Then quote the <title> line the command printed, word for word.")
 CONFIG_FILE = '{\n  "schema": 1,\n  "checks": {\n    "shell.lint": {\n      "enabled": false\n    }\n  }\n}\n'
 IO_FORMAT = "mcp__plugin_io-guard_io__io_format"
 FORMAT_STYLE = b"BasedOnStyle: LLVM\nLineEnding: LF\n"
@@ -533,6 +538,8 @@ PROBES = {
                          setup={".clang-format": FORMAT_STYLE, "a.cpp": FORMAT_CPP}),
     "live-config": Probe(0, "", guard="", allowed=("ToolSearch", IO_CONFIG), prompt=CONFIG_STEPS, git=True,
                          check=(".claude/io-guard.json",), setup={"README.md": b"probe\n"}),
+    "live-dashboard": Probe(0, "", guard="", allowed=("ToolSearch", IO_DASHBOARD, "Bash"),
+                            prompt=DASHBOARD_STEPS, git=True, setup={"README.md": b"probe\n"}),
     "live-format-dry": Probe(0, "", guard="", allowed=("ToolSearch", IO_EDIT, IO_FORMAT),
                              prompt=FORMAT_DRY_STEPS, git=True, check=("a.cpp",),
                              setup={".clang-format": FORMAT_STYLE, "a.cpp": FORMAT_CPP}),
@@ -1283,6 +1290,7 @@ VERDICTS = {
     "live-stage": staged_one_hunk,
     "live-format": formatted_changed_lines,
     "live-config": config_written,
+    "live-dashboard": lambda s, n: "<title>io-guard settings</title>" in json.dumps(s["results"]),
     "live-format-dry": dry_run_shown,
     "live-skill": recovered_once,
     "live-commit-asked": commit_asked,

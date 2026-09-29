@@ -112,7 +112,8 @@ plugins/io-guard/
         tools_run.py               io.run, io.status, io.read_log
         tools_format.py            io.format
         tools_history.py           io.snapshot, io.restore, io.compare, io.stage
-        tools_dashboard.py         io.config today, then io.dashboard and the ui resource
+        tools_dashboard.py         io.config and io.dashboard: one setting, and the settings page
+        dashboard_http.py          Dashboard: the page and its JSON API on 127.0.0.1, behind a token
         tools_hook.py              hook.pre_tool_use, hook.post_tool_use, hook.post_tool_use_failure, hook.ping
         skill.py                   the skill page's tool and code tables, which tools/skill.py writes
       cli/
@@ -1556,14 +1557,30 @@ carried `progressToken` in `_meta`, at most twice per second, and `io.run` repor
 it (task 25). The reader passes `dispatch` the writer's `send`, and `Protocol.call` builds each call's reporter
 from it. A background run keeps running when its call is cancelled, because its handle owns the process.
 
+### The dashboard page
+
+`io.dashboard()` starts `mcp.dashboard_http.Dashboard` for the project on the first call, and answers
+`DashboardOutput(url, project, checks_off, note)`. The page server is a `ThreadingHTTPServer` on a free port of
+`127.0.0.1`, in a daemon thread that ends with the io server, one per project the server serves (task 33).
+
+- **Who may ask.** Every request carries the token from the URL, in `?token=` or `X-IOGuard-Token`, compared
+  with `hmac.compare_digest`, and a `Host` of `127.0.0.1:<port>`. A page from anywhere else knows neither, and
+  a name that resolves to this machine fails the `Host` test. A change is a `POST` of `application/json`, which
+  a form elsewhere cannot send.
+- **What it answers.** `GET /` is `ui/dashboard.html`. `GET /api/settings` is every setting with what the user's
+  file and the project's file set, what applies, and what each may set. `POST /api/setting` takes
+  `{key, scope, value, remove}` and runs the same `setting` call as `io.config`, so a refusal is
+  `CONFIG_REFUSED` with its message.
+- **Where it opens.** The tool's note tells the model to open the URL in the desktop app's browser pane, or any
+  browser on this machine.
+
 ### The ui resource
 
-`resources/list` returns `ui://io-guard/dashboard` with `mimeType` `text/html;profile=mcp-app`, and
-`resources/read` returns `ui/dashboard.html`. `io.dashboard` carries `_meta.ui.resourceUri` on its `tools/list`
-entry, and `server/discover` lists `io.modelcontextprotocol/ui` in `extensions` with the same MIME type. The
-tool's `structuredContent` holds counts and percentiles only, and the page fetches details through
-`io.dashboard` with `scope: "details"`, which the page calls and the model does not. `tools/report.py --html`
-renders the same template with the data inlined.
+Not built. Neither the desktop Code tab nor the CLI renders an MCP App (task 03), so the page is served over
+HTTP instead. When a client renders one, `resources/list` returns `ui://io-guard/dashboard` with `mimeType`
+`text/html;profile=mcp-app`, `resources/read` returns `ui/dashboard.html`, and `io.dashboard` carries
+`_meta.ui.resourceUri` on its `tools/list` entry. The stats, and `tools/report.py --html` rendering the same
+page with the data inlined, are task 66.
 
 ## 8. Share the process safely
 

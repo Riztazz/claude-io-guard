@@ -1,20 +1,23 @@
 """io.config reads one setting, writes it into the user's or the project's config file as the loader would
 accept it, refuses what the file may not hold, and the next hook call runs with it."""
+import http.client
 import json
 import os
 import shutil
 import tempfile
 import unittest
+import urllib.request
 from pathlib import Path
 from unittest import mock
+from urllib.parse import parse_qs, urlsplit
 
 from ioguard.checks.registry import Registry
 from ioguard.hooks import entry
-from ioguard.lib.context import Context, LiveFs
+from ioguard.lib.context import Context, LiveFs, project_root
 from ioguard.lib.platform import detect
 from ioguard.lib.results import Code
 from ioguard.mcp.progress import CancelToken
-from ioguard.mcp.tools_dashboard import ConfigInput, configure
+from ioguard.mcp.tools_dashboard import BOARDS, ConfigInput, DashboardInput, configure, dashboard
 from ioguard.mcp.toolspec import ToolCall, ToolFailure
 from tests.support.project import TemporaryProject
 
@@ -98,6 +101,71 @@ class TheNextCallRunsWithIt(ConfigTest):
             after = contexts.get("s1", root, Registry()).config.get(key)
         self.assertEqual((before, after), ("ask", "refuse"),
                          "the hooks load the changed file on their next call")
+
+
+class ThePageServerAnswersOnlyItsOwnPage(ConfigTest):
+    def setUp(self):
+        super().setUp()
+        self.root = Path(tempfile.mkdtemp(prefix="ioguard-board-"))
+        self.addCleanup(shutil.rmtree, self.root, True)
+        (self.root / ".git").mkdir()
+        call = ToolCall(lambda: self.ctx, CancelToken(), self.root, None)
+        self.done = dashboard(DashboardInput(), call)
+        self.again = dashboard(DashboardInput(), call)
+        self.addCleanup(BOARDS.pop(project_root(self.root)).stop)
+        self.port = urlsplit(self.done.url).port
+        self.token = parse_qs(urlsplit(self.done.url).query)["token"][0]
+
+    def request(self, method: str, path: str, body: bytes | None = None, token: str | None = None,
+                host: str | None = None, kind: str = "application/json") -> tuple[int, bytes]:
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        headers = {"Host": host or f"127.0.0.1:{self.port}", "Content-Type": kind}
+        if token is not None:
+            headers["X-IOGuard-Token"] = token
+        connection.request(method, path, body=body, headers=headers)
+        response = connection.getresponse()
+        answer = (response.status, response.read())
+        connection.close()
+        return answer
+
+    def test_the_tool_starts_one_server_and_the_url_opens_the_page(self):
+        with urllib.request.urlopen(self.done.url, timeout=10) as response:
+            page = response.read()
+        self.assertEqual((self.again.url, b"<title>io-guard settings</title>" in page), (self.done.url, True),
+                         "a second call gives the same page, and the URL with its token opens it")
+
+    def test_the_settings_and_a_write_go_through_the_api(self):
+        status, body = self.request("GET", "/api/settings", token=self.token)
+        rows = {row["key"]: row for row in json.loads(body)["settings"]}
+        sent = json.dumps({"key": "checks.shell.lint.enabled", "value": False, "scope": "project"})
+        wrote, answer = self.request("POST", "/api/setting", sent.encode(), token=self.token)
+        refused, why = self.request("POST", "/api/setting", json.dumps(
+            {"key": "transport.rewrite_mode.auto", "value": "allow", "scope": "project"}).encode(),
+            token=self.token)
+        on_disk = json.loads((self.root / ".claude" / "io-guard.json").read_bytes())
+        lint = rows["checks.shell.lint.enabled"]["applies"]
+        self.assertEqual((status, lint, wrote, json.loads(answer)["written"]), (200, True, 200, True),
+                         "the page reads every setting and writes one")
+        self.assertEqual((refused, json.loads(why)["code"], on_disk["checks"]["shell.lint"]),
+                         (400, "CONFIG_REFUSED", {"enabled": False}),
+                         "a value the file may not hold is refused as io.config refuses it")
+
+    def test_a_request_without_the_token_or_from_another_host_is_refused(self):
+        cases = {"no token": self.request("GET", "/api/settings")[0],
+                 "a wrong token": self.request("GET", "/api/settings", token="guess")[0],
+                 "another host name": self.request("GET", "/api/settings", token=self.token,
+                                                   host=f"example.com:{self.port}")[0],
+                 "a form post": self.request("POST", "/api/setting", b"key=x", token=self.token,
+                                             kind="application/x-www-form-urlencoded")[0]}
+        self.assertEqual(cases, {"no token": 403, "a wrong token": 403, "another host name": 403,
+                                 "a form post": 415},
+                         "only the page io.dashboard gave can read or change a setting")
+
+    def test_the_answer_names_the_checks_turned_off(self):
+        self.request("POST", "/api/setting", json.dumps({"key": "checks.shell.lint.enabled", "value": False,
+                                                        "scope": "project"}).encode(), token=self.token)
+        again = dashboard(DashboardInput(), ToolCall(lambda: self.ctx, CancelToken(), self.root, None))
+        self.assertEqual(again.checks_off, ("shell.lint",), "the summary names what the project turned off")
 
 
 if __name__ == "__main__":

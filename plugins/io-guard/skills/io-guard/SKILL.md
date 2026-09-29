@@ -39,6 +39,7 @@ at all:
 | Put files back as a snapshot kept them | `io.restore` | `mcp__plugin_io-guard_io__io_restore` |
 | Show whether a pass changed code | `io.compare` | `mcp__plugin_io-guard_io__io_compare` |
 | Stage chosen hunks of a file | `io.stage` | `mcp__plugin_io-guard_io__io_stage` |
+| Open io-guard's settings page | `io.dashboard` | `mcp__plugin_io-guard_io__io_dashboard` |
 | Read or change one io-guard setting | `io.config` | `mcp__plugin_io-guard_io__io_config` |
 <!-- The generated tools table ends here. -->
 

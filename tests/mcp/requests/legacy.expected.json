@@ -3,7 +3,7 @@
         "result.capabilities.tools.listChanged": false, "!result.resultType": null},
   "1": {"result.tools.*.name": ["io.read", "io.edit", "io.splice", "io.append", "io.run", "io.status",
                                 "io.read_log", "io.format", "io.snapshot", "io.restore", "io.compare", "io.stage",
-                                "io.config", "hook.pre_tool_use",
+                                "io.dashboard", "io.config", "hook.pre_tool_use",
                                 "hook.post_tool_use",
                                 "hook.post_tool_use_failure", "hook.ping"],
         "result.tools.0.annotations.readOnlyHint": true, "result.tools.0.outputSchema.additionalProperties": true,
