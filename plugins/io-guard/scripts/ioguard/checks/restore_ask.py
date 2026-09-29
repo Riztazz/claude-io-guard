@@ -43,8 +43,7 @@ class RestoreAsk(Check):
         plan = snapshots.pending(found, wanted, partial(read_or_none, ctx.fs), ctx.platform.case_insensitive)
         if not plan.changed:
             return Decision.observe(self.meta.id)
-        with ctx.session.lock:
-            ctx.session.asked_restores.add(plan.key())
+        ctx.session.keep_ask(event.tool_use_id, plan.key(), ctx.clock.now())
         names = ", ".join(kept.path.name for kept in plan.changed[:NAMED])
         more = f" and {len(plan.changed) - NAMED:,} more" if len(plan.changed) > NAMED else ""
         result = Result.of(Code.RESTORE_ASKED, f"io.restore would write {len(plan.changed):,} files back as "

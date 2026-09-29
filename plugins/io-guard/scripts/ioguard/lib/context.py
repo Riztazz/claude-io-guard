@@ -12,7 +12,7 @@ import threading
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Protocol
@@ -146,6 +146,7 @@ class ShellSnapshot:
 
 
 SNAPSHOTS_KEPT = 16     # a call the user refuses leaves its snapshot, so the oldest one past this goes
+ASK_LIFETIME = timedelta(minutes=10)    # a yes to a prompt left open longer than this runs nothing
 
 
 @dataclass(eq=False)
@@ -158,9 +159,7 @@ class SessionState:
     budget_override: int | None = None                            # learned from an EOF failure
     tracked: dict[Path, bool] = field(default_factory=dict)       # git's answer per path, asked once
     last_failed_build: str | None = None                          # the words of the build that last failed
-    asked_runs: set[str] = field(default_factory=set)             # io.run calls the hook put to the user
-    asked_restores: set[str] = field(default_factory=set)         # io.restore calls the hook put to the user
-    asked_trust: set[str] = field(default_factory=set)            # command fingerprints io.trust's hook asked
+    asked: dict[str, tuple[str, datetime]] = field(default_factory=dict)   # by tool_use_id: what, when
     tag: str | None = None                                        # the task the last io.snapshot named
     read_logs: dict[Path, tuple[int, int]] = field(default_factory=dict)   # io.read_log's line and byte
     dirty: tuple[Path, ...] | None = None                         # the files dirty at the first start
@@ -221,6 +220,25 @@ class SessionState:
         """The snapshot kept for this call, removed from the session, or None."""
         with self.lock:
             return self.snapshots.pop(tool_use_id, None)
+
+    def keep_ask(self, tool_use_id: str | None, key: str, now: datetime) -> None:
+        """Record that a PreToolUse hook put the call tool_use_id, with the content key, to the user. A call
+        with no id is never recorded, so its tool refuses it. Entries past ASK_LIFETIME go."""
+        if tool_use_id is None:
+            return
+        with self.lock:
+            self.asked = {each: (kept, at) for each, (kept, at) in self.asked.items()
+                          if now - at <= ASK_LIFETIME}
+            self.asked[tool_use_id] = (key, now)
+
+    def take_ask(self, tool_use_id: str | None, key: str, now: datetime) -> bool:
+        """True when the hook on this very call asked about this content within ASK_LIFETIME. The entry is
+        spent either way, so one yes lets one call through."""
+        if tool_use_id is None:
+            return False
+        with self.lock:
+            found = self.asked.pop(tool_use_id, None)
+        return found is not None and found[0] == key and now - found[1] <= ASK_LIFETIME
 
 
 class SystemClock:

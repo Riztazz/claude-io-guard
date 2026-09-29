@@ -57,8 +57,7 @@ class RunRules(Check):
                                ctx.platform.os, evidence={"rule": found.rule.text})
             return Decision(self.meta.id, Verdict.DENY, results=(result,))
         if found.decision == "ask":
-            with ctx.session.lock:
-                ctx.session.asked_runs.add(runs.key(event.tool_input))
+            ctx.session.keep_ask(event.tool_use_id, runs.key(event.tool_input), ctx.clock.now())
             result = Result.of(Code.RULE_ASKED, f"io.run would run {said(found)} asks about.",
                                event.tool_name, ctx.platform.os, evidence={"rule": found.rule.text})
             return Decision(self.meta.id, Verdict.ASK, results=(result,))

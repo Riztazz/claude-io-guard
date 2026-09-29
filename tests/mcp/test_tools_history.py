@@ -38,12 +38,12 @@ class HistoryTest(unittest.TestCase):
                             data_dir=self.home)
 
     @staticmethod
-    def call(handler, given, ctx: Context, cwd: Path = CWD):
-        return handler(given, ToolCall(lambda: ctx, CancelToken(), cwd, None))
+    def call(handler, given, ctx: Context, cwd: Path = CWD, tool_use_id: str | None = events.TOOL_USE_ID):
+        return handler(given, ToolCall(lambda: ctx, CancelToken(), cwd, None, tool_use_id=tool_use_id))
 
-    def refusal(self, handler, given, ctx: Context):
+    def refusal(self, handler, given, ctx: Context, tool_use_id: str | None = events.TOOL_USE_ID):
         with self.assertRaises(ToolFailure) as failure:
-            self.call(handler, given, ctx)
+            self.call(handler, given, ctx, tool_use_id=tool_use_id)
         return failure.exception.result
 
     @staticmethod
@@ -115,6 +115,15 @@ class RestoreWritesBackOnlyWhatChangedAndOnlyWhenAsked(HistoryTest):
         ctx.fs.files[CWD / "a.txt"] = b"edited again\r\n"
         self.assertEqual(self.refusal(restore, RestoreInput("pass"), ctx).code, Code.RESTORE_ASKED,
                          "the user's yes covers the restore it was asked about, once")
+
+    def test_a_declined_restore_ask_lets_no_other_call_write(self):
+        ctx = self.kept_then_edited()
+        self.asked(ctx, {"tag": "pass"})
+        for other in ("toolu_02OTHER", None):
+            with self.subTest(tool_use_id=other):
+                self.assertEqual(self.refusal(restore, RestoreInput("pass"), ctx, other).code,
+                                 Code.RESTORE_ASKED, "the same restore on a call no hook saw writes nothing")
+        self.assertEqual(ctx.fs.files[CWD / "a.txt"], b"one\r\nchanged\r\n", "the edits are all still there")
 
     def test_nothing_changed_needs_no_question(self):
         ctx = self.context({CWD / "a.txt": b"one\n"})

@@ -191,13 +191,10 @@ def restore(given: RestoreInput, call: ToolCall) -> RestoreOutput:
     ctx, tool = call.context, "io.restore"
     plan = planned(given.tag, given.paths, call, tool)
     found = plan.snapshot
-    if plan.changed:
-        with ctx.session.lock:
-            asked = plan.key() in ctx.session.asked_restores
-            ctx.session.asked_restores.discard(plan.key())
-        if not asked:
-            raise refused(Code.RESTORE_ASKED, f"{tool} wrote nothing, because no permission prompt put the "
-                          f"restore of {len(plan.changed):,} changed files to the user.", tool, call.cwd, ctx)
+    if plan.changed and not ctx.session.take_ask(call.tool_use_id, plan.key(), ctx.clock.now()):
+        raise refused(Code.RESTORE_ASKED, f"{tool} wrote nothing, because no permission prompt on this call "
+                      f"put the restore of {len(plan.changed):,} changed files to the user.", tool, call.cwd,
+                      ctx)
     restored = []
     for kept in plan.changed:
         with held(kept.path, ctx, tool):

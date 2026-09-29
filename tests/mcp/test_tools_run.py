@@ -23,6 +23,7 @@ from ioguard.mcp import handles
 from ioguard.mcp.progress import CancelToken, ProgressReporter
 from ioguard.mcp.tools_run import HandleInput, LogInput, RunInput, read_log, run, status
 from ioguard.mcp.toolspec import InvalidArguments, ToolCall, ToolFailure
+from tests.support.events import TOOL_USE_ID
 
 BACKSLASHES = "print(len(r'\\\\n'), 'C:\\\\temp\\\\new', \"say \\\"hi\\\"\")\n"
 RULES = {"permissions": {"deny": ["Bash(git push *)"], "ask": ["Bash(git fetch *)"]}}
@@ -53,12 +54,13 @@ class RunTest(unittest.TestCase):
         return replace(ctx, probe=replace(ctx.probe, python=ToolVersion(sys.executable, "3.14")))
 
     def call(self, handler, given, ctx: Context, cancel: CancelToken | None = None,
-             progress: ProgressReporter | None = None):
-        return handler(given, ToolCall(lambda: ctx, cancel or CancelToken(), self.project, None, progress))
+             progress: ProgressReporter | None = None, tool_use_id: str | None = TOOL_USE_ID):
+        return handler(given, ToolCall(lambda: ctx, cancel or CancelToken(), self.project, None, progress,
+                                       tool_use_id=tool_use_id))
 
-    def refusal(self, handler, given, ctx: Context):
+    def refusal(self, handler, given, ctx: Context, tool_use_id: str | None = TOOL_USE_ID):
         with self.assertRaises(ToolFailure) as failure:
-            self.call(handler, given, ctx)
+            self.call(handler, given, ctx, tool_use_id=tool_use_id)
         return failure.exception.result
 
 
@@ -122,10 +124,19 @@ class TheUsersRulesHold(RunTest):
         given = RunInput(argv=["git", "fetch", "--dry-run"])
         self.assertEqual(self.refusal(run, given, ctx).code, Code.RULE_ASKED,
                          "with no prompt from the hook, the command does not run")
-        ctx.session.asked_runs.add(runs.key({"argv": list(given.argv)}))
+        ctx.session.keep_ask(TOOL_USE_ID, runs.key({"argv": list(given.argv)}), ctx.clock.now())
         self.assertEqual(self.call(run, given, ctx).state, "ended", "after the hook asked, it runs")
-        self.assertNotIn(runs.key({"argv": list(given.argv)}), ctx.session.asked_runs,
+        self.assertEqual(self.refusal(run, given, ctx).code, Code.RULE_ASKED,
                          "one answer lets one run through")
+
+    def test_a_declined_run_ask_lets_no_other_call_run(self):
+        ctx = self.context()
+        given = RunInput(argv=["git", "fetch", "--dry-run"])
+        ctx.session.keep_ask(TOOL_USE_ID, runs.key({"argv": list(given.argv)}), ctx.clock.now())
+        for other in ("toolu_02OTHER", None):
+            with self.subTest(tool_use_id=other):
+                self.assertEqual(self.refusal(run, given, ctx, other).code, Code.RULE_ASKED,
+                                 "the same command on a call no hook saw never runs on another call's ask")
 
 
 class ABackgroundRunHasAHandle(RunTest):

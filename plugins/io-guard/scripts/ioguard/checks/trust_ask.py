@@ -72,8 +72,7 @@ class TrustAsk(Check):
     def run(self, event: Event, ctx: Context) -> Decision:
         if event.tool_name != TRUST or not ctx.held or ctx.project is None:
             return Decision.observe(self.meta.id)
-        with ctx.session.lock:
-            ctx.session.asked_trust.add(trust.fingerprint(ctx.held))
+        ctx.session.keep_ask(event.tool_use_id, trust.fingerprint(ctx.held), ctx.clock.now())
         scripts = inside(ctx.held, ctx.project)
         changes = (f" It runs {', '.join(scripts)} from inside the project, which a pull can change without "
                    f"asking again." if scripts else "")

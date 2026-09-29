@@ -39,13 +39,10 @@ def approve(given: TrustInput, call: ToolCall) -> TrustOutput:
     ctx, root = call.context, project_root(call.cwd)
     if not ctx.held or ctx.data_dir is None:
         return TrustOutput(root.as_posix(), [], False)
-    key = trust.fingerprint(ctx.held)
-    with ctx.session.lock:
-        asked = key in ctx.session.asked_trust
-        ctx.session.asked_trust.discard(key)
-    if not asked:
-        raise refused(Code.TRUST_ASKED, f"{NAME} approved nothing, because no permission prompt put the "
-                      f"project's commands to the user.", NAME, root / ".claude" / "io-guard.json", ctx)
+    if not ctx.session.take_ask(call.tool_use_id, trust.fingerprint(ctx.held), ctx.clock.now()):
+        raise refused(Code.TRUST_ASKED, f"{NAME} approved nothing, because no permission prompt on this call "
+                      f"put the project's commands to the user.", NAME, root / ".claude" / "io-guard.json",
+                      ctx)
     trust.approve(ctx.data_dir, root, ctx.held, ctx.clock.now())
     return TrustOutput(root.as_posix(), listed(ctx.held), True)
 

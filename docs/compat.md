@@ -37,7 +37,8 @@ task 49 `live-space-dropped`, task 52 `live-format-dry`, task 54 `live-pipe-once
 task 56 `live-read-width`, task 55 `live-verify-output`, task 57 `live-subfolder-config`, task 33
 `live-config` and `live-dashboard`, and task 69 `live-settings-skill`, all of which passed on both. Task 80's
 `live-project-override`, `live-ascii-replaced` and `live-trust`, and `live-config` again, passed on 2.1.283,
-and wait for a run on the desktop app's. Since 2026-09-28 every probe turns off the lead's installed io-guard,
+and wait for a run on the desktop app's. So did task 85's runs of `live-run-asked`, `live-restore` and
+`live-trust`, with each ask bound to its call's tool use id. Since 2026-09-28 every probe turns off the lead's installed io-guard,
 which a user setting enables in every session and the CLI loads from this checkout.
 
 The design review named 2.1.281 as the first release whose `mcp_tool` hooks wait for their server. Today's hooks

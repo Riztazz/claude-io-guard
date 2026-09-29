@@ -1077,13 +1077,15 @@ def ran_in_background(summary: dict, name: str) -> bool:
 
 
 def run_asked(summary: dict, name: str) -> bool:
-    """The hook answered ask with RULE_ASKED, and the permission prompt tool received the io.run call."""
+    """The hook answered ask with RULE_ASKED, the permission prompt tool received the io.run call, and io.run
+    ran it on that yes rather than refusing it."""
     folder, _ = latest(name)
     permit = folder / "permit.jsonl"
     lines = permit.read_bytes().decode("utf-8").splitlines() if permit.is_file() else []
     prompted = any("probe_permit" in line and IO_RUN in line for line in lines)
     asked = any("RULE_ASKED" in json.dumps(event) for event in summary["hook_events"])
-    return prompted and asked
+    refused = any("RULE_ASKED" in str(result["content"]) for result in summary["results"])
+    return prompted and asked and not refused
 
 
 def trust_asked(summary: dict, name: str) -> bool:

@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ioguard.lib.context import (SNAPSHOTS_KEPT, Context, LiveFs, Probe, SessionState, Snapshot,
+from ioguard.lib.context import (ASK_LIFETIME, SNAPSHOTS_KEPT, Context, LiveFs, Probe, SessionState, Snapshot,
                                  claude_folder, home_folder, memory_file, project_root)
 from ioguard.lib.fakes import FakeClock, FakeFs
 from ioguard.lib.git import Git
@@ -55,6 +55,35 @@ class SessionStateOnce(unittest.TestCase):
         self.assertEqual((session.take_snapshot("call0"), session.take_snapshot("call1").path,
                           session.take_snapshot("call1")), (None, Path("C:/p/1"), None),
                          "the oldest snapshot past the limit is gone, and a snapshot is handed out once")
+
+
+class AnAskCountsForTheOneCallItWasAskedFor(unittest.TestCase):
+    def setUp(self):
+        self.clock = FakeClock()
+        self.session = SessionState()
+        self.session.keep_ask("call1", "git fetch", self.clock.now())
+
+    def test_the_same_call_and_content_is_let_through_once(self):
+        self.assertEqual([self.session.take_ask("call1", "git fetch", self.clock.now()),
+                          self.session.take_ask("call1", "git fetch", self.clock.now())], [True, False],
+                         "one yes lets one call through")
+
+    def test_another_call_no_call_or_other_content_is_not(self):
+        for tool_use_id, key in (("call2", "git fetch"), (None, "git fetch"), ("call1", "git push")):
+            with self.subTest(tool_use_id=tool_use_id, key=key):
+                self.assertFalse(self.session.take_ask(tool_use_id, key, self.clock.now()),
+                                 "an ask binds the call's tool use id and its content together")
+
+    def test_an_ask_past_its_lifetime_counts_for_nothing_and_goes(self):
+        self.clock.advance(ASK_LIFETIME.total_seconds() * 1000 + 1)
+        self.session.keep_ask("call2", "git status", self.clock.now())
+        taken = self.session.take_ask("call1", "git fetch", self.clock.now())
+        self.assertEqual((list(self.session.asked), taken), (["call2"], False),
+                         "a prompt left open too long lets nothing through, and its entry goes")
+
+    def test_a_call_with_no_tool_use_id_is_never_recorded(self):
+        self.session.keep_ask(None, "git status", self.clock.now())
+        self.assertEqual(list(self.session.asked), ["call1"], "a call that cannot be bound is not kept")
 
 
 class IoGuardsFolderIsOnePerUser(unittest.TestCase):

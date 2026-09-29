@@ -46,7 +46,8 @@ class ARestoreOverEditsIsPutToTheUser(RestoreAskTest):
         self.assertEqual((outcome.verdict, result.code), (Verdict.ASK, Code.RESTORE_ASKED),
                          "a restore that loses edits needs the user's yes")
         self.assertIn("and 2 more", result.message, "ten files are named, and the rest counted")
-        self.assertEqual(len(ctx.session.asked_restores), 1, "io.restore finds the question it may answer")
+        self.assertEqual(list(ctx.session.asked), [events.TOOL_USE_ID],
+                         "io.restore finds the question it may answer, by its tool use id")
 
     def test_a_restore_of_unchanged_files_and_other_calls_are_left_alone(self):
         same = {PROJECT / f"f{number}.txt": b"kept\n" for number in range(12)}
@@ -56,7 +57,7 @@ class ARestoreOverEditsIsPutToTheUser(RestoreAskTest):
         for name, (files, tool_input, tool) in cases.items():
             with self.subTest(name):
                 outcome, ctx = self.decided(files, tool_input, tool)
-                self.assertEqual((outcome.verdict, ctx.session.asked_restores), (Verdict.OBSERVE, set()),
+                self.assertEqual((outcome.verdict, ctx.session.asked), (Verdict.OBSERVE, {}),
                                  "nothing to lose, or nothing to restore, asks nothing")
 
 

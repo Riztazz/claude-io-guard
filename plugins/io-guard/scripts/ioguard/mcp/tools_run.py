@@ -168,12 +168,9 @@ def checked(given: RunInput, call: ToolCall) -> dict:
     if found.decision == "deny":
         raise failure(Code.RULE_DENIED, f"io.run did not run {said(found)} denies.", "io.run", ctx)
     if found.decision == "ask":
-        with ctx.session.lock:
-            asked = runs.key(fields) in ctx.session.asked_runs
-            ctx.session.asked_runs.discard(runs.key(fields))
-        if not asked:
+        if not ctx.session.take_ask(call.tool_use_id, runs.key(fields), ctx.clock.now()):
             raise failure(Code.RULE_ASKED, f"io.run did not run {said(found)} asks about, because no "
-                          f"permission prompt put it to the user.", "io.run", ctx)
+                          f"permission prompt on this call put it to the user.", "io.run", ctx)
     return fields
 
 

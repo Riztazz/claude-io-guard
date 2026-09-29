@@ -44,8 +44,9 @@ class TheUserIsAskedFirst(TrustTest):
             ctx = self.context(project, HELD)
             outcome = self.asked(ctx, project)
         result = outcome.decisions[0].results[0]
-        self.assertEqual((outcome.verdict, result.code, ctx.session.asked_trust),
-                         (Verdict.ASK, Code.TRUST_ASKED, {trust.fingerprint(HELD)}),
+        self.assertEqual((outcome.verdict, result.code, ctx.session.asked),
+                         (Verdict.ASK, Code.TRUST_ASKED,
+                          {events.TOOL_USE_ID: (trust.fingerprint(HELD), ctx.clock.now())}),
                          "io.trust waits for the user's yes, and the hook records what it asked")
         self.assertIn("verify .py: python tools/check.py {file}", result.message, "each command is listed")
         self.assertIn("runs tools/check.py from inside the project", result.message,
@@ -65,7 +66,7 @@ class OnlyWhatTheHookAskedIsApproved(TrustTest):
     def test_no_prompt_approves_nothing_and_a_prompt_approves_those_commands(self):
         with TemporaryProject() as project:
             ctx = self.context(project, HELD)
-            call = ToolCall(lambda: ctx, CancelToken(), project, None)
+            call = ToolCall(lambda: ctx, CancelToken(), project, None, tool_use_id=events.TOOL_USE_ID)
             with self.assertRaises(ToolFailure) as unasked:
                 approve(TrustInput(), call)
             before = trust.approved(self.home, project, HELD)
@@ -77,6 +78,17 @@ class OnlyWhatTheHookAskedIsApproved(TrustTest):
                          "a call no prompt asked about approves nothing, so the model cannot approve alone")
         self.assertEqual((done.approved, after, changed), (True, True, False),
                          "the user's yes approves exactly those commands, and a changed one waits again")
+
+    def test_a_declined_trust_ask_lets_no_other_call_approve(self):
+        with TemporaryProject() as project:
+            ctx = self.context(project, HELD)
+            self.asked(ctx, project)
+            for other in ("toolu_02OTHER", None):
+                with self.subTest(tool_use_id=other):
+                    call = ToolCall(lambda: ctx, CancelToken(), project, None, tool_use_id=other)
+                    with self.assertRaises(ToolFailure, msg="a call no hook saw approves nothing"):
+                        approve(TrustInput(), call)
+            self.assertFalse(trust.approved(self.home, project, HELD), "nothing is approved")
 
 
 if __name__ == "__main__":

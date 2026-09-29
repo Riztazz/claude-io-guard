@@ -46,8 +46,9 @@ class AnIoRunCallMeetsTheUsersRules(unittest.TestCase):
                 self.assertEqual((outcome.verdict, outcome.decisions[0].results[0].code),
                                  (Verdict.ASK, Code.RULE_ASKED),
                                  "the harness shows its permission prompt, with the rule as the reason")
-                self.assertIn(runs.key(tool_input), ctx.session.asked_runs,
-                              "io.run finds the call the hook put to the user")
+                kept = {events.TOOL_USE_ID: (runs.key(tool_input), ctx.clock.now())}
+                self.assertEqual(ctx.session.asked, kept,
+                                 "io.run finds the call the hook put to the user, by its tool use id")
 
     def test_other_commands_and_other_tools_pass(self):
         for tool_input, tool_name in (({"argv": ["git", "status"]}, callable_name("io.run")),

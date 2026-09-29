@@ -301,7 +301,9 @@ class SessionState:
     warned: MutableSet[str]                      # one user warning per key per session
     budget_override: Optional[int]               # learned from an EOF failure
     tracked: MutableMapping[Path, bool]          # whether git tracks a path, asked once by shell.writes
-    asked_runs: MutableSet[str]                  # io.run calls run.rules put to the user, by runs.key, task 25
+    asked: MutableMapping[str, tuple[str, datetime]]   # task 85: by tool_use_id, the content key a PreToolUse
+                                                 # check put to the user and when, for io.run, io.restore and
+                                                 # io.trust
     read_logs: MutableMapping[Path, tuple[int, int]]   # io.read_log's last line and byte per log, task 25
     last_failed_build: Optional[str]             # the words of the build that last failed, task 22
     lock: RLock                                  # guards every field
@@ -313,6 +315,10 @@ class SessionState:
     def first_time(self, key: str) -> bool: ...  # True once per key in all the session's processes
     def keep_snapshot(self, tool_use_id: str, snapshot: Snapshot) -> None: ...   # the oldest past 16 goes
     def take_snapshot(self, tool_use_id: str) -> Optional[Snapshot]: ...         # handed out once
+    def keep_ask(self, tool_use_id: Optional[str], key: str, now: datetime) -> None: ...   # none without an id
+    def take_ask(self, tool_use_id: Optional[str], key: str, now: datetime) -> bool: ...
+                                                 # True once, for the same id and content within ASK_LIFETIME,
+                                                 # ten minutes, so a yes counts for the call it was asked for
 
 @dataclass(frozen=True)
 class Context:
