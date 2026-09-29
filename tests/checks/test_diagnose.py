@@ -4,11 +4,11 @@ import json
 import unittest
 from pathlib import Path
 
-from ioguard.checks.diagnose import Diagnosis, Failed, Wording
 from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import default_registry
 from ioguard.lib.config import defaults
 from ioguard.lib.context import Context
+from ioguard.lib.diagnosis import Diagnosis, Failed, Wording
 from ioguard.lib.events import Event, Surface
 from ioguard.lib.fakes import FakeFs, FakeGit
 from ioguard.lib.platform import Platform
@@ -124,7 +124,8 @@ class AnIoToolReusesTheDiagnosis(unittest.TestCase):
     def test_its_wording_names_its_own_argument_and_call_and_reads_text_it_has_not_written(self):
         wording = Wording("the start marker", "start", "io_splice", replace_all=False)
         failed = Failed("io.splice", {"path": "a.cpp", "start": "int a = 1;"}, "", CWD, wording)
-        found = Diagnosis(failed, context(), {}, contents=SOURCE).anchor_ambiguous()[0]
+        ctx = context()
+        found = Diagnosis(failed, ctx.fs, ctx.git, ctx.platform, {}, contents=SOURCE).anchor_ambiguous()[0]
         self.assertEqual((found.code, found.fix.tool, found.fix.input["start"]),
                          (Code.ANCHOR_AMBIGUOUS, "io_splice", "\tint a = 1;\n\tint b = 2;"),
                          "the fix corrects the tool's own argument, found in the contents it was handed")

@@ -89,11 +89,6 @@ def exits_problem(value: Any) -> str | None:
     return None
 
 
-def compiled(value: Mapping[str, Sequence[str]]) -> dict[str, re.Pattern]:
-    return {name: re.compile("|".join(f"(?:{item})" for item in listed), re.M)
-            for name, listed in value.items() if listed}
-
-
 def counted(errors: Sequence[output.ErrorLine]) -> str:
     kinds = Counter(error.kind for error in errors)
     return ", ".join(f"{count} {kind}" for kind, count in kinds.items())
@@ -135,7 +130,7 @@ class Reading:
         self.full = self.text if self.whole is None else self.whole
         quoting = all(simple.name in QUIET or shell.matching(simple, options["readers"])
                       for simple in self.simples)
-        patterns = compiled(options["error_patterns"])
+        patterns = output.compiled(options["error_patterns"])
         self.errors = () if quoting else output.error_lines(self.full, patterns)
 
     def saved_text(self) -> tuple[int, str | None]:

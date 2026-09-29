@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from ioguard.checks.registry import default_registry
-from ioguard.checks.verify_write import Written, ascii_kept, compare
+from ioguard.lib.compare import Written, ascii_kept, compare
 from ioguard.lib.context import Context, GitPort, home_folder
 from ioguard.lib.drift import text_of
 from ioguard.lib.git import Git, GitError

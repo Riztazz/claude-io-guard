@@ -29,8 +29,10 @@ and `prose`.
 
 1. **`lib` imports only the standard library and other `lib` modules.** It holds no config, no session and no
    decision.
-2. **`checks` imports `lib`. `hooks`, `mcp` and `cli` import `lib` and `checks`, and never each other.** The one
-   exception: `mcp.tools_hook` calls `hooks.bridge`. `tests/test_layout.py` enforces all of it.
+2. **A check imports `lib` and `checks.base`, and never another check. `hooks`, `mcp` and `cli` import `lib`,
+   the pipeline and the registry, and never each other.** A piece that a second check or a way in needs moves
+   to `lib`, because a check that became a library gets its mechanism copied. The one exception:
+   `mcp.tools_hook` calls `hooks.bridge`. `tests/test_layout.py` enforces all of it.
 3. **`tools/` scripts import `ioguard.cli`, or `ioguard.mcp.skill` for the skill page, and hold no logic.** A
    copy of the logic in a script tests a parallel implementation.
 4. **Every script answers `--help` with its usage, exits 0, and does nothing else.** An agent that meets an

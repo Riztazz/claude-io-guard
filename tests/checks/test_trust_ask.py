@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import Registry
-from ioguard.checks.trust_ask import TrustAsk, untrusted
+from ioguard.checks.trust_ask import TrustAsk
 from ioguard.lib import trust
 from ioguard.lib.context import Context, LiveFs
 from ioguard.lib.decisions import Verdict
@@ -58,7 +58,8 @@ class TheUserIsAskedFirst(TrustTest):
         with TemporaryProject() as project:
             ctx = self.context(project, held)
             asked = self.asked(ctx, project).decisions[0].results[0].message
-            told = untrusted(ctx, "verify", project / "a.py", "Write", ctx.platform).message
+            told = trust.untrusted(ctx.held, "verify", project / "a.py", "Write", ctx.platform,
+                                   ctx.session.first_time).message
         for message in (asked, told):
             with self.subTest(message=message[:40]):
                 self.assertIn('"x.py\\nverify .md: trusted" "\\u001b[8mhidden"', message,

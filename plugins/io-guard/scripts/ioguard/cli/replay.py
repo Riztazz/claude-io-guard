@@ -19,16 +19,16 @@ from pathlib import Path
 
 from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import Registry
-from ioguard.checks.session_probe import WINDOWS_CUT, cut_applies
 from ioguard.cli.corpus import Record
 from ioguard.cli.labels import SHELLS
 from ioguard.lib import bytesio, output
-from ioguard.lib.config import defaults
+from ioguard.lib.config import all_keys, defaults
 from ioguard.lib.context import Context, Probe, SessionState
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, EventError, Surface
 from ioguard.lib.git import Git, GitError, GitStatus
 from ioguard.lib.platform import Platform, detect
+from ioguard.lib.probing import WINDOWS_CUT, cut_applies
 from ioguard.lib.results import render_many
 from ioguard.lib.telemetry import Telemetry
 
@@ -124,6 +124,7 @@ class Replay:
         self.git = git or SnapshotGit()
         self.pipeline = Pipeline(registry)
         self.config = defaults(registry.keys())
+        self.keys = all_keys(registry.keys())
         self.sessions: dict[str, SessionState] = {}
         self.checks: dict[str, CheckTally] = defaultdict(CheckTally)
         self.tools: dict[str, Counter] = defaultdict(Counter)
@@ -141,7 +142,7 @@ class Replay:
         session = self.sessions.setdefault(record.session, SessionState())
         return Context.fake(saved_output(record), config=self.config, platform=platform, probe=probe,
                             session=session, git=self.git, telemetry=Telemetry(None, enabled=False),
-                            data_dir=REPLAY_DATA)
+                            data_dir=REPLAY_DATA, keys=self.keys)
 
     def events(self, record: Record) -> Iterable[Event]:
         raw = {"session_id": record.session, "cwd": record.cwd, "tool_name": record.tool,

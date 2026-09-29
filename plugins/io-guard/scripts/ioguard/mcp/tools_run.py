@@ -19,8 +19,6 @@ from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 
-from ioguard.checks.command_results import compiled
-from ioguard.checks.run_rules import judge, said
 from ioguard.lib import logcap, output, paths, proc, rules, runs
 from ioguard.lib.context import Context, newlines
 from ioguard.lib.results import Code, Fix, Result, Severity, callable_name
@@ -152,7 +150,8 @@ def reading(pump: proc.Pump, state: str, command: str, handle: str, note: str, c
     before = newlines(ctx.fs, pump.log, start) if start else 0
     text = data.decode("utf-8", "replace")
     width = options["line_chars"]
-    found_errors = output.error_lines(text, compiled(options["error_patterns"]))[:options["shown_errors"]]
+    patterns = output.compiled(options["error_patterns"])
+    found_errors = output.error_lines(text, patterns)[:options["shown_errors"]]
     errors = [ErrorLine(before + line.number, line.kind, line.text[:width]) for line in found_errors]
     lines = text.rstrip("\r\n").split("\n") if text else []
     tail = [line.rstrip("\r")[:width] for line in lines[-options["tail_lines"]:]]
@@ -168,13 +167,13 @@ def checked(given: RunInput, call: ToolCall) -> dict:
     hook did not put it to the user."""
     ctx = call.context
     fields = {"argv": list(given.argv), "lang": given.lang, "code": given.code}
-    found = judge(fields, ctx, call.cwd)
+    found = runs.judge(fields, ctx.env, ctx.fs, ctx.probe, ctx.platform, call.cwd)
     if found.decision == "deny":
-        raise failure(Code.RULE_DENIED, f"io.run did not run {said(found)}.", "io.run", ctx)
+        raise failure(Code.RULE_DENIED, f"io.run did not run {runs.said(found)}.", "io.run", ctx)
     if found.decision == "ask":
         if not ctx.session.take_ask(call.tool_use_id, runs.key(fields), ctx.clock.now()):
-            raise failure(Code.RULE_ASKED, f"io.run did not run {said(found)}, and no permission prompt on "
-                          f"this call put it to the user.", "io.run", ctx)
+            raise failure(Code.RULE_ASKED, f"io.run did not run {runs.said(found)}, and no permission prompt "
+                          f"on this call put it to the user.", "io.run", ctx)
     return fields
 
 

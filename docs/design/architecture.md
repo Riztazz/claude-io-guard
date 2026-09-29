@@ -30,6 +30,12 @@ plugins/io-guard/
         profile.py                 Profile, profile, target_profile, convert_eol, with_bom, with_final_newline
         editorconfig.py            parse, matches, properties: the .editorconfig properties for one file
         drift.py                   drift, edited, changed_lines, restored: what a write changed in a file's bytes
+        compare.py                 Written, compare, ascii_kept, write_snapshot: what a write changed that the
+                                   call did not ask for, as warnings, for verify.write, shell.touched, precommit
+        diagnosis.py               Diagnosis, Failed, Wording: what a failed file call gets back, for the
+                                   diagnose checks and io.edit and io.splice
+        writes.py                  Host, Write, located, resolve, targets, bash_writes, powershell_writes: the
+                                   files a shell command writes, and the folder each of its commands runs in
         commands.py                command_for, filled: the user's verify and format commands per extension
         anchors.py                 find, blind, closest, unique_anchor, edit_view, joins: where an old_string
                                    is, or nearly is, and where an Edit joins two words
@@ -49,22 +55,26 @@ plugins/io-guard/
         logcap.py                  the copier a background run's output goes through, capped, run by its path
         results.py                 CodeSpec, CODES, Code, Result, Fix, render, callable_name, meanings
         config.py                  Config, SCHEMA, load, validate, merge
-        config_edit.py             placed, value_at, encoded: one setting written where its file keeps it
+        config_edit.py             placed, value_at, encoded: one setting written where its file keeps it.
+                                   needs_yes, config_write: the io.config write that waits for the user's yes
         events.py                  HookEvent, Tool, PermissionMode, Surface, Event
-        context.py                 Context, the ports, SessionState, Probe
+        context.py                 Context, the ports, SessionState, Probe, tracked, project_of
         decisions.py               Verdict, Rewrite, Decision, compose
         telemetry.py               Telemetry, TraceContext, session_files, expire, erase
-        trust.py                   fingerprint, approved, approve: the project commands the user approved
+        trust.py                   fingerprint, approved, approve, listed, untrusted: the project commands the
+                                   user approved, and the ones that wait
         telemetry_summary.py       Summary, files, summarise, page: every session's telemetry summed
         platform.py                Platform, detect
-        probing.py                 tool_version, claude_version, console_encoding, case_insensitive
-        text.py                    visible, quoted, snippet, head, invisible_added
+        probing.py                 tool_version, claude_version, console_encoding, case_insensitive, cut_applies
+        text.py                    visible, quoted, snippet, head, invisible_added, listed
         transcript.py              refusals: the calls Claude Code refused before any hook, from the transcript
-        output.py                  exit_code, saved_path, error_lines, mojibake, excerpt: what a shell result says
+        output.py                  exit_code, saved_path, compiled, error_lines, mojibake, excerpt: what a shell
+                                   result says
         heartbeat.py               Heartbeat, parse, skipped_since: the io server's beat, and Claude Code's skip
         rules.py                   settings_files, load, match_argv: Claude Code's Bash and PowerShell deny and
                                    ask rules, met by an argument list
-        runs.py                    interpreter, argv_of, key: what an io.run call runs
+        runs.py                    interpreter, argv_of, key, judge, said: what an io.run call runs, and the
+                                   deny or ask rule that meets it
         patterns.py                problem, nested, open_repeats: a project file's regex that could stall a
                                    line's match
         wildcard.py                match: a * pattern met with one backtrack point, for permission rules
@@ -73,7 +83,8 @@ plugins/io-guard/
                                    what in it a policy forbids
         snapshots.py               take, find, pending, sweep: files' bytes kept under a tag for seven days,
                                    swept at each server start, a folder with no manifest after a day
-        journal.py                 changed, record, entries: each write's lines and task tag, as line keys
+        journal.py                 changed, record, record_write, entries: each write's lines and task tag, as
+                                   line keys
         code_tokens.py             code_tokens, split_includes, compare: a file's code without comments
         hunks.py                   parse, patch, owned: one file's git diff -U0 hunks, and whose they are
       checks/                      policy, one module per check
@@ -84,8 +95,8 @@ plugins/io-guard/
         location.py                write.location: RESERVED_NAME, READ_ONLY, LINKED_PATH, dirty files.
                                    write.locks: FILE_LOCKED after a failed write
         transport_body.py          BODY_MOVED_TO_FILE, TRANSPORT_BUDGET, BACKSLASH_TRANSPORT
-        shell_writes.py            SHELL_WRITE, scratch script warning, a script file's writes read first, the
-                                   in-place editors under find -exec and xargs, bash -c strings
+        shell_writes.py            SHELL_WRITE for a tracked file lib.writes finds, the scratch script warning,
+                                   and a script file given a tracked file
         lint.py                    shell.lint: quoting, escapes, dialect, Python 3 bodies, PIPE_HIDES_EXIT once,
                                    STOPS_BY_MATCH. A cmdlet is Verb-Noun as PowerShell writes it, or a
                                    common one in any case, and a Python 2 body is never compiled (task 108)
@@ -107,8 +118,7 @@ plugins/io-guard/
         run_rules.py               run.rules: RULE_DENIED and RULE_ASKED at the PreToolUse hook on io.run
         commit_policy.py           commit.policy: COMMIT_POLICY for a commit message the user's policy forbids
         restore_ask.py             restore.ask: RESTORE_ASKED at the PreToolUse hook on io.restore
-        trust_ask.py               trust.ask: TRUST_ASKED on io.trust, CONFIG_ASKED on io.config, and
-                                   PROJECT_COMMANDS_UNTRUSTED's text
+        trust_ask.py               trust.ask: TRUST_ASKED on io.trust, CONFIG_ASKED on io.config
       hooks/
         entry.py                   run_event: an event in, the answer dict out, never raising
         answer.py                  Outcome -> hook JSON, per event and rewrite mode
@@ -145,10 +155,11 @@ tests/                             mirrors ioguard, plus fixtures/, support/, mc
 tools/                             ioguard.py, corpus.py, replay.py, measure.py, report.py, probes/
 ```
 
-Four rules hold the layout together. `lib` imports only the standard library and other `lib` modules. `checks`
-imports `lib`. `hooks`, `mcp` and `cli` are the ways in, and each imports `lib` and `checks` and never another,
-except that `mcp.tools_hook` calls `hooks.bridge`. `tools/` scripts import `ioguard.cli`, or `ioguard.mcp.skill`
-for the skill page, and hold no logic.
+Four rules hold the layout together. `lib` imports only the standard library and other `lib` modules. A check
+imports `lib` and `checks.base`, and never another check, so a piece two checks share lives in `lib`. `hooks`,
+`mcp` and `cli` are the ways in, and each imports `lib`, the pipeline and the registry, and never another way
+in, except that `mcp.tools_hook` calls `hooks.bridge`. `tools/` scripts import `ioguard.cli`, or
+`ioguard.mcp.skill` for the skill page, and hold no logic. `tests/test_layout.py` holds each rule.
 
 ## 2. Define the core types
 
@@ -1515,7 +1526,7 @@ io.append(path, text, wrap_column = None, date_prefix = False, expect_hash = "")
    with no holder it can name is `READ_ONLY`: the file or its folder cannot be written (task 120).
 
 A place that does not match once refuses the whole call, and nothing is written (ANC-3). The refusal is task
-20's diagnosis, through `checks.diagnose.Diagnosis` with a `Wording` that names the tool's own argument and
+20's diagnosis, through `lib.diagnosis.Diagnosis` with a `Wording` that names the tool's own argument and
 callable, on the text the earlier edits left rather than the file. Its fix is the whole `io.edit` call again
 with that edit corrected, and it never offers `replace_all`, which the io tools lack. Every result carries
 "The built-in Edit tool needs a fresh Read of this file before its next use", because Claude Code tracks its
@@ -1654,7 +1665,7 @@ and a middle over 4,000 lines is one change.
 
 Two writers feed it, both in the io server. `journal.write`, at PostToolUse for Edit and Write, reads the
 file against the snapshot `verify.write` kept at PreToolUse, and runs before `verify.write` takes it. With
-`verify.write` off, `journal.write` keeps the same snapshot itself, through `verify_write.write_snapshot`,
+`verify.write` off, `journal.write` keeps the same snapshot itself, through `lib.compare.write_snapshot`,
 after `conform.write` and `conform.edit`, and takes it when done (task 119). A file too large for that
 snapshot to keep its bytes goes unrecorded. The io tools that change a file record
 from `mcp.in_place.write`, which holds the bytes before and after. `io.restore` records nothing, since it

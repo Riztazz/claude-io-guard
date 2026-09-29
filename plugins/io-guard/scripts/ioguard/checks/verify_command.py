@@ -9,8 +9,7 @@ the head of its output reach the agent as VERIFY_OUTPUT, and so does a timeout o
 so the telemetry counts each one.
 """
 from ioguard.checks.base import Check, CheckMeta, Cost
-from ioguard.checks.trust_ask import untrusted
-from ioguard.lib import commands, proc, text
+from ioguard.lib import commands, proc, text, trust
 from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
@@ -39,7 +38,8 @@ class VerifyCommand(Check):
     def run(self, event: Event, ctx: Context) -> Decision:
         if event.file_path is None:
             return Decision.observe(self.meta.id)
-        waiting = untrusted(ctx, "verify", event.file_path, event.tool_name, ctx.platform)
+        waiting = trust.untrusted(ctx.held, "verify", event.file_path, event.tool_name, ctx.platform,
+                                  ctx.session.first_time)
         named = commands.command_for(ctx.config.get("verify"), event.file_path, ctx.platform)
         if named is None:
             return self.said(waiting)

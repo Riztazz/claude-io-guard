@@ -5,13 +5,13 @@ so a rule the hook asked about is the rule the tool finds.
 import hashlib
 import os
 from collections.abc import Mapping
-from pathlib import PureWindowsPath
+from functools import partial
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
-from ioguard.lib import proc
-from ioguard.lib.context import Probe
+from ioguard.lib import proc, rules
+from ioguard.lib.context import FsPort, Probe, read_or_none
 from ioguard.lib.platform import Platform
-from ioguard.lib.rules import command_text
 
 SUFFIXES = {"python": ".py", "bash": ".sh", "powershell": ".ps1", "node": ".js"}
 BODY = "io-run-body"
@@ -77,6 +77,34 @@ def argv_of(given: Mapping[str, Any], probe: Probe, platform: Platform, body: st
 def key(given: Mapping[str, Any]) -> str:
     """One string per command a call runs, which the hook records when it asks and the tool looks up."""
     if given.get("argv"):
-        return "argv " + command_text([str(word) for word in given["argv"]])
+        return "argv " + rules.command_text([str(word) for word in given["argv"]])
     code = str(given.get("code") or "").encode("utf-8")
     return f"code {given.get('lang')} {hashlib.sha256(code).hexdigest()}"
+
+
+def judge(given: Mapping[str, Any], env: Mapping[str, str], fs: FsPort, probe: Probe, platform: Platform,
+          project: Path) -> rules.RuleMatch:
+    """The deny or ask rule of the settings files Claude Code reads for project that meets the command an
+    io.run call runs, or a command inside a shell string it runs, or a match whose decision is none. A code
+    body, or a string io-guard cannot read, that names a rule's program asks, whether the rule denies or
+    asks, since the rule cannot see what the code does."""
+    found = rules.load(rules.settings_files(env, project, platform), partial(read_or_none, fs))
+    argv = argv_of(given, probe, platform)
+    if argv is None:
+        return rules.RuleMatch("none", None, "")
+    met = rules.match_command(found, argv)
+    if given.get("code") and met.decision == "none":
+        named_by = rules.rule_named(found, str(given["code"]))
+        met = rules.RuleMatch("unread", named_by, f"a {given.get('lang')} body") if named_by else met
+    if met.decision != "unread":
+        return met
+    return rules.RuleMatch("ask", None, f"{met.command}, whose code names the program of the rule "
+                                        f"{met.rule.text} in {met.rule.source.as_posix()}")
+
+
+def said(found: rules.RuleMatch) -> str:
+    """The command and the reason it is denied or asked about, to follow "io.run would run"."""
+    if found.rule is None:
+        return f"{found.command}, and no rule can read what code does, so the user decides"
+    verb = "denies" if found.decision == "deny" else "asks about"
+    return f"{found.command}, which the rule {found.rule.text} in {found.rule.source.as_posix()} {verb}"

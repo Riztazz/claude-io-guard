@@ -6,7 +6,6 @@ from pathlib import Path
 
 from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import Registry
-from ioguard.checks.session_probe import WINDOWS_CUT
 from ioguard.checks.shell_writes import ShellWrites
 from ioguard.checks.transport_body import TransportBody, budget_for
 from ioguard.hooks.answer import answer
@@ -15,6 +14,7 @@ from ioguard.lib.context import Context, Probe
 from ioguard.lib.decisions import Verdict
 from ioguard.lib.events import Event, Surface
 from ioguard.lib.platform import Platform
+from ioguard.lib.probing import WINDOWS_CUT
 from ioguard.lib.results import Code
 from tests.support import events
 

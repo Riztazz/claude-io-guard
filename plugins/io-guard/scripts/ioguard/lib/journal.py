@@ -11,11 +11,14 @@ lines from interleaving.
 import difflib
 import hashlib
 import json
+import logging
 import threading
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+
+log = logging.getLogger("ioguard.journal")
 
 LOCK = threading.Lock()
 MIDDLE_LINES = 4000          # past this many lines between the common head and tail, the middle is one change
@@ -89,6 +92,19 @@ def within(text: str, ranges: Sequence[tuple[int, int]]) -> Changed:
 
 def file_of(home: Path, session: str, when: datetime) -> Path:
     return home / "journal" / when.strftime("%Y-%m") / f"{session}.jsonl"
+
+
+def record_write(home: Path, path: Path, tool: str, before: bytes | None, after: bytes, *, when: datetime,
+                 session: str, project: str, tag: str | None) -> None:
+    """One journal line for a write that took path from before to after, where before is None for a new
+    file. A line that cannot be written is logged, and the write goes on."""
+    if before == after:
+        return
+    try:
+        found = changed(None if before is None else text_of(before), text_of(after))
+        record(home, Entry(when, session, project, path.as_posix(), tool, tag, found))
+    except OSError:
+        log.exception("io-guard could not add the %s of %s to the journal.", tool, path)
 
 
 def record(home: Path, entry: Entry) -> None:

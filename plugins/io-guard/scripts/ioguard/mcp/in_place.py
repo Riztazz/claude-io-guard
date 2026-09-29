@@ -13,8 +13,7 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from ioguard.checks.journal_write import record_write
-from ioguard.lib import locks, paths
+from ioguard.lib import journal, locks, paths
 from ioguard.lib.context import Context
 from ioguard.lib.profile import BOM_CHAR, Bom, Profile, profile
 from ioguard.lib.results import Code, Fix, Result, Severity, callable_name
@@ -178,6 +177,15 @@ def encoded(loaded: Loaded, text: str, ctx: Context, tool: str) -> bytes:
                       ctx, fix) from None
 
 
+def journaled(ctx: Context, path: Path, tool: str, before: bytes | None, after: bytes) -> None:
+    """The io tool's write in the edit journal, as journal.write records an Edit's, while that check is on."""
+    if ctx.data_dir is None or not ctx.config.check_options("journal.write").get("enabled", True):
+        return
+    journal.record_write(ctx.data_dir, path, tool, before, after, when=ctx.clock.now(),
+                         session=ctx.session.session_id or "unknown",
+                         project=ctx.env.get("CLAUDE_PROJECT_DIR") or "", tag=ctx.session.tag)
+
+
 def write(loaded: Loaded, data: bytes, ctx: Context, tool: str) -> Written:
     """data written over the file when it differs from what the file held. A program that holds the file
     open refuses the call, named when the platform can name it."""
@@ -189,7 +197,7 @@ def write(loaded: Loaded, data: bytes, ctx: Context, tool: str) -> Written:
             raise write_refused(path, tool, ctx, " It wrote nothing.") from None
         ctx.session.wrote(path)
         try:
-            record_write(ctx, path, tool, loaded.data, data)
+            journaled(ctx, path, tool, loaded.data, data)
         except Exception:
             log.exception("GUARD_ERROR: io-guard could not add the %s of %s to the journal.", tool, path)
     return Written(data, data != loaded.data)

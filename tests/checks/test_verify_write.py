@@ -8,7 +8,8 @@ from unittest import mock
 
 from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import default_registry
-from ioguard.checks.verify_write import REREAD, ascii_kept, listed
+from ioguard.checks.verify_write import REREAD
+from ioguard.lib.compare import ascii_kept
 from ioguard.lib.config import Config, defaults
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Verdict
@@ -17,6 +18,7 @@ from ioguard.lib.locks import file_lock, lock_folder
 from ioguard.lib.platform import Platform
 from ioguard.lib.profile import profile
 from ioguard.lib.results import Code, Severity
+from ioguard.lib.text import listed
 from tests.support import events
 from tests.support.fixtures import FIXTURES_DIR
 

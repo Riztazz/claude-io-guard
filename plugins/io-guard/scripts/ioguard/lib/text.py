@@ -20,6 +20,7 @@ FORMAT_RANGES = ((0xAD, 0xAD), (0x600, 0x605), (0x61C, 0x61C), (0x6DD, 0x6DD), (
                  (0xE0020, 0xE007F))              # Unicode category Cf, 16.0
 SPACES = ((0xA0, 0xA0), (0x2028, 0x2029))       # a no-break space, and the line and paragraph separators
 INVISIBLE_RANGES = (*FORMAT_RANGES, *SPACES, (0xE000, 0xF8FF), (0xF0000, 0x10FFFD))
+SHOWN = 5               # line numbers a message lists before it gives the rest as a count
 
 
 def character_class(ranges: tuple[tuple[int, int], ...]) -> str:
@@ -72,6 +73,18 @@ def snippet(text: str, first: int, last: int, around: int = 2) -> str:
     start, stop = max(1, first - around), min(len(lines), last + around)
     width = len(str(stop))
     return "\n".join(f"{number:>{width}}| {visible(lines[number - 1])}" for number in range(start, stop + 1))
+
+
+def listed(numbers: tuple[int, ...]) -> str:
+    """Line numbers for a message: "line 4", "lines 4 and 9", "lines 1, 2, 3, 4, 5 and 7 more"."""
+    shown = [f"{number:,}" for number in numbers[:SHOWN]]
+    if not shown:
+        return "no line"
+    if len(numbers) > SHOWN:
+        return f"lines {', '.join(shown)} and {len(numbers) - SHOWN:,} more"
+    if len(shown) == 1:
+        return f"line {shown[0]}"
+    return f"lines {', '.join(shown[:-1])} and {shown[-1]}"
 
 
 def head(text: str, limit: int) -> str:

@@ -1,5 +1,5 @@
-"""The package keeps its layers: lib imports only the standard library and lib, checks imports lib, and hooks,
-mcp and cli import lib and checks and never each other."""
+"""The package keeps its layers: lib imports only the standard library and lib, a check imports lib and
+checks.base, and hooks, mcp and cli import lib and the pipeline and registry and never each other."""
 import ast
 import sys
 import unittest
@@ -10,6 +10,8 @@ from tests import PLUGIN_SCRIPTS
 PACKAGE = PLUGIN_SCRIPTS / "ioguard"
 SURFACES = ("hooks", "mcp", "cli")                  # the ways in, which all run the checks
 BRIDGE = (("mcp", "tools_hook"), "ioguard.hooks.bridge")   # the one import between two surfaces
+FRAMEWORK = {"base", "pipeline", "registry"}         # the checks modules that hold no check
+RUNNERS = {"ioguard.checks.pipeline", "ioguard.checks.registry"}   # what a surface takes from checks
 
 
 def imports_of(path: Path) -> set[str]:
@@ -67,6 +69,23 @@ class PackageLayers(unittest.TestCase):
                     with self.subTest(module=f"{subpackage}/{path.name}", imports=name):
                         self.assertFalse(other and not allowed,
                                          "hooks, mcp and cli import lib and checks and never each other")
+
+    def test_a_check_imports_no_other_check(self):
+        for path in modules("checks"):
+            if path.stem in FRAMEWORK:
+                continue
+            for name in imports_of(path):
+                with self.subTest(module=path.name, imports=name):
+                    self.assertFalse(name.startswith("ioguard.checks") and name != "ioguard.checks.base",
+                                     "a check takes its mechanism from lib, so no check is another's library")
+
+    def test_a_surface_takes_only_the_pipeline_and_the_registry_from_checks(self):
+        for subpackage in SURFACES:
+            for path in modules(subpackage):
+                for name in imports_of(path):
+                    with self.subTest(module=f"{subpackage}/{path.name}", imports=name):
+                        self.assertFalse(name.startswith("ioguard.checks") and name not in RUNNERS,
+                                         "a way in runs the checks and takes its mechanism from lib")
 
     def test_the_scan_sees_the_packages_it_guards(self):
         self.assertTrue(modules("lib") and modules("checks") and modules("hooks"),

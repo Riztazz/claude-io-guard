@@ -69,6 +69,12 @@ def in_tool_results(path: str, claude: Path, session_id: str) -> bool:
     return len(parts) >= 4 and parts[1].casefold() == session_id.casefold() and "tool-results" in parts[2:-1]
 
 
+def compiled(value: Mapping[str, Sequence[str]]) -> dict[str, re.Pattern]:
+    """One multiline pattern per group of error patterns, each matching any pattern of its group."""
+    return {name: re.compile("|".join(f"(?:{item})" for item in listed), re.M)
+            for name, listed in value.items() if listed}
+
+
 def error_lines(text: str, patterns: Mapping[str, re.Pattern]) -> tuple[ErrorLine, ...]:
     """Each line of text a pattern matches from its start, in order, with the name of its group. A line two
     groups match counts once, for the group named first. Each pattern needs re.MULTILINE."""

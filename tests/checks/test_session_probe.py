@@ -9,7 +9,7 @@ from ioguard.checks import session_probe
 from ioguard.checks.registry import Registry
 from ioguard.checks.session_probe import SessionProbe
 from ioguard.lib.config import Config, Scope, all_keys, defaults, validate
-from ioguard.lib import bytesio
+from ioguard.lib import bytesio, probing
 from ioguard.lib.context import Context, Probe, SessionState, ToolVersion
 from ioguard.lib.events import Event, Surface
 from ioguard.lib.fakes import FakeFs, FakeGit
@@ -68,13 +68,13 @@ class TheProbeIsSaved(unittest.TestCase):
     def test_windows_gets_the_cut_and_the_halving_and_macos_neither(self):
         windows, _ = probed(context(WINDOWS))
         macos, _ = probed(context(MACOS))
-        self.assertEqual((windows["transport_budget"], windows["halving"]), (session_probe.WINDOWS_CUT, True),
+        self.assertEqual((windows["transport_budget"], windows["halving"]), (probing.WINDOWS_CUT, True),
                          "on Windows the Bash tool cuts long commands and halves backslashes")
         self.assertEqual((macos["transport_budget"], macos["halving"]), (None, None),
                          "on macOS nothing was measured, so both stay None")
 
     def test_a_release_that_fixes_the_cut_retires_it(self):
-        with mock.patch.object(session_probe, "FIXED_IN", "2.1.200"):
+        with mock.patch.object(probing, "FIXED_IN", "2.1.200"):
             probe, _ = probed(context())
         self.assertEqual((probe["transport_budget"], probe["halving"]), (None, None),
                          "from the fixed release on, neither rule applies")

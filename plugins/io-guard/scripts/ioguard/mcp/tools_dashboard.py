@@ -20,7 +20,6 @@ from typing import Any
 
 from ioguard import CONFIG_SCHEMA
 from ioguard.checks.registry import default_registry
-from ioguard.checks.trust_ask import config_write, needs_yes
 from ioguard.lib import config_edit, locks, telemetry, telemetry_summary
 from ioguard.lib.config import FILE_LIMIT, ConfigKey, Scope, all_keys, load, validate
 from ioguard.lib.context import Context, config_layers, project_root, trusted
@@ -136,9 +135,15 @@ def setting(ctx: Context, cwd: Path, given: ConfigInput) -> ConfigOutput:
                         spec.project_may_set, before, config_edit.value_at(new, given.key), applies, written)
 
 
+def needs_yes(tool_input: dict) -> ConfigKey | None:
+    """The setting of every check io-guard ships that the write would set only with the user's yes."""
+    return config_edit.needs_yes(tool_input, all_keys(default_registry().keys()))
+
+
 def configure(given: ConfigInput, call: ToolCall) -> ConfigOutput:
     ctx, sent = call.context, vars(given)
-    if needs_yes(sent) and not ctx.session.take_ask(call.tool_use_id, config_write(sent), ctx.clock.now()):
+    asked = config_edit.config_write(sent)
+    if needs_yes(sent) and not ctx.session.take_ask(call.tool_use_id, asked, ctx.clock.now()):
         raise ToolFailure(Result.of(Code.CONFIG_ASKED, f"{NAME} wrote nothing, because no permission prompt "
                                     f"on this call put {given.key} to the user.", NAME, ctx.platform.os))
     return setting(ctx, call.cwd, given)

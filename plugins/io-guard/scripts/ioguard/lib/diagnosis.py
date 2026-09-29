@@ -1,0 +1,292 @@
+"""What a failed file call gets back: where the text really is, the paths that exist, or the parts that fit.
+
+The diagnose checks run it on a failed or refused Read, Grep, Glob, Edit or Write, and io.edit and io.splice
+on an anchor that failed against text they had not written yet.
+
+An old_string that is not in the file gets the lines it matches once spaces and tabs are ignored, with the
+corrected old_string, or else the lines most like it, numbered and with tabs and trailing spaces marked. One
+found more than once gets each place and the shortest old_string that names the first. A call refused because
+the file changed after the Read gets the lines the call aimed at as they are now. An Edit with the same
+old_string and new_string gets nothing, because Claude Code's own error already says there is nothing to
+change. A missing file gets the files of the same name nearby: from git in a repository, otherwise from a
+bounded walk of the nearest folder that exists. A missing search folder gets the nearest folder that exists.
+A Read past the limit gets parts that fit, a pattern ripgrep rejects gets its reason and a literal pattern,
+and a search that timed out gets narrowed.
+"""
+import json
+import re
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from ioguard.lib import anchors, paths, text
+from ioguard.lib.context import FsPort, GitPort, newlines
+from ioguard.lib.git import GitError
+from ioguard.lib.platform import Platform
+from ioguard.lib.profile import profile
+from ioguard.lib.results import Code, Fix, Result, Severity
+
+MISSING = re.compile(r"^(?:File|Path|Directory) does not exist")
+TOO_LARGE = re.compile(r"exceeds maximum allowed (?:size|tokens)")
+PATTERN = re.compile(r"ripgrep rejected the pattern")
+TIMED_OUT = re.compile(r"timed out after (\d+) seconds")
+AMBIGUOUS = re.compile(r"^Found \d+ matches of the string to replace")
+NOT_FOUND = "String to replace not found"
+CHANGED = "has been modified since read"
+LOOK_AROUND = re.compile(r"look-around|backreference", re.I)
+RG_META = re.compile(r"([\\.+*?()|\[\]{}^$])")
+SHOWN = 5                    # places or paths a message lists
+CORRECTION_CHARS = 1_500     # the longest corrected old_string a message quotes in full
+FIND_LIMIT = 20_000
+PART_BYTES = 60_000
+
+
+@dataclass(frozen=True)
+class Wording:
+    """How a diagnosis names the text that failed to match, and the call that tries it again."""
+    subject: str = "old_string of the refused Edit"
+    field: str = "old_string"        # the argument that holds the text, which a fix replaces
+    retry: str = "Edit"              # the tool a fix calls, by the name the model calls it
+    replace_all: bool = True         # the retry can change every place at once
+
+
+@dataclass(frozen=True)
+class Failed:
+    tool: str
+    tool_input: Mapping[str, Any]
+    error: str
+    cwd: Path
+    wording: Wording = Wording()
+
+
+def file_text(data: bytes) -> str:
+    """The file as the Edit tool reads it: UTF-8, every line ending as LF, no BOM."""
+    return anchors.edit_view(data.decode("utf-8", "replace").removeprefix(chr(0xFEFF)))
+
+
+def span(match: anchors.Match) -> str:
+    first, last = match.first_line, match.last_line
+    return f"line {first:,}" if first == last else f"lines {first:,}-{last:,}"
+
+
+def quoted(value: str, instead: str) -> str:
+    """value as a JSON string the model can copy exactly, or instead when it is too long to quote."""
+    return json.dumps(value) if len(value) <= CORRECTION_CHARS else instead
+
+
+class Diagnosis:
+    """The diagnosis of one failed call, from its tool, its input and its error text. contents stands in for
+    the file on disk, for a call that failed against text it had not written yet. options holds find_limit
+    and part_bytes, which only a missing file and a Read past the limit read."""
+
+    def __init__(self, failed: Failed, fs: FsPort, git: GitPort, platform: Platform,
+                 options: Mapping[str, Any], contents: bytes | None = None) -> None:
+        self.failed, self.options, self.contents = failed, options, contents
+        self.fs, self.git, self.platform = fs, git, platform
+        raw = failed.tool_input.get("file_path") or failed.tool_input.get("path")
+        self.path = paths.normalise(raw, failed.cwd, platform) if isinstance(raw, str) and raw else None
+
+    def result(self, code: Code, message: str, fix: Fix | None = None, **evidence) -> Result:
+        return Result.of(code, message, self.failed.tool, self.platform.os, file=self.path, fix=fix,
+                         evidence=evidence, severity=Severity.WARNING)
+
+    def results(self) -> tuple[Result, ...]:
+        error, tool = self.failed.error, self.failed.tool
+        if MISSING.search(error):
+            return self.missing()
+        if tool == "Read" and TOO_LARGE.search(error):
+            return self.too_large()
+        if tool == "Grep" and PATTERN.search(error):
+            return self.pattern()
+        if tool in ("Grep", "Glob") and (timed := TIMED_OUT.search(error)):
+            return self.too_broad(int(timed[1]))
+        if tool != "Edit" and not (tool == "Write" and CHANGED in error):
+            return ()
+        if NOT_FOUND in error:
+            return self.anchor_missing()
+        if AMBIGUOUS.search(error):
+            return self.anchor_ambiguous()
+        if CHANGED in error:
+            return self.stale()
+        return ()
+
+    def file(self) -> tuple[str, bytes] | None:
+        if self.contents is not None:
+            return file_text(self.contents), self.contents
+        if self.path is None:
+            return None
+        try:
+            data = self.fs.read_bytes(self.path)
+        except OSError:
+            return None
+        return file_text(data), data
+
+    def old_string(self) -> str:
+        old = self.failed.tool_input.get(self.failed.wording.field)
+        return file_text(old.encode("utf-8")) if isinstance(old, str) else ""
+
+    def anchor_missing(self) -> tuple[Result, ...]:
+        found, old = self.file(), self.old_string()
+        if found is None or not old:
+            return ()
+        body, data = found
+        name, eol = self.path.name, profile(data).eol.value
+        words = self.failed.wording
+        endings = f"{name} uses {eol} line endings."
+        candidates = anchors.closest(body, old)
+        if not candidates:
+            message = f"{words.subject} is not in {name}, and no lines there come close. {endings}"
+            fix = Fix(words.retry, {},
+                      f"Read {name} again, then call {words.retry} with {words.field} copied from its lines.")
+            return (self.result(Code.ANCHOR_NOT_FOUND, message, fix),)
+        best = candidates[0]
+        lines = [best.match.first_line, best.match.last_line]
+        if best.exact and len(candidates) == 1:
+            view = text.snippet(body, best.match.first_line, best.match.last_line, 0)
+            message = (f"{words.subject} matches {span(best.match)} of {name} once spaces and tabs are "
+                       f"ignored. {endings} The file reads:\n{view}")
+            said = quoted(best.text, "copied from those lines")
+            fix = Fix(words.retry, {**self.failed.tool_input, words.field: best.text},
+                      f"Call {words.retry} again with {words.field} {said}.")
+            return (self.result(Code.ANCHOR_NOT_FOUND, message, fix, lines=lines, exact=True),)
+        if best.exact:
+            return self.places(body, [candidate.match for candidate in candidates],
+                               " once spaces and tabs are ignored")
+        others = ", ".join(span(candidate.match) for candidate in candidates[1:])
+        view = text.snippet(body, best.match.first_line, best.match.last_line, 1)
+        message = (f"{words.subject} is not in {name}. The closest is {span(best.match)}, "
+                   f"{best.score:.0%} alike" + (f", then {others}" if others else "") + f". {endings} "
+                   f"{span(best.match).capitalize()} read:\n{view}")
+        fix = Fix(words.retry, {}, f"Copy {words.field} from those lines, with [TAB] as a tab and [SP] as a "
+                                   f"space, and call {words.retry} again.")
+        return (self.result(Code.ANCHOR_NOT_FOUND, message, fix, lines=lines, exact=False),)
+
+    def anchor_ambiguous(self) -> tuple[Result, ...]:
+        found, old = self.file(), self.old_string()
+        if found is None or not old:
+            return ()
+        return self.places(found[0], list(anchors.find(found[0], old)), "")
+
+    def places(self, body: str, matches: list[anchors.Match], how: str) -> tuple[Result, ...]:
+        """ANCHOR_AMBIGUOUS for old_string found in several places, with the first place's unique anchor."""
+        if not matches:
+            return ()
+        views = "\n".join(f"{span(match)}:\n{text.snippet(body, match.first_line, match.last_line, 1)}"
+                          for match in matches[:SHOWN])
+        more = f", and {len(matches) - SHOWN} more" if len(matches) > SHOWN else ""
+        words = self.failed.wording
+        message = f"{words.subject} is in {self.path.name} {len(matches)} times{how}{more}:\n{views}"
+        unique = anchors.unique_anchor(body, matches[0])
+        said = quoted(unique, "longer, with the lines around it")
+        every = ", or set replace_all to true for all of them" if words.replace_all else ""
+        fix = Fix(words.retry, {**self.failed.tool_input, words.field: unique},
+                  f"For the first place, call {words.retry} with {words.field} {said}. For another, lengthen "
+                  f"{words.field} the same way{every}.")
+        return (self.result(Code.ANCHOR_AMBIGUOUS, message, fix,
+                            lines=[match.first_line for match in matches]),)
+
+    def stale(self) -> tuple[Result, ...]:
+        found, old = self.file(), self.old_string()
+        if found is None:
+            return ()
+        body, name = found[0], self.path.name
+        matches = anchors.find(body, old) if old else ()
+        view = ""
+        if len(matches) == 1:
+            match = matches[0]
+            lines = text.snippet(body, match.first_line, match.last_line)
+            view = f" {span(match).capitalize()} read now:\n{lines}"
+        message = f"{name} changed after the last Read, so the {self.failed.tool} was refused.{view}"
+        return (self.result(Code.STALE_VIEW, message),)
+
+    def missing(self) -> tuple[Result, ...]:
+        if self.path is None:
+            return ()
+        cwd, tool = self.failed.cwd, self.failed.tool
+        where = paths.shown(self.path, cwd)
+        if tool in ("Grep", "Glob"):
+            folder = self.existing(self.path)
+            message = f"{where} does not exist. The nearest folder that does is {paths.shown(folder, cwd)}."
+            fix = Fix(tool, {}, f"Call {tool} again with a path under that folder.")
+            return (self.result(Code.PATH_NOT_FOUND, message, fix, nearest=folder.as_posix()),)
+        nearby = self.nearby()
+        glob = Fix("Glob", {"pattern": f"**/{self.path.name}"},
+                   f"Glob for **/{self.path.name} to find where it is.")
+        if nearby:
+            listed = ", ".join(paths.shown(path, cwd) for path in nearby[:SHOWN])
+            message = f"{where} does not exist. Paths with the same name: {listed}."
+            fix = Fix(tool, {}, f"Call {tool} again with one of those paths.")
+        elif nearby is None:
+            message, fix = f"{where} does not exist.", glob
+        else:
+            message, fix = f"{where} does not exist, and no file named {self.path.name} is near it.", glob
+        return (self.result(Code.PATH_NOT_FOUND, message, fix,
+                            nearby=[path.as_posix() for path in nearby or ()]),)
+
+    def nearby(self) -> tuple[Path, ...] | None:
+        """Files with the missing path's name: the repository's, else those under the nearest folder that
+        exists inside the session's folder, the ones that share the most folders with the missing path first.
+        None when that folder is outside the session's folder, because a walk from there, such as a drive's
+        root, takes longer than the whole pipeline may."""
+        name = self.path.name.casefold()
+        try:
+            root = self.git.root(self.failed.cwd)
+            known = self.git.ls_files(root) if root is not None else ()
+        except GitError:
+            known = ()
+        found = [path for path in known if path.name.casefold() == name]
+        if not found:
+            folder = self.existing(self.path.parent)
+            if paths.inside(folder, [self.failed.cwd], self.platform) is None:
+                return None
+            found = list(self.fs.find_named(folder, self.path.name, self.options["find_limit"]))
+        wanted = self.path.parts
+        return tuple(sorted(found, key=lambda path: -sum(1 for part in path.parts if part in wanted)))
+
+    def existing(self, path: Path) -> Path:
+        """path, or the nearest folder above it that exists."""
+        while not self.fs.exists(path) and path != path.parent:
+            path = path.parent
+        return path
+
+    def too_large(self) -> tuple[Result, ...]:
+        """READ_TOO_LARGE with parts that fit one Read. The lines are counted in blocks, since the file is
+        too large to read whole by definition."""
+        found = None if self.path is None else self.fs.stat(self.path)
+        if found is None:
+            return ()
+        size, name = found.size, self.path.name
+        try:
+            last = self.fs.read_from(self.path, max(0, size - 1), 1)
+            lines = newlines(self.fs, self.path, size) + (0 if last == b"\n" else 1)
+        except OSError:
+            return ()
+        per_part = max(50, min(2_000, self.options["part_bytes"] * max(lines, 1) // max(size, 1)))
+        starts = ", ".join(f"{start:,}" for start in range(1, min(lines, per_part * 4) + 1, per_part))
+        message = f"{name} holds {size:,} bytes in {lines:,} lines, more than one Read returns."
+        fix = Fix("Read", {"file_path": str(self.path), "offset": 1, "limit": per_part},
+                  f"Read it in parts of {per_part:,} lines, with limit {per_part:,} and offset {starts} and "
+                  f"on.")
+        return (self.result(Code.READ_TOO_LARGE, message, fix, lines=lines, bytes=size),)
+
+    def pattern(self) -> tuple[Result, ...]:
+        given = self.failed.tool_input.get("pattern")
+        if not isinstance(given, str):
+            return ()
+        reason = next((line.strip() for line in reversed(self.failed.error.splitlines())
+                       if line.strip().startswith("error:")), "a regex parse error")
+        if LOOK_AROUND.search(self.failed.error):
+            fix = Fix("Grep", {}, "Rewrite the pattern without look-around or backreferences, which "
+                                  "ripgrep's default engine lacks.")
+        else:
+            literal = RG_META.sub(r"\\\1", given)
+            fix = Fix("Grep", {**self.failed.tool_input, "pattern": literal},
+                      f"To search for the text as written, call Grep with the pattern {json.dumps(literal)}.")
+        message = f"ripgrep rejected the pattern {json.dumps(given)}: {reason.removeprefix('error: ')}."
+        return (self.result(Code.PATTERN_INVALID, message, fix),)
+
+    def too_broad(self, seconds: int) -> tuple[Result, ...]:
+        where = paths.shown(self.path, self.failed.cwd) if self.path is not None else "the current folder"
+        message = f"The {self.failed.tool} search in {where} ran out of time after {seconds} seconds."
+        return (self.result(Code.SEARCH_TOO_BROAD, message),)

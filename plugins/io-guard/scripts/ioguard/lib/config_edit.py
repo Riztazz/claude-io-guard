@@ -3,11 +3,16 @@
 A file may nest a dotted key any way the loader reads, such as checks > shell.lint > enabled or checks > shell
 > lint > enabled. A new key goes under the longest part of its path the file already holds, and the rest nests
 the way the defaults name it: checks, then the check's id, then the option, and one level per dot elsewhere.
-A removed key takes each object it leaves empty with it, so the layer below applies again.
+A removed key takes each object it leaves empty with it, so the layer below applies again. A write of a key
+that names a program io-guard starts, or a variable one reads, into the user's own file waits for the user's
+yes on that one write.
 """
 import copy
 import json
+from collections.abc import Mapping
 from typing import Any
+
+from ioguard.lib.config import ConfigKey
 
 
 def canonical(key: str) -> list[str]:
@@ -83,3 +88,21 @@ def value_at(raw: dict, key: str) -> Any:
 def encoded(raw: dict) -> bytes:
     """The file's bytes: two-space JSON, ASCII, with a final newline."""
     return (json.dumps(raw, indent=2, ensure_ascii=True) + "\n").encode("ascii")
+
+
+def needs_yes(tool_input: Mapping[str, Any], keys: Mapping[str, ConfigKey]) -> ConfigKey | None:
+    """The setting of keys an io.config call would write into the user's own file when it names a program
+    io-guard starts or a variable one reads, else None. A read, a removal and a project file's write ask
+    nothing: a project's value of such a key waits for io.trust."""
+    key, scope = tool_input.get("key"), tool_input.get("scope", "user")
+    writes = tool_input.get("value") is not None and not tool_input.get("remove")
+    if not writes or scope != "user" or not isinstance(key, str):
+        return None
+    spec = keys.get(key)
+    return spec if spec is not None and spec.runs else None
+
+
+def config_write(tool_input: Mapping[str, Any]) -> str:
+    """The one io.config write an ask is about: its key, its scope and its value, as canonical JSON."""
+    return json.dumps({"key": tool_input.get("key"), "scope": tool_input.get("scope", "user"),
+                       "value": tool_input.get("value")}, sort_keys=True, ensure_ascii=True)

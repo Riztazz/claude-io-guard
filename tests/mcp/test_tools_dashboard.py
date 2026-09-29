@@ -21,6 +21,7 @@ from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import Registry, default_registry
 from ioguard.checks.trust_ask import TrustAsk
 from ioguard.hooks import entry
+from ioguard.lib.config import all_keys
 from ioguard.lib.context import Context, LiveFs, project_root
 from ioguard.lib.decisions import Verdict
 from ioguard.lib.events import Event, Surface
@@ -40,7 +41,8 @@ class ConfigTest(unittest.TestCase):
     def setUp(self):
         self.home = Path(tempfile.mkdtemp(prefix="ioguard-config-"))
         self.addCleanup(shutil.rmtree, self.home, True)
-        self.ctx = Context.fake(platform=detect(), fs=LiveFs(), data_dir=self.home)
+        self.ctx = Context.fake(platform=detect(), fs=LiveFs(), data_dir=self.home,
+                                keys=all_keys(default_registry().keys()))
 
     def call(self, root: Path, **given):
         return configure(ConfigInput(**given), ToolCall(lambda: self.ctx, CancelToken(), root, None))

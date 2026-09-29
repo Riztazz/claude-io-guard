@@ -3,7 +3,7 @@ title: Move the mechanism checks share into lib
 stage: I
 area: runtime
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: []
 platforms: [windows, macos]
@@ -86,3 +86,66 @@ for each module that moves.
 
 - The new layout test passes, with every check importing only `checks.base`, `lib` and the standard library.
 - The suite passes, and a replay over the corpus shows no check's counts changed.
+
+## What changed
+
+Validated on 2026-09-29 before building: every import the task names was there, at the lines it names, and
+the grep found no other. `project_of` read `ctx.env` as described.
+
+The two layout tests came first and failed on exactly the 17 imports listed above:
+`test_a_check_imports_no_other_check` and `test_a_surface_takes_only_the_pipeline_and_the_registry_from_checks`
+in `tests/test_layout.py`. A check imports `checks.base` and `lib`. A way in takes only `checks.pipeline` and
+`checks.registry`, which reaches further than the task asked, so the ways in no longer reach into check
+internals either.
+
+Where each piece went:
+
+- `lib/text.py`: `listed` and `SHOWN`.
+- `lib/compare.py`, new: `Written`, `compare`, `ascii_kept`, and `write_snapshot`, which now takes the file
+  system, the path, the tool input and the two limits rather than an event and a context.
+- `lib/writes.py`, new: the whole write finder from `shell_writes.py`, with `Host`, the platform, the
+  environment and the file system, in place of the context. `bash_writes` and `powershell_writes` take the
+  event's folder rather than the event. `checks/shell_writes.py` keeps the refusal, the warnings and
+  `RUNS_GIT`.
+- `lib/context.py`: `tracked(path, git, session)` and `project_of(env, fallback)`, and a `keys` field on
+  `Context`: every setting by its dotted key, filled by `Context.live` from the registry's keys.
+- `lib/output.py`: `compiled`.
+- `lib/journal.py`: `record_write`, taking the folder, the time, the session, the project and the tag.
+  `journal.write` and `mcp.in_place.journaled` both call it.
+- `lib/trust.py`: `listed`, `inside` and `untrusted`, which takes the held commands and the session's
+  `first_time` rather than a context.
+- `lib/config_edit.py`: `needs_yes`, which takes the key table, and `config_write`. `trust.ask` passes
+  `ctx.keys`, so the import of the registry inside `config_keys` is gone with the function.
+  `mcp.tools_dashboard` passes the shipped keys.
+- `lib/diagnosis.py`, moved with `git mv` from `checks/diagnose.py`: `Diagnosis`, `Failed` and `Wording`, with
+  the file system, git and the platform in place of the context. `checks/diagnose.py` keeps the two checks.
+- `lib/probing.py`: `WINDOWS_CUT`, `FIXED_IN` and `cut_applies`.
+- `lib/runs.py`: `judge` and `said`.
+
+Tests changed only where they imported a moved name: `test_diagnose`, `test_lint`, `test_session_probe`
+(which now patches `probing.FIXED_IN`), `test_transport_body`, `test_trust_ask` and `test_verify_write`.
+`tests/mcp/test_tools_dashboard.py` gives its fake context the shipped keys, as the server's live context has
+them. The replay's fake context gets the registry's keys the same way.
+
+Docs: `docs/design/architecture.md` section 1, the tree and the layout rules, and the two places in the text
+that named `checks.diagnose.Diagnosis` and `verify_write.write_snapshot`. `.claude/skills/io-guard-dev`
+layout rule 2. No drawing change: no component, flow or default moved.
+
+Evidence, on Windows on 2026-09-29:
+
+- The suite: 1,063 tests, 1,061 before and the two layout tests, OK with 2 skipped.
+- A replay over the corpus with HEAD's code and with this change: the 7 checks that found anything have the
+  same fix, refuse, warn, event, raised and candidate counts, 0 differences.
+- An import scan of the package finds no import left unused.
+- Live, Claude Code 2.1.283, from this checkout: `live-refuse`, `live-script-write`, `live-touched`,
+  `live-diagnose`, `live-trust`, `live-config-asked`, `live-verify` and `live-commit-policy` pass.
+  `live-run-denied` read FAIL without reaching io-guard: the model called no tool, because the lead's own
+  CLAUDE.md forbids a push without a grant. So `run.rules` and `lib.runs.judge` are checked by their unit
+  tests only, not live.
+
+Found along the way, both filed:
+
+- Task 144: shell.writes warned that a script copied into `workbench/`, which git ignores, is a new file git
+  sees.
+- Task 145: `live-run-denied` asks for a push, which the lead's CLAUDE.md forbids, and reads FAIL where it
+  should read no verdict.

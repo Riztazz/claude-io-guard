@@ -24,16 +24,16 @@ import fnmatch
 from pathlib import Path
 
 from ioguard.checks.base import Check, CheckMeta, Cost
-from ioguard.checks.shell_writes import located, resolve, tracked
-from ioguard.checks.verify_write import Written, compare
 from ioguard.lib import commit_message, paths, pwsh, shell
+from ioguard.lib.compare import Written, compare
 from ioguard.lib.config import ConfigKey
-from ioguard.lib.context import Context, ShellSnapshot, repository_root
+from ioguard.lib.context import Context, ShellSnapshot, repository_root, tracked
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.git import GitError, StatusEntry
 from ioguard.lib.profile import profile
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity, callable_name
+from ioguard.lib.writes import Host, located, resolve
 
 LISTED = 8                   # paths each part of the report names before it gives the rest as a count
 TREE_WRITERS = frozenset({"am", "apply", "cherry-pick", "merge", "pull", "rebase", "revert", "switch"})
@@ -62,7 +62,7 @@ def git_changes(simple: shell.SimpleCommand, cwd: Path | None, ctx: Context) -> 
             return frozenset() if rest[:1] and rest[0] in STASH_READS else None
         case _:
             return None if name in TREE_WRITERS else frozenset()
-    found = [resolve(word, cwd, ctx) for word in given]
+    found = [resolve(word, cwd, Host.of(ctx)) for word in given]
     return None if None in found else frozenset(found)
 
 
@@ -277,18 +277,19 @@ class Touched(Check):
             return ()
         command = event.command or ""
         by_git = [git_changes(simple, cwd, ctx)
-                  for simple, cwd in located(command, shell.scan(command), event.cwd, ctx)]
+                  for simple, cwd in located(command, shell.scan(command), event.cwd, Host.of(ctx))]
         if None in by_git:
             return ()
         named_by_git = frozenset().union(*by_git)
-        written = [path for path in touched if tracked(path, ctx) and not under(path, named_by_git)]
+        written = [path for path in touched
+                   if tracked(path, ctx.git, ctx.session) and not under(path, named_by_git)]
         if not written:
             return ()
         batch, script = callable_name("io.edit"), runs[0].script
         files = named(written, event.cwd, LISTED)
         message = (f"{script} changed {files}, which git tracks, so those writes skipped io-guard's byte "
                    f"checks and Claude Code's checkpoints.")
-        given = {resolve(word, event.cwd, ctx) for run in runs for word in run.arguments}
+        given = {resolve(word, event.cwd, Host.of(ctx)) for run in runs for word in run.arguments}
         if given.isdisjoint(written):
             fix = Fix(script, {}, f"Change {files} by changing {script} or what it reads, then run it again.")
         else:

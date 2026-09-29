@@ -19,7 +19,8 @@ from types import MappingProxyType
 from typing import Any, Protocol
 
 from ioguard.lib import bytesio, locks, paths, trust
-from ioguard.lib.config import Config, ConfigKey, ConfigLayer, LoadReport, Scope, defaults, load, merge
+from ioguard.lib.config import (Config, ConfigKey, ConfigLayer, LoadReport, Scope, all_keys, defaults, load,
+                                merge)
 from ioguard.lib.git import Git, GitError, GitStatus, LineRange
 from ioguard.lib.locks import Process
 from ioguard.lib.platform import Platform, detect
@@ -406,6 +407,21 @@ def repository_root(git: GitPort, path: Path) -> Path | None:
         return None
 
 
+def tracked(path: Path, git: GitPort, session: SessionState) -> bool | None:
+    """Whether git tracks path, asked once per session until the session runs a git command. None when git
+    cannot say."""
+    with session.lock:
+        if path in session.tracked:
+            return session.tracked[path]
+    try:
+        answer = git.root(path) is not None and git.is_tracked(path)
+    except GitError:
+        return None
+    with session.lock:
+        session.tracked[path] = answer
+    return answer
+
+
 def claude_folder(env: Mapping[str, str]) -> Path:
     """Claude Code's own folder: CLAUDE_CONFIG_DIR, then .claude in the home folder env names, USERPROFILE
     or HOME, then in the process's own home folder."""
@@ -442,6 +458,12 @@ def project_root(cwd: Path) -> Path:
         if (folder / ".git").exists():
             return folder
     return cwd
+
+
+def project_of(env: Mapping[str, str], fallback: Path) -> Path:
+    """The folder whose .claude settings Claude Code reads: CLAUDE_PROJECT_DIR, else fallback."""
+    named = env.get("CLAUDE_PROJECT_DIR")
+    return Path(named) if named else fallback
 
 
 def config_layers(data_dir: Path | None, project: Path) -> tuple[ConfigLayer, ...]:
@@ -507,6 +529,7 @@ class Context:
     project: Path | None = None                            # the root whose layers config holds
     outside: Config | None = None                          # the config without the project's layers
     held: Mapping[str, Any] = field(default_factory=dict)  # the project's commands the user has not approved
+    keys: Mapping[str, ConfigKey] = field(default_factory=lambda: all_keys({}))   # each setting, by its key
 
     @classmethod
     def live(cls, data_dir: Path | None, project: Path,
@@ -523,7 +546,8 @@ class Context:
                    fs=LiveFs(), clock=SystemClock(), session=SessionState(),
                    telemetry=Telemetry(data_dir, enabled=config.get("telemetry.enabled")),
                    config_report=report, env=MappingProxyType(dict(os.environ)), data_dir=data_dir,
-                   project=project, outside=load(user, check_keys or {}).config, held=held)
+                   project=project, outside=load(user, check_keys or {}).config, held=held,
+                   keys=all_keys(check_keys or {}))
 
     def for_file(self, path: Path | None) -> "Context":
         """This context for a call on path: a file outside the project takes the config without the

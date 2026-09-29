@@ -14,6 +14,8 @@ from ioguard.lib.context import ToolVersion
 
 AGENT = re.compile(r"claude-code_(\d+)-(\d+)-(\d+)")
 EXECUTABLE = re.compile(r"[\\/](\d+\.\d+\.\d+)[\\/]claude(?:\.exe)?$", re.I)
+WINDOWS_CUT = 7807          # bytes, apostrophes counted as four: the smallest Bash command cut on 2.1.281
+FIXED_IN: str | None = None  # the first Claude Code release without the cut and the halving (#92543)
 Runner = Callable[..., proc.RunResult]
 
 
@@ -50,6 +52,15 @@ def claude_version(env: Mapping[str, str]) -> str | None:
 
 def version_tuple(version: str) -> tuple[int, ...]:
     return tuple(int(part) for part in re.findall(r"\d+", version))
+
+
+def cut_applies(windows: bool, version: str | None) -> bool:
+    """Whether the Bash tool's 8 KB cut and backslash halving apply to this session."""
+    if not windows:
+        return False
+    if FIXED_IN is None or version is None:
+        return True
+    return version_tuple(version) < version_tuple(FIXED_IN)
 
 
 def this_python() -> ToolVersion:

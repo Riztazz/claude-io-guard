@@ -8,12 +8,15 @@ approval.
 """
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from ioguard.lib import bytesio, locks, paths
+from ioguard.lib import bytesio, commands, locks, paths
+from ioguard.lib.platform import Platform
+from ioguard.lib.results import Code, Result
+from ioguard.lib.text import quoted
 
 TRUST_FILE = "trust.json"
 
@@ -22,6 +25,46 @@ def fingerprint(commands: Mapping[str, Any]) -> str:
     """The SHA-256 of commands as canonical JSON: sorted keys, ASCII, no spaces."""
     text = json.dumps(dict(commands), sort_keys=True, ensure_ascii=True, separators=(",", ":"))
     return hashlib.sha256(text.encode("ascii")).hexdigest()
+
+
+def listed(held: Mapping[str, Any]) -> list[str]:
+    """Each held command as one line: its key, where it applies and its words, each word the project's file
+    names quoted as JSON, such as verify ".py": "python" "x"."""
+    lines = []
+    for key, value in sorted(held.items()):
+        for name, entry in sorted(value.items()):
+            pairs = entry.items() if not name.startswith(".") else [(name, entry)]
+            where = "" if name.startswith(".") else f" in {quoted(name)}"
+            lines += [f"{key} {quoted(extension)}{where}: {' '.join(map(quoted, argv))}"
+                      for extension, argv in sorted(pairs)]
+    return lines
+
+
+def inside(held: Mapping[str, Any], project: Path) -> list[str]:
+    """The words of the held commands that name a file inside project, which a pull can change."""
+    found = []
+    for value in held.values():
+        for name, entry in value.items():
+            for argv in ([entry] if name.startswith(".") else entry.values()):
+                for word in argv:
+                    path = Path(word) if Path(word).is_absolute() else project / word
+                    if path.is_file() and path.resolve().is_relative_to(project.resolve()):
+                        found.append(word)
+    return sorted(set(found))
+
+
+def untrusted(held: Mapping[str, Any], key: str, path: Path, tool: str, platform: Platform,
+              first_time: Callable[[str], bool]) -> Result | None:
+    """PROJECT_COMMANDS_UNTRUSTED, when the project names a key command for path that the user has not
+    approved and first_time says this set was not named yet, else None."""
+    if commands.command_for(held.get(key, {}), path, platform) is None:
+        return None
+    if not first_time(f"untrusted:{fingerprint(held)}"):
+        return None
+    waiting = "; ".join(listed(held))
+    return Result.of(Code.PROJECT_COMMANDS_UNTRUSTED, f"The project's .claude/io-guard.json names commands "
+                     f"the user has not approved, so io-guard ran none of them: {waiting}.", tool,
+                     platform.os, file=path)
 
 
 def read(data_dir: Path) -> dict[str, Any]:

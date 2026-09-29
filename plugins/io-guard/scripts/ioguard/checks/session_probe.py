@@ -29,8 +29,6 @@ from ioguard.lib.results import Layer, Severity
 
 log = logging.getLogger("ioguard.checks.session_probe")
 
-WINDOWS_CUT = 7807          # bytes, apostrophes counted as four: the smallest Bash command cut on 2.1.281
-FIXED_IN: str | None = None  # the first Claude Code release without the cut and the halving (#92543)
 VERSIONS = {
     "bash": re.compile(r"version (\d+\.\d+\.\d+)"),
     "pwsh": re.compile(r"PowerShell (\d+\.\d+\.\d+)"),
@@ -52,15 +50,6 @@ def dirty_files(git: GitPort, cwd: Path) -> tuple[Path, ...] | None:
         return None
 
 
-def cut_applies(windows: bool, version: str | None) -> bool:
-    """Whether the Bash tool's 8 KB cut and backslash halving apply to this session."""
-    if not windows:
-        return False
-    if FIXED_IN is None or version is None:
-        return True
-    return probing.version_tuple(version) < probing.version_tuple(FIXED_IN)
-
-
 def measure(event: Event, ctx: Context, dirty_wanted: bool) -> tuple[Probe, tuple[Path, ...] | None]:
     """The machine's facts, and the dirty files of the session's repository when dirty_wanted, else None."""
     env, previous = ctx.env, ctx.probe
@@ -73,7 +62,7 @@ def measure(event: Event, ctx: Context, dirty_wanted: bool) -> tuple[Probe, tupl
                     for name, path in paths.items() if path}
         dirty = pool.submit(dirty_files, ctx.git, event.cwd) if dirty_wanted else None
     version = probing.claude_version(env)
-    cut = cut_applies(ctx.platform.windows, version)
+    cut = probing.cut_applies(ctx.platform.windows, version)
     folder = ctx.data_dir or event.cwd
     probe = Probe(
         os=ctx.platform.os,
@@ -83,7 +72,7 @@ def measure(event: Event, ctx: Context, dirty_wanted: bool) -> tuple[Probe, tupl
         git=versions["git"].result() if "git" in versions else None,
         console_encoding=probing.console_encoding(),
         fs_case_insensitive=probing.case_insensitive(folder, ctx.platform.case_insensitive),
-        transport_budget=WINDOWS_CUT if cut else None,
+        transport_budget=probing.WINDOWS_CUT if cut else None,
         halving=True if cut else None,
         claude_code_version=version,
         taken_at=ctx.clock.now(),

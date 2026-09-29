@@ -21,7 +21,6 @@ old_string moved one line break later, which deletes them and joins nothing.
 import json
 
 from ioguard.checks.base import Check, CheckMeta, Cost
-from ioguard.checks.verify_write import SHOWN, listed
 from ioguard.lib import anchors, indent
 from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context
@@ -29,6 +28,7 @@ from ioguard.lib.decisions import Decision, Rewrite, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.profile import profile
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity
+from ioguard.lib.text import SHOWN, listed
 
 
 class ConformEdit(Check):

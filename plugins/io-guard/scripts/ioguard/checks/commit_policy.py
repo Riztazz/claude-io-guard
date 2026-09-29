@@ -17,12 +17,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ioguard.checks.base import Check, CheckMeta, Cost
-from ioguard.checks.shell_writes import Write, bash_writes, located, powershell_writes, resolve, targets
 from ioguard.lib import commit_message, pwsh, rules, runs, shell
 from ioguard.lib.context import Context, read_or_none
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity, callable_name
+from ioguard.lib.writes import Host, Write, bash_writes, located, powershell_writes, resolve, targets
 
 RUN = callable_name("io.run")
 FILE_BYTES = 64 * 1024
@@ -67,18 +67,19 @@ def powershell_messages(command: str, event: Event, cwd: Path, ctx: Context) -> 
              if (each := commit_message.sources(simple.words)) is not None]
     if not reads_a_file(found):
         return [message(each, (), cwd, {}, ctx) for each in found]
-    written = landed(powershell_writes(command, event, ctx, cwd), ctx)
+    written = landed(powershell_writes(command, event.cwd, Host.of(ctx), cwd), ctx)
     return [message(each, (), cwd, written, ctx) for each in found]
 
 
 def bash_messages(command: str, event: Event, cwd: Path, ctx: Context) -> list[Message]:
     scan = shell.scan(command)
-    placed = located(command, scan, cwd, ctx)
+    placed = located(command, scan, cwd, Host.of(ctx))
     commits = [(simple, where, each) for simple, where in placed
                if (each := commit_message.sources(simple.words)) is not None]
     written = {}
     if reads_a_file([each for _, _, each in commits]):
-        written = landed(bash_writes(command, event, ctx, cwd), ctx) | heredoc_files(scan, placed, ctx)
+        writes = bash_writes(command, event.cwd, Host.of(ctx), cwd)
+        written = landed(writes, ctx) | heredoc_files(scan, placed, ctx)
     out = []
     for simple, where, found in commits:
         stdin = tuple(heredoc.body for heredoc in within(scan, simple))
@@ -88,7 +89,7 @@ def bash_messages(command: str, event: Event, cwd: Path, ctx: Context) -> list[M
 
 def landed(writes: list[Write], ctx: Context) -> dict[Path | str, str | None]:
     """Each file the command writes, with no text known for it yet."""
-    return {path: None for write in writes for path in targets(write, ctx)}
+    return {path: None for write in writes for path in targets(write, Host.of(ctx))}
 
 
 def reads_a_file(found: list[commit_message.Sources]) -> bool:
@@ -114,7 +115,7 @@ def heredoc_files(scan: shell.Scan, placed: list[tuple[shell.SimpleCommand, Path
         if redirect.append or redirect.fd not in (None, 1):
             continue
         found[redirect.target] = bodies[0]
-        if (path := resolve(redirect.target, where, ctx)) is not None:
+        if (path := resolve(redirect.target, where, Host.of(ctx))) is not None:
             found[path] = bodies[0]
     return found
 
@@ -129,7 +130,7 @@ def message(found: commit_message.Sources, stdin: tuple[str, ...], cwd: Path | N
         if name == "-":
             parts += stdin
             continue
-        path = resolve(name, cwd, ctx)
+        path = resolve(name, cwd, Host.of(ctx))
         if written.get(name) is not None or (path is not None and written.get(path) is not None):
             parts.append(written.get(name) or written[path])
             continue

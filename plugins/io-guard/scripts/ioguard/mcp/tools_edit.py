@@ -13,9 +13,9 @@ import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
 
-from ioguard.checks.diagnose import Diagnosis, Failed, Wording
 from ioguard.lib import anchors, edits, editorconfig, paths
 from ioguard.lib.context import Context
+from ioguard.lib.diagnosis import Diagnosis, Failed, Wording
 from ioguard.lib.results import Code, Fix, Result, Severity, callable_name, spec
 from ioguard.lib.text import invisible_added
 from ioguard.mcp.in_place import NOTE, Loaded, Place, encoded, held, load, places_shown, write
@@ -104,9 +104,10 @@ def indent_notes(indented: tuple[tuple[int, str], ...], what: str) -> list[str]:
 
 def diagnosed(tool: str, wording: Wording, tool_input: dict, text: str, call: ToolCall,
               ambiguous: bool) -> Result:
-    """Task 20's diagnosis of a place that did not match once, in text the tool had not written yet."""
-    failed = Failed(tool, tool_input, "", call.cwd, wording)
-    diagnosis = Diagnosis(failed, call.context, {}, contents=text.encode("utf-8"))
+    """The diagnose checks' diagnosis of a place that did not match once, in text the tool had not written
+    yet."""
+    failed, ctx = Failed(tool, tool_input, "", call.cwd, wording), call.context
+    diagnosis = Diagnosis(failed, ctx.fs, ctx.git, ctx.platform, {}, contents=text.encode("utf-8"))
     found = diagnosis.anchor_ambiguous() if ambiguous else diagnosis.anchor_missing()
     if found:
         result = found[0]

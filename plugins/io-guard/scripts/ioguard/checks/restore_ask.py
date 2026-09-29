@@ -10,9 +10,8 @@ failed open lets none through.
 from functools import partial
 
 from ioguard.checks.base import Check, CheckMeta, Cost
-from ioguard.checks.run_rules import project_of
 from ioguard.lib import paths, snapshots
-from ioguard.lib.context import Context, read_or_none
+from ioguard.lib.context import Context, project_of, read_or_none
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.results import Code, Layer, Result, Severity, callable_name
@@ -33,7 +32,7 @@ class RestoreAsk(Check):
         given = event.tool_input
         if event.tool_name != RESTORE or ctx.data_dir is None or not isinstance(given.get("tag"), str):
             return Decision.observe(self.meta.id)
-        project = project_of(ctx, event.cwd)
+        project = project_of(ctx.env, event.cwd)
         found = snapshots.find(ctx.data_dir, given["tag"], project, ctx.clock.now())
         if found is None:
             return Decision.observe(self.meta.id)
