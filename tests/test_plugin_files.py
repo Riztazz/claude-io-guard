@@ -1,7 +1,9 @@
 """The marketplace, the plugin manifest, the hooks and the server config agree with each other."""
 import json
+import re
 import unittest
 
+from ioguard.mcp.server import registry
 from tests import PLUGIN_SCRIPTS, REPO
 
 PLUGIN = REPO / "plugins" / "io-guard"
@@ -52,6 +54,17 @@ class PluginFilesAgree(unittest.TestCase):
                 self.assertIn(f"/scripts/{script}", texts, f"the plugin config starts {script}")
                 self.assertTrue((PLUGIN_SCRIPTS / script).is_file(), f"scripts/{script} exists")
         self.assertTrue((PLUGIN_SCRIPTS / "pyrun.cmd").is_file(), "scripts/pyrun.cmd exists for cmd.exe")
+
+    def test_every_skill_is_named_for_its_folder_and_names_only_tools_the_server_has(self):
+        offered = {name.replace(".", "_") for name in registry().specs}
+        for page in sorted((PLUGIN / "skills").glob("*/SKILL.md")):
+            text = page.read_bytes().decode("ascii")
+            head = dict(line.split(": ", 1) for line in text.split("---")[1].strip().splitlines())
+            named = set(re.findall(r"mcp__plugin_io-guard_io__(\w+)", text))
+            with self.subTest(skill=page.parent.name):
+                self.assertEqual((head.get("name"), bool(head.get("description")), named - offered),
+                                 (page.parent.name, True, set()),
+                                 "the plugin menu lists it by name, and every tool it names exists")
 
     def test_the_plugin_has_no_top_level_bin_folder(self):
         self.assertFalse((PLUGIN / "bin").exists(),

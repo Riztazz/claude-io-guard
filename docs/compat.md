@@ -35,7 +35,8 @@ ran on 2.1.283 only. Task 17 added `write-quiet`, `edit-trailing` and `live-conf
 task 49 `live-space-dropped`, task 52 `live-format-dry`, task 54 `live-pipe-once`, task 46
 `live-touched-index`, task 48 `live-script-write`, task 58 `edit-delete-join` and `live-lines-joined`, and
 task 56 `live-read-width`, task 55 `live-verify-output`, task 57 `live-subfolder-config`, task 45
-`live-ascii-joined`, and task 33 `live-config` and `live-dashboard`, all of which passed on both. Since
+`live-ascii-joined`, task 33 `live-config` and `live-dashboard`, and task 69 `live-settings-skill`, all of which
+passed on both. Since
 2026-09-28 every probe turns off the lead's installed io-guard, which a user setting enables in every session
 and the CLI loads from this checkout.
 

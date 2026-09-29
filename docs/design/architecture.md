@@ -15,6 +15,7 @@ plugins/io-guard/
   .mcp.json                        one stdio server, io, started through scripts/pyrun
   hooks/hooks.json                 mcp_tool hooks for tool events, one command hook for SessionStart
   skills/io-guard/SKILL.md         generated code and tool tables, hand-written steps
+  skills/settings/SKILL.md         opens the settings page: the plugin menu's entry, and /io-guard:settings
   ui/dashboard.html                the ui:// resource and the standalone page, one template
   scripts/
     pyrun                          POSIX sh launcher for the server and the command hooks

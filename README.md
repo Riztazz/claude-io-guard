@@ -204,7 +204,8 @@ To change a setting without opening the file, ask Claude, such as "turn off shel
 `io.config` writes it into your file or the project's, checked the way io-guard checks the whole file, so a
 value the file couldn't load is refused and nothing is written. A change applies from the next tool call.
 
-To see every setting at once, ask Claude to open io-guard's settings page. `io.dashboard` serves it on
+To see every setting at once, pick `settings` under io-guard in the plugin menu, type `/io-guard:settings`, or
+ask Claude to open io-guard's settings page. `io.dashboard` serves it on
 `127.0.0.1`, on this machine only and behind a token in its URL, and Claude opens it in the desktop app's
 browser pane. Any browser on this machine opens the same URL. Each option shows your value, a line of help and
 a tooltip with its key and default, and under it the project's override, if the project sets one. A change
