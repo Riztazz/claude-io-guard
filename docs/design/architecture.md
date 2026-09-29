@@ -1583,10 +1583,15 @@ from it. A background run keeps running when its call is cancelled, because its 
   request came for `io.dashboard.idle_minutes`, 5 by default, and drops it, so the next `io.dashboard` starts a
   new one on a new port with a new token (task 68). 0 keeps it up until the io server stops. An open page whose
   ping fails says to ask for the page again.
-- **The page.** One list of every setting, grouped by check, with the rewrite modes first. Each option shows
-  your value with the control its type takes, a one-line help that `?` opens in full, and a tooltip with its
-  key and default. The line under it, "This project", is "Same as yours" or "Override" with the project's own
-  value. A key the project may not set says so, and a value it may not pick is greyed. A change saves at once
+- **The page.** One list of every setting, grouped by check, with the rewrite modes first, and a global key a
+  check reads under that check (`READ_BY`). Each setting is a row of three columns, whose headings stay at the
+  top: the setting, with a one-line help that `?` opens in full and a tooltip with its key and default, then
+  "All projects", the user's file, then "Only <project>", the project's file, each with the control its type
+  takes in the same place on every row (task 74). A project that sets nothing shows the value it takes from All
+  projects, greyed, with "Change for this project", which starts from the first value the project may pick. An
+  override has "Use all projects' value". A key the project may not set says so, and a value it may not pick
+  is greyed. Below 640 pixels, and for a list or a JSON value, the two columns stack under the setting, each
+  with its heading. A change saves at once
   and the page reads the settings again, so a refused value goes back to the saved one and its message stays
   on the card. It follows the system's light or dark scheme until a pick at the top, kept in `localStorage`.
 - **The stats.** A switch at the top shows Stats instead of Settings: the last 1, 7 or 30 days, of this project

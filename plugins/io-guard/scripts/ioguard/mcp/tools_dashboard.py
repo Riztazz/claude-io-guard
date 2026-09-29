@@ -30,6 +30,7 @@ log = logging.getLogger("ioguard.mcp")
 NAME = "io.config"
 SCOPES = {"user": Scope.USER, "project": Scope.PROJECT}
 FROM_FILE = "stats-from.json"             # in io-guard's folder: the time the page's stats count from
+READ_BY = {"commit_policy": "commit.policy"}      # a global key's first part, and the check that reads it
 
 
 @dataclass(frozen=True)
@@ -136,8 +137,12 @@ def configure(given: ConfigInput, call: ToolCall) -> ConfigOutput:
 
 
 def group_of(key: str) -> str:
-    """The heading a setting sits under on the page: its check's id, or the first part of its key."""
-    return key[len("checks."):].rsplit(".", 1)[0] if key.startswith("checks.") else key.split(".")[0]
+    """The heading a setting sits under on the page: its check's id, the id of the check that reads it, or the
+    first part of its key."""
+    if key.startswith("checks."):
+        return key[len("checks."):].rsplit(".", 1)[0]
+    head = key.split(".")[0]
+    return READ_BY.get(head, head)
 
 
 def file_state(file: Path, ctx: Context) -> tuple[dict, str | None]:

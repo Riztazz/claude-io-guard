@@ -32,8 +32,26 @@
   input[type=text] { width: 16em; max-width: 100%; }
   textarea { display: block; width: 100%; max-width: 100%; resize: vertical; font-family: ui-monospace, monospace;
              font-size: 12px; min-height: 110px; }
-  .wide { margin-top: 8px; }
-  .wide .actions { margin-top: 6px; }
+  .actions { margin-top: 6px; }
+  .columns, .setting { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr);
+                       gap: 14px; }
+  .columns { position: sticky; top: 0; z-index: 4; background: var(--bg); padding: 8px 15px; margin-top: 12px;
+             border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 600; }
+  .columns span + span { cursor: help; }
+  .setting { align-items: start; }
+  .setting.wide { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .setting.wide .about, .setting .err { grid-column: 1 / -1; }
+  .setting .err:empty { display: none; }
+  .col-label { display: none; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .setting.wide .col-label { display: block; }
+  .cell-note { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: center; margin-top: 4px; }
+  .inherited { opacity: 0.45; }
+  button.link { border: 0; background: transparent; padding: 0; font-size: 12px; text-decoration: underline; }
+  @media (max-width: 640px) {
+    .columns { display: none; }
+    .setting, .setting.wide { grid-template-columns: minmax(0, 1fr); }
+    .col-label { display: block; }
+  }
   button { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line);
            border-radius: 999px; padding: 2px 12px; cursor: pointer; }
   button:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -55,7 +73,6 @@
   .name:hover .tip, .name:focus .tip { display: block; }
   .help-button { border-radius: 50%; width: 20px; height: 20px; padding: 0; font-size: 12px; margin-left: 6px; }
   .help { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
-  .project { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .chip { background: var(--soft); border-radius: 999px; padding: 1px 4px 1px 10px; font-size: 12px;
           font-family: ui-monospace, monospace; }
@@ -105,9 +122,10 @@
 <div id="banners"></div>
 <div id="settings-view">
 <input type="search" id="search" placeholder="Filter, such as shell.lint or rewrite" aria-label="Filter settings">
+<div class="columns" id="columns"><span>Setting</span><span>All projects</span><span>This project</span></div>
 <div id="list"></div>
-<p class="muted">Hover an option for its key and default, and press ? for its whole help. A change saves at once and
-applies from the next tool call. Greyed means the project can't set it, and the line says why.</p>
+<p class="muted">Hover a setting's name for its key and default, and press ? for its whole help. A change saves at
+once and applies from the next tool call. A greyed value under this project is the one it takes from All projects.</p>
 </div>
 <div id="stats-view" hidden>
   <div class="row controls">
@@ -139,7 +157,6 @@ const GLOBAL_ABOUT = {
   pipeline: "How long the checks may take on one tool call.",
   io: "The limits of io-guard's own io tools.",
   telemetry: "What io-guard records about its own decisions.",
-  commit_policy: "What a git commit message may not hold.",
   other: "Commands, patterns and lists that apply across checks."
 };
 let data = null;
@@ -183,7 +200,7 @@ function groupName(row) {
 function label(row) {
   if (row.key.startsWith("transport.rewrite_mode.")) return "In " + row.key.split(".").pop() + " mode";
   const own = row.key.startsWith("checks.") ? row.key.slice(("checks." + row.group + ".").length)
-    : row.key === row.group ? row.key : row.key.slice(row.group.length + 1);
+    : row.key.split(".").slice(1).join(".") || row.key;
   const words = own.replace(/[._]/g, " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
@@ -265,59 +282,64 @@ function control(row, value, save, forbids) {
 }
 
 const wide = row => row.type === "list" || row.type === "dict";
+const projectName = () => data.project.split("/").filter(Boolean).pop() || data.project;
 
-function placed(row, rowNode, parent, value, save, forbids) {
-  const made = control(row, value, save, forbids);
-  if (wide(row)) parent.append(make("div", {class: "wide"}, made));
-  else rowNode.append(made);
+function allCell(node, row) {
+  const value = row.user === null ? row.default : row.user;
+  const note = row.user === null ? make("span", {class: "muted", text: "Default"})
+    : make("button", {type: "button", class: "link", text: "Use the default",
+      onclick: () => send(node, {key: row.key, scope: "user", remove: true})});
+  return make("div", {class: "cell"}, make("div", {class: "col-label", text: "All projects"}),
+    control(row, value, value => send(node, {key: row.key, scope: "user", value: value}), []),
+    make("div", {class: "cell-note"}, note));
+}
+
+function projectCell(node, row) {
+  const cell = make("div", {class: "cell"}, make("div", {class: "col-label", text: "Only " + projectName()}));
+  if (!row.project_may_set) {
+    cell.append(make("div", {class: "muted", text: "Set only under All projects"}));
+    return cell;
+  }
+  const all = row.user === null ? row.default : row.user;
+  const forbids = row.project_forbids.length ?
+    [make("div", {class: "muted", text: "Can't pick " + row.project_forbids.map(shown).join(" or ")})] : [];
+  if (row.project === null) {
+    const allowed = value => !row.project_forbids.some(forbidden => sameValue(forbidden, value));
+    const start = [all, row.default, ...row.choices, true, false].find(allowed);
+    const inherited = make("div", {class: "inherited", inert: true}, control(row, all, () => {}, []));
+    const same = make("span", {class: "muted", text: "Same as all projects"});
+    cell.append(inherited, make("div", {class: "cell-note"}, same,
+      make("button", {type: "button", class: "link", text: "Change for this project",
+        onclick: () => send(node, {key: row.key, scope: "project", value: start})})), ...forbids);
+    return cell;
+  }
+  cell.append(control(row, row.project, value => send(node, {key: row.key, scope: "project", value: value}),
+    row.project_forbids), make("div", {class: "cell-note"}, make("button", {type: "button", class: "link",
+      text: "Use all projects' value", onclick: () => send(node, {key: row.key, scope: "project", remove: true})})),
+    ...forbids);
+  return cell;
 }
 
 function card(row) {
   const words = (row.key + " " + row.about + " " + label(row)).toLowerCase();
-  const node = make("div", {class: "card", "data-search": words});
-  const yours = row.user === null ? row.default : row.user;
+  const node = make("div", {class: wide(row) ? "card setting wide" : "card setting", "data-search": words});
   const help = make("p", {class: "help", text: firstSentence(row.about)});
   const name = make("span", {class: "name", tabindex: "0"}, label(row),
     make("span", {class: "tip", text: row.key + ", default " + shown(row.default)}));
   const helpButton = make("button", {type: "button", class: "help-button", text: "?", "aria-label": "Help",
     onclick: () => { help.textContent = help.textContent === row.about ? firstSentence(row.about) : row.about; }});
-  const source = row.user === null ? "Yours: the default" : "Yours";
-  const reset = row.user === null ? null : make("button", {type: "button", text: "Reset",
-    onclick: () => send(node, {key: row.key, scope: "user", remove: true})});
-  const right = make("div", {class: "row"}, make("span", {class: "muted", text: source}), reset);
-  const top = make("div", {class: "row"}, make("div", {}, name, helpButton), right);
-  node.append(top);
-  placed(row, right, node, yours, value => send(node, {key: row.key, scope: "user", value: value}), []);
-  node.append(help);
-  const project = make("div", {class: "project row"});
-  const below = make("div", {});
-  project.append(make("span", {class: "muted", text: "This project"}));
-  if (!row.project_may_set) {
-    project.append(make("span", {class: "muted", text: "Only your own config sets this."}));
-  } else {
-    const overridden = row.project !== null;
-    const pick = make("div", {class: "seg", role: "group", "aria-label": "This project"},
-      make("button", {type: "button", text: "Same as yours", "aria-pressed": String(!overridden),
-        onclick: () => overridden && send(node, {key: row.key, scope: "project", remove: true})}),
-      make("button", {type: "button", text: "Override", "aria-pressed": String(overridden),
-        onclick: () => overridden || send(node, {key: row.key, scope: "project",
-          value: row.project_forbids.some(forbidden => sameValue(forbidden, yours)) ? row.default : yours})}));
-    project.append(pick);
-    if (overridden) {
-      placed(row, project, below, row.project,
-        value => send(node, {key: row.key, scope: "project", value: value}), row.project_forbids);
-    }
-    if (row.project_forbids.length) {
-      project.append(make("span", {class: "muted",
-        text: "A project can't pick " + row.project_forbids.map(shown).join(" or ")}));
-    }
-  }
-  node.append(project, below, make("div", {class: "err", text: refusals.get(row.key) || ""}));
+  node.append(make("div", {class: "about"}, make("div", {}, name, helpButton), help), allCell(node, row),
+    projectCell(node, row), make("div", {class: "err", text: refusals.get(row.key) || ""}));
   return node;
 }
 
 function render() {
   document.getElementById("project").textContent = "Project: " + data.project;
+  const [allHead, projectHead] = document.querySelectorAll("#columns span + span");
+  allHead.textContent = "All projects";
+  allHead.title = "Your own config, " + data.files.user + ". Every project uses it unless it changes a value.";
+  projectHead.textContent = "Only " + projectName();
+  projectHead.title = "This project's config, " + data.files.project + ". It wins over All projects here.";
   const banners = document.getElementById("banners");
   banners.replaceChildren(...Object.entries(data.errors).map(([scope, message]) =>
     make("div", {class: "banner", text: (scope === "user" ? "Your config: " : "The project's config: ") + message})));

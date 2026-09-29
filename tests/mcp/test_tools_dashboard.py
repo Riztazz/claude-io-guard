@@ -175,6 +175,11 @@ class ThePageServerAnswersOnlyItsOwnPage(ConfigTest):
                          "one self-contained file, which calls only the paths the server answers, and names "
                          "the SVG namespace alone")
 
+    def test_a_global_key_a_check_reads_sits_under_that_checks_heading(self):
+        _, body = self.request("GET", "/api/settings", token=self.token)
+        groups = {row["group"] for row in json.loads(body)["settings"] if "commit" in row["key"]}
+        self.assertEqual(groups, {"commit.policy"}, "commit_policy's keys join the group of the check")
+
     def test_the_settings_carry_each_checks_description_for_its_heading(self):
         status, body = self.request("GET", "/api/settings", token=self.token)
         groups = json.loads(body)["groups"]

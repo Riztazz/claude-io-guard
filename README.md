@@ -207,9 +207,10 @@ value the file couldn't load is refused and nothing is written. A change applies
 To see every setting at once, pick `settings` under io-guard in the plugin menu, type `/io-guard:settings`, or
 ask Claude to open io-guard's settings page. `io.dashboard` serves it on `127.0.0.1`, on this machine only and
 behind a token in its URL, and Claude opens it in the desktop app's browser pane. Claude also gives you the URL
-as a link, which opens the same page in any browser on this machine. Each option shows your value, a line of
-help and a tooltip with its key and default, and under it the project's override, if the project sets one. A change
-saves at once through `io.config`, and the file comes back two-space formatted. The page's server stops five
+as a link, which opens the same page in any browser on this machine. Each setting shows a line of help and a
+tooltip with its key and default, then two columns: All projects, from your own config, and Only this project,
+from the project's `.claude/io-guard.json`. The project's column shows the value it takes from All projects,
+greyed, until you press Change for this project, and Use all projects' value undoes that. A change saves at once through `io.config`, and the file comes back two-space formatted. The page's server stops five
 minutes after you close the page, or after `io.dashboard.idle_minutes`, and asking again opens a new one.
 
 The page's Stats switch shows what io-guard fixed, warned about and refused over the last 1, 7 or 30 days, for
