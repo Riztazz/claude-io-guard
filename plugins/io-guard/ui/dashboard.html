@@ -127,9 +127,8 @@
 <div class="columns" id="columns"><span>Setting</span><span>All projects</span><span>This project</span></div>
 <div id="list"></div>
 <p class="muted">Hover a setting's name for its key and default, and press ? for its whole help. A change saves at
-once and applies from the next tool call. A greyed value under this project is the one it takes from All projects
-or the repository's file. A change there goes into your own config, for this project alone, and may turn a check
-off.</p>
+once and applies from the next tool call. A greyed value under this project is the one it takes from All projects,
+until you change it for this project.</p>
 </div>
 <div id="stats-view" hidden>
   <div class="row controls">
@@ -298,19 +297,24 @@ function allCell(node, row) {
 
 function projectCell(node, row) {
   const cell = make("div", {class: "cell"}, make("div", {class: "col-label", text: "Only " + projectName()}));
-  const save = value => send(node, {key: row.key, scope: "user_project", value: value});
-  if (row.own === null) {
-    const all = row.user === null ? row.default : row.user;
-    const takes = row.project === null ? all : row.project;
-    const from = row.project === null ? "Same as all projects" : "Set by the repository's .claude/io-guard.json";
-    const inherited = make("div", {class: "inherited", inert: true}, control(row, takes, () => {}));
-    cell.append(inherited, make("div", {class: "cell-note"}, make("span", {class: "muted", text: from}),
-      make("button", {type: "button", class: "link", text: "Change for this project", onclick: () => save(takes)})));
+  if (!row.project_may_set) {
+    cell.append(make("div", {class: "muted", text: "Only your own config sets this, for every project"}));
     return cell;
   }
-  const back = row.project === null ? "Use all projects' value" : "Use the repository's value";
-  cell.append(control(row, row.own, save), make("div", {class: "cell-note"}, make("button", {type: "button",
-    class: "link", text: back, onclick: () => send(node, {key: row.key, scope: "user_project", remove: true})})));
+  const save = value => send(node, {key: row.key, scope: "project", value: value});
+  if (row.project === null) {
+    const all = row.user === null ? row.default : row.user;
+    const inherited = make("div", {class: "inherited", inert: true}, control(row, all, () => {}));
+    cell.append(inherited, make("div", {class: "cell-note"}, make("span", {class: "muted",
+      text: "Same as all projects"}), make("button", {type: "button", class: "link",
+      text: "Change for this project", onclick: () => save(all)})));
+    return cell;
+  }
+  const waiting = row.waiting ? [make("div", {class: "err",
+    text: "Waits for your approval: ask Claude to call io.trust, and answer its permission prompt."})] : [];
+  cell.append(control(row, row.project, save), make("div", {class: "cell-note"}, make("button", {type: "button",
+    class: "link", text: "Use all projects' value",
+    onclick: () => send(node, {key: row.key, scope: "project", remove: true})})), ...waiting);
   return cell;
 }
 
@@ -333,10 +337,9 @@ function render() {
   allHead.textContent = "All projects";
   allHead.title = "Your own config, " + data.files.user + ". Every project uses it unless it changes a value.";
   projectHead.textContent = "Only " + projectName();
-  projectHead.title = "Your own config, " + data.files.user + ", under projects for this folder. It wins over " +
-    "All projects and over the repository's " + data.files.project + " here.";
-  document.getElementById("saved").textContent = "Saved in " + data.files.user + ". Only " + projectName() +
-    " saves in the same file, under projects, and never in the repository's .claude/io-guard.json.";
+  projectHead.title = "This project's config, " + data.files.project + ". It overrides All projects here.";
+  document.getElementById("saved").textContent = "All projects saves in " + data.files.user + ". Only " +
+    projectName() + " saves in " + data.files.project + ", which overrides it here.";
   const banners = document.getElementById("banners");
   banners.replaceChildren(...Object.entries(data.errors).map(([scope, message]) =>
     make("div", {class: "banner", text: (scope === "user" ? "Your config: " : "The project's config: ") + message})));

@@ -225,6 +225,14 @@ RUN_ASKED = (f"Do these in order. 1. {LOAD_RUN} 2. Call {IO_RUN} with argv [\"gi
 IO_SNAPSHOT = "mcp__plugin_io-guard_io__io_snapshot"
 IO_RESTORE = "mcp__plugin_io-guard_io__io_restore"
 IO_STAGE = "mcp__plugin_io-guard_io__io_stage"
+IO_TRUST = "mcp__plugin_io-guard_io__io_trust"
+MARK_RUN = json.dumps({"verify": {".py": ["python", "-c", "import sys; open('ran.txt', 'a').write('ran\\n')",
+                                          "{file}"]}}).encode("ascii")
+TRUST_STEPS = (
+    "Do these in order, one tool call each. 1. Use the Write tool to create a.py with the one line x = 1 "
+    f"2. Load {IO_TRUST} with the ToolSearch tool, with the query select:{IO_TRUST} 3. Call {IO_TRUST} with "
+    "no arguments. 4. Use the Write tool to write a.py again with the one line x = 2 Then quote word for "
+    "word each note io-guard gave, and reply DONE.")
 STAGE_LINES = b"".join(f"line {number}\n".encode() for number in range(1, 31))
 STAGE_STEPS = (
     f"Do these in order. 1. Load {IO_EDIT} and {IO_STAGE} with the ToolSearch tool, with the query "
@@ -249,8 +257,7 @@ COMMIT_ASKED = (GRANTED + "Do these in order, one Bash call each. 1. Run: git co
 COMMIT_POLICY = {"commit_policy": {"forbid": ["Co-Authored-By"]}}
 VERIFY_PY = {"verify": {".py": ["python", "-m", "py_compile", "{file}"]}}
 ASCII_PY = json.dumps({"checks": {"verify.write": {"ascii_only": [".py"]}}}).encode("ascii")
-ASCII_USER = {"checks": {"verify.write": {"ascii_only": [".py"]}}}
-ASCII_DROPPED = json.dumps({"checks": {"verify.write": {"ascii_only": []}}}).encode("ascii")
+ASCII_NONE = {"checks": {"verify.write": {"ascii_only": []}}}
 NON_ASCII_WRITE = ("Use the Write tool once to create x.py with exactly this one line: name = \"caf"
                    + chr(0xE9) + "\" Then reply DONE.")
 SUBFOLDER_WRITE = ("Do these in order, one tool call each, and never retry. 1. Run the Bash command: cd sub "
@@ -258,9 +265,8 @@ SUBFOLDER_WRITE = ("Do these in order, one tool call each, and never retry. 1. R
                    "name = \"caf" + chr(0xE9) + "\" Then reply DONE.")
 BROKEN_PY = ("Use the Write tool once to create bad.py with exactly this one line: def f(: Then reply DONE, "
              "without fixing anything.")
-WORK = "{work}"             # in a user_config, the run's work folder, as a key under projects
-OWN_PROJECT_OFF = {"commit_policy": {"ascii_only": True},
-                   "projects": {WORK: {"commit_policy": {"ascii_only": False}}}}
+ASCII_COMMITS = {"commit_policy": {"ascii_only": True}}
+ASCII_COMMITS_OFF = json.dumps({"commit_policy": {"ascii_only": False}}).encode("ascii")
 CAFE = "feat: caf" + chr(0xE9)
 NON_ASCII_COMMIT = (GRANTED + f"Run exactly this Bash command: git commit --allow-empty -m '{CAFE}' "
                     "Then reply DONE.")
@@ -276,7 +282,7 @@ CONFIG_STEPS = (f"Do these in order, one tool call each. 1. Load {IO_CONFIG} wit
                 f"the query select:{IO_CONFIG} 2. Call {IO_CONFIG} with these exact arguments: "
                 '{"key": "checks.shell.lint.enabled", "value": false, "scope": "project"} 3. Call '
                 f"{IO_CONFIG} with these exact arguments: "
-                '{"key": "transport.rewrite_mode.auto", "value": "allow", "scope": "project"} '
+                '{"key": "telemetry.retention_days", "value": 1, "scope": "project"} '
                 "Then quote each result's first line word for word.")
 IO_DASHBOARD = "mcp__plugin_io-guard_io__io_dashboard"
 DASHBOARD_STEPS = (f"Do these in order, one tool call each. 1. Load {IO_DASHBOARD} with the ToolSearch tool, "
@@ -537,6 +543,9 @@ PROBES = {
     "live-restore": Probe(0, "record", guard="", server=True, extra_args=PERMIT,
                           allowed=("ToolSearch", IO_SNAPSHOT, IO_EDIT, IO_RESTORE), prompt=RESTORE_STEPS,
                           check=("notes.txt",), setup={"notes.txt": b"one\r\ntwo\r\n"}),
+    "live-trust": Probe(0, "record", guard="", server=True, extra_args=PERMIT, permission="acceptEdits",
+                        allowed=("Write", "ToolSearch", IO_TRUST), prompt=TRUST_STEPS, max_turns=10,
+                        check=("ran.txt",), setup={".claude/io-guard.json": MARK_RUN}),
     "live-stage": Probe(0, "", guard="", allowed=("ToolSearch", IO_EDIT, IO_STAGE), prompt=STAGE_STEPS,
                         git=True, setup={"a.txt": STAGE_LINES}),
     "live-format": Probe(0, "", guard="", allowed=("ToolSearch", IO_EDIT, IO_FORMAT), prompt=FORMAT_STEPS,
@@ -563,12 +572,12 @@ PROBES = {
     "live-commit-policy": Probe(0, "", guard="", permission="dontAsk", allowed=("Bash",), git=True,
                                 prompt=COMMIT_WITH_CO_AUTHOR, user_config=COMMIT_POLICY,
                                 setup={"notes.txt": b"one\n"}),
-    "live-own-project": Probe(0, "", guard="", permission="dontAsk", allowed=("Bash",), git=True,
-                              prompt=NON_ASCII_COMMIT, user_config=OWN_PROJECT_OFF, max_turns=4,
-                              setup={"notes.txt": b"one\n"}),
-    "live-ascii-joined": Probe(0, "", guard="", permission="acceptEdits", allowed=("Write",), max_turns=4,
-                               prompt=NON_ASCII_WRITE, user_config=ASCII_USER,
-                               setup={".claude/io-guard.json": ASCII_DROPPED}),
+    "live-project-override": Probe(0, "", guard="", permission="dontAsk", allowed=("Bash",), git=True,
+                                   prompt=NON_ASCII_COMMIT, user_config=ASCII_COMMITS, max_turns=4,
+                                   setup={"notes.txt": b"one\n", ".claude/io-guard.json": ASCII_COMMITS_OFF}),
+    "live-ascii-replaced": Probe(0, "", guard="", permission="acceptEdits", allowed=("Write",), max_turns=4,
+                                 prompt=NON_ASCII_WRITE, user_config=ASCII_NONE,
+                                 setup={".claude/io-guard.json": ASCII_PY}),
     "live-subfolder-config": Probe(0, "", guard="", permission="acceptEdits", allowed=("Bash", "Write"),
                                    git=True, prompt=SUBFOLDER_WRITE, max_turns=6,
                                    setup={".claude/io-guard.json": ASCII_PY, "sub/keep.txt": b"k\n"}),
@@ -758,15 +767,15 @@ def feed(session: subprocess.Popen, probe: Probe, answered: threading.Semaphore)
 
 
 @contextlib.contextmanager
-def user_config(values: dict | None, work: Path):
-    """values as io-guard's user config.json in the probes' io-guard folder for the with block, with WORK
-    as the run's work folder, then the file as it was before, or none."""
+def user_config(values: dict | None):
+    """values as io-guard's user config.json in the probes' io-guard folder for the with block, then the
+    file as it was before, or none."""
     if values is None:
         yield
         return
     path = GUARD_HOME / "config.json"
     before = path.read_bytes() if path.is_file() else None
-    write_json(path, json.loads(json.dumps(values).replace(WORK, work.resolve().as_posix())))
+    write_json(path, values)
     try:
         yield
     finally:
@@ -816,7 +825,7 @@ def run(name: str) -> Path:
     started = time.time()
     lines, arrivals = [], []
     answered = threading.Semaphore(0)
-    with (out / "stderr.txt").open("wb") as stderr, user_config(probe.user_config, work):
+    with (out / "stderr.txt").open("wb") as stderr, user_config(probe.user_config):
         session = subprocess.Popen(argv, cwd=work, stdout=subprocess.PIPE, stderr=stderr,
                                    stdin=subprocess.PIPE if probe.turns else None, env={**os.environ, **env})
         killer = threading.Timer(600 + probe.pause_s * len(probe.turns), session.kill)
@@ -1077,6 +1086,19 @@ def run_asked(summary: dict, name: str) -> bool:
     return prompted and asked
 
 
+def trust_asked(summary: dict, name: str) -> bool:
+    """The first write heard PROJECT_COMMANDS_UNTRUSTED and ran nothing, the hook answered ask with
+    TRUST_ASKED, the permission prompt tool received the io.trust call, and the project's command ran once,
+    after it."""
+    folder, _ = latest(name)
+    permit = folder / "permit.jsonl"
+    lines = permit.read_bytes().decode("utf-8").splitlines() if permit.is_file() else []
+    prompted = any("probe_permit" in line and IO_TRUST in line for line in lines)
+    asked = any("TRUST_ASKED" in json.dumps(event) for event in summary["hook_events"])
+    told = "PROJECT_COMMANDS_UNTRUSTED" in json.dumps(summary["hook_events"])
+    return prompted and asked and told and (summary["files"].get("ran.txt") or "").splitlines() == ["ran"]
+
+
 def restore_asked(summary: dict, name: str) -> bool:
     """The hook answered ask with RESTORE_ASKED, the permission prompt tool received the io.restore call, and
     notes.txt holds its bytes from before the edit again."""
@@ -1195,9 +1217,9 @@ def commit_asked(summary: dict, name: str) -> bool:
     return "git commit" in prompted and "reset --hard" not in prompted and "reset --hard" in denied
 
 
-def own_project_off(summary: dict, name: str) -> bool:
-    """The user's entry for the work folder turned ascii_only off there, though the user's file turns it on:
-    the non-ASCII commit landed and no COMMIT_POLICY came back."""
+def project_override(summary: dict, name: str) -> bool:
+    """The project's .claude/io-guard.json turned ascii_only off, though the user's file turns it on: the
+    non-ASCII commit landed and no COMMIT_POLICY came back."""
     folder, _ = latest(name)
     log = subprocess.run(["git", "log", "--format=%s"], cwd=folder / "work", capture_output=True,
                          check=True).stdout.decode("utf-8")
@@ -1296,7 +1318,7 @@ VERDICTS = {
         "EOL_MISMATCH: This command changed conv.txt from CRLF to LF line endings.")),
     "live-results": results_shown,
     "live-pipe-once": piped_twice_warned_once,
-    "live-ascii-joined": lambda s, n: context_reached(n, "NON_ASCII_ADDED: This Write added 1 non-ASCII"),
+    "live-ascii-replaced": lambda s, n: context_reached(n, "NON_ASCII_ADDED: This Write added 1 non-ASCII"),
     "live-subfolder-config": lambda s, n: context_reached(n, "NON_ASCII_ADDED: This Write added 1 non-ASCII"),
     "live-verify-output": lambda s, n: context_reached(n, "VERIFY_OUTPUT: io-guard ran python -m py_compile"),
     "live-read-width": lambda s, n: context_reached(n, "io-guard: LF, UTF-8, 4 spaces, 7 lines"),
@@ -1315,6 +1337,7 @@ VERDICTS = {
     "live-run-denied": lambda s, n: "RULE_DENIED: io.run would run git push origin main" in seen(s),
     "live-run-asked": run_asked,
     "live-restore": restore_asked,
+    "live-trust": trust_asked,
     "live-stage": staged_one_hunk,
     "live-format": formatted_changed_lines,
     "live-config": config_written,
@@ -1325,7 +1348,7 @@ VERDICTS = {
     "live-commit-asked": commit_asked,
     "live-invisible": invisible_named,
     "live-commit-policy": commit_refused,
-    "live-own-project": own_project_off,
+    "live-project-override": project_override,
     "live-skill-doctor": lambda s, n: "io-guard" in json.dumps(s["final"]),
     "command-output": lambda s, n: logged(s, '"error": "Exit code 1\\nIOPROBE_OUT\\nIOPROBE_ERR"')
     and sum("IOPROBE-SUMMARY" in str(result["content"]) and "persisted-output" not in str(result["content"])

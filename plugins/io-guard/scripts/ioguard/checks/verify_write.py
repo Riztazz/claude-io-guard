@@ -146,7 +146,7 @@ class VerifyWrite(Check):
                                 "changed."),
             "ascii_only": ConfigKey(list, [], "File extensions, such as .py, or whole file names, such as "
                                     "LICENSE, where a write that adds non-ASCII characters gets a warning. A "
-                                    "project's list adds to the user's.", project_joins=True),
+                                    "project's list replaces it."),
             "collapse_percent": ConfigKey(int, 50, "A file left with less than this percent of the bytes the "
                                           "call should have left gets a warning."),
             "snapshot_bytes": ConfigKey(int, SNAPSHOT_BYTES, "The largest file, in bytes, whose text is kept "

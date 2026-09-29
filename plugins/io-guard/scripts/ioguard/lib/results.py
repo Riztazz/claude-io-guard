@@ -206,6 +206,13 @@ CODES: tuple[CodeSpec, ...] = (
              "The restore would replace files that changed since the snapshot, so the user decides whether "
              "io.restore runs.", "Wait for the user's answer, and write nothing to those files meanwhile.",
              "0.1"),
+    CodeSpec("TRUST_ASKED", Layer.INTERNAL, Severity.WARNING,
+             "The project's .claude/io-guard.json names commands io-guard would start, so the user decides "
+             "whether they may run.", "Wait for the user's answer.", "0.1"),
+    CodeSpec("PROJECT_COMMANDS_UNTRUSTED", Layer.INTERNAL, Severity.WARNING,
+             "The project's .claude/io-guard.json names commands io-guard starts, which the user has not "
+             "approved, so io-guard ran only the user's own.",
+             "Call io.trust, so the user can approve them in the permission prompt.", "0.1"),
     CodeSpec("SNAPSHOT_TOO_LARGE", Layer.LOCATION, Severity.REFUSED,
              "The paths hold more files or bytes than one snapshot keeps, so io.snapshot kept nothing.",
              "Call io.snapshot on fewer paths, such as only the folders the task changes.", "0.1"),
@@ -222,8 +229,8 @@ CODES: tuple[CodeSpec, ...] = (
              "the text after it.",
              "End old_string and new_string one character later, with the space inside both.", "0.1"),
     CodeSpec("VERIFY_OUTPUT", Layer.BYTES, Severity.WARNING,
-             "The user's verify command for this file printed something, failed, ran out of time or could "
-             "not start after the write.",
+             "The verify command for this file printed something, failed, ran out of time or could not start "
+             "after the write.",
              "Read what it printed, and fix what it names before the next step.", "0.1"),
     CodeSpec("LINES_JOINED", Layer.BYTES, Severity.REFUSED,
              "The Edit deletes old_string and the line break after it, so the lines around it would join.",

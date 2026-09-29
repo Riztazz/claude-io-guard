@@ -17,8 +17,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Protocol
 
-from ioguard.lib import bytesio, locks, paths
-from ioguard.lib.config import Config, ConfigKey, ConfigLayer, LoadReport, Scope, defaults, load
+from ioguard.lib import bytesio, locks, paths, trust
+from ioguard.lib.config import Config, ConfigKey, ConfigLayer, LoadReport, Scope, defaults, load, merge
 from ioguard.lib.git import Git, GitError, GitStatus, LineRange
 from ioguard.lib.locks import Process
 from ioguard.lib.platform import Platform, detect
@@ -160,6 +160,7 @@ class SessionState:
     last_failed_build: str | None = None                          # the words of the build that last failed
     asked_runs: set[str] = field(default_factory=set)             # io.run calls the hook put to the user
     asked_restores: set[str] = field(default_factory=set)         # io.restore calls the hook put to the user
+    asked_trust: set[str] = field(default_factory=set)            # command fingerprints io.trust's hook asked
     tag: str | None = None                                        # the task the last io.snapshot named
     read_logs: dict[Path, tuple[int, int]] = field(default_factory=dict)   # io.read_log's line and byte
     dirty: tuple[Path, ...] | None = None                         # the files dirty at the first start
@@ -367,20 +368,30 @@ def project_root(cwd: Path) -> Path:
 
 def config_layers(data_dir: Path | None, project: Path) -> tuple[ConfigLayer, ...]:
     """The config files over the defaults, in order: the user's config.json in io-guard's folder when there is
-    one, the project's io-guard.json and io-guard.local.json, then the user's entry for the project in
-    config.json."""
+    one, then the project's io-guard.json and io-guard.local.json."""
     user = () if data_dir is None else (ConfigLayer(Scope.USER, data_dir / "config.json"),)
-    own = () if data_dir is None else (ConfigLayer(Scope.USER_PROJECT, data_dir / "config.json", project),)
     return (*user, ConfigLayer(Scope.PROJECT, project / ".claude" / "io-guard.json"),
-            ConfigLayer(Scope.PROJECT_LOCAL, project / ".claude" / "io-guard.local.json"), *own)
+            ConfigLayer(Scope.PROJECT_LOCAL, project / ".claude" / "io-guard.local.json"))
+
+
+def trusted(report: LoadReport, data_dir: Path | None, project: Path) -> tuple[Config, Mapping[str, Any]]:
+    """The config with the project's commands merged when the user approved exactly them, and the commands
+    still waiting, which is empty once approved."""
+    if not report.held:
+        return report.config, {}
+    if data_dir is not None and trust.approved(data_dir, project, report.held):
+        return Config(MappingProxyType(merge(dict(report.config.values), report.held))), {}
+    return report.config, report.held
 
 
 def config_stamp(data_dir: Path | None, project: Path) -> tuple:
-    """Each config file's modification time and size, or None when it is missing, so a change shows."""
+    """Each config file's modification time and size, and trust.json's, or None when one is missing, so a
+    change shows."""
     stamp = []
-    for layer in config_layers(data_dir, project):
+    files = [layer.path for layer in config_layers(data_dir, project)]
+    for path in files + ([] if data_dir is None else [data_dir / trust.TRUST_FILE]):
         try:
-            found = os.stat(layer.path)
+            found = os.stat(path)
         except OSError:
             stamp.append(None)
         else:
@@ -410,21 +421,24 @@ class Context:
     data_dir: Path | None = None                           # io-guard's folder, None in a fake or a replay
     project: Path | None = None                            # the root whose layers config holds
     outside: Config | None = None                          # the config without the project's layers
+    held: Mapping[str, Any] = field(default_factory=dict)  # the project's commands the user has not approved
 
     @classmethod
     def live(cls, data_dir: Path | None, project: Path,
              check_keys: Mapping[str, Mapping[str, ConfigKey]] | None = None) -> "Context":
-        """The real ports, the config from its four layers, and the probe from io-guard's folder. With no
-        folder there is no user layer and no probe, and telemetry stays in memory."""
+        """The real ports, the config from its layers, and the probe from io-guard's folder. With no folder
+        there is no user layer and no probe, and telemetry stays in memory. The project's commands join the
+        config once the user approved them in trust.json, and wait in held until then."""
         platform = detect()
         layers = config_layers(data_dir, project)
         user = tuple(layer for layer in layers if layer.scope is Scope.USER)
         report = load(layers, check_keys or {})
-        return cls(config=report.config, probe=load_probe(data_dir, platform), platform=platform, git=Git(),
+        config, held = trusted(report, data_dir, project)
+        return cls(config=config, probe=load_probe(data_dir, platform), platform=platform, git=Git(),
                    fs=LiveFs(), clock=SystemClock(), session=SessionState(),
-                   telemetry=Telemetry(data_dir, enabled=report.config.get("telemetry.enabled")),
+                   telemetry=Telemetry(data_dir, enabled=config.get("telemetry.enabled")),
                    config_report=report, env=MappingProxyType(dict(os.environ)), data_dir=data_dir,
-                   project=project, outside=load(user, check_keys or {}).config)
+                   project=project, outside=load(user, check_keys or {}).config, held=held)
 
     def for_file(self, path: Path | None) -> "Context":
         """This context for a call on path: a file outside the project takes the config without the

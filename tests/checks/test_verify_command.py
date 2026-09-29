@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from types import MappingProxyType
 from unittest import mock
@@ -11,6 +12,7 @@ from unittest import mock
 from ioguard.checks import verify_command
 from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import default_registry
+from ioguard.lib import trust
 from ioguard.lib.config import Config, defaults
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Verdict
@@ -84,15 +86,36 @@ class TheCommandRuns(unittest.TestCase):
                               "the agent learns the check did not finish")
 
 
-class OnlyTheUserNamesACommand(unittest.TestCase):
-    def test_a_project_file_that_sets_verify_runs_nothing(self):
-        files = {"a.py": b"x = 1\n", ".claude/io-guard.json": json.dumps({"verify": {".py": MARK}}).encode()}
-        with TemporaryProject(files) as project:
-            ctx = Context.live(None, project, REGISTRY.keys())
-            outcome = after_write(project, "a.py", {}, ctx=ctx)
-            self.assertEqual((ctx.config_report.dropped, (project / "a.py.ran").exists(), outcome.verdict),
-                             ((project / ".claude" / "io-guard.json",), False, Verdict.OBSERVE),
-                             "the project file is dropped whole, and its command never starts (D24)")
+def codes(outcome) -> list[Code]:
+    return [result.code for decision in outcome.decisions if decision.check_id == "verify.command"
+            for result in decision.results]
+
+
+class AProjectsCommandWaitsForApproval(unittest.TestCase):
+    PROJECT = {"a.py": b"x = 1\n", ".claude/io-guard.json": json.dumps({"verify": {".py": MARK}}).encode()}
+
+    def test_an_unapproved_command_never_starts_and_is_named_once(self):
+        with TemporaryProject(self.PROJECT) as project:
+            ctx = Context.live(project / "data", project, REGISTRY.keys())
+            first = after_write(project, "a.py", {}, ctx=ctx)
+            again = after_write(project, "a.py", {}, ctx=ctx)
+            ran = (project / "a.py.ran").exists()
+        self.assertEqual((ctx.config_report.dropped, ran, codes(first), codes(again)),
+                         ((), False, [Code.PROJECT_COMMANDS_UNTRUSTED], []),
+                         "the file loads, its command waits, and the agent hears so once a session")
+
+    def test_an_approved_command_runs_until_it_changes(self):
+        with TemporaryProject(self.PROJECT) as project:
+            home = project / "data"
+            held = Context.live(home, project, REGISTRY.keys()).held
+            trust.approve(home, project, held, datetime.now(timezone.utc))
+            after_write(project, "a.py", {}, ctx=Context.live(home, project, REGISTRY.keys()))
+            ran = (project / "a.py.ran").exists()
+            changed = json.dumps({"verify": {".py": [*MARK, "--more"]}}).encode()
+            (project / ".claude" / "io-guard.json").write_bytes(changed)
+            waiting = Context.live(home, project, REGISTRY.keys()).held
+        self.assertEqual((ran, list(waiting)), (True, ["verify"]),
+                         "the approved command runs, and a changed one waits for approval again")
 
     def test_the_users_own_config_runs_its_command(self):
         user = json.dumps({"verify": {".py": MARK}}).encode()

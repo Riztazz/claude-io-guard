@@ -1,12 +1,15 @@
-"""Run the user's verify command on a file after each Edit or Write, and hand its output to the agent.
+"""Run the verify command on a file after each Edit or Write, and hand its output to the agent.
 
-The command comes from the verify key in the user's own config.json, per file extension and per project
-root (lib.commands). A project file cannot name one (D24). It runs from an argument list with no shell, in the
-session's folder, under a timeout, after verify.write has put back anything the write lost. A command that
-passes and prints nothing adds nothing. Otherwise its exit code and the head of its output reach the agent as
-VERIFY_OUTPUT, and so does a timeout or a program that cannot start, so the telemetry counts each one.
+The command comes from the verify key, per file extension and per project root (lib.commands): the user's own,
+or the project's once the user approved it through io.trust. A project's command that waits for approval does
+not run, and the agent hears so once per session as PROJECT_COMMANDS_UNTRUSTED. The command runs from an
+argument list with no shell, in the session's folder, under a timeout, after verify.write has put back
+anything the write lost. A command that passes and prints nothing adds nothing. Otherwise its exit code and
+the head of its output reach the agent as VERIFY_OUTPUT, and so does a timeout or a program that cannot start,
+so the telemetry counts each one.
 """
 from ioguard.checks.base import Check, CheckMeta, Cost
+from ioguard.checks.trust_ask import untrusted
 from ioguard.lib import commands, proc, text
 from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context
@@ -22,19 +25,24 @@ class VerifyCommand(Check):
         severity=Severity.WARNING, cost=Cost.EXPENSIVE, reads=frozenset({"file_path"}), writes=frozenset(),
         after=frozenset({"verify.write"}),
         config={"timeout_ms": ConfigKey(int, 10_000, "Milliseconds a verify command may run before io-guard "
-                                        "stops it.", project_narrows=True),
+                                        "stops it."),
                 "output_chars": ConfigKey(int, 2_000, "The most characters of a verify command's output the "
                                           "agent sees.")},
-        codes=frozenset({Code.VERIFY_OUTPUT}),
-        description="Runs the verify command the user names for the file's extension after each Edit or "
-                    "Write.")
+        codes=frozenset({Code.VERIFY_OUTPUT, Code.PROJECT_COMMANDS_UNTRUSTED}),
+        description="Runs the verify command named for the file's extension after each Edit or Write.")
+
+    def said(self, *results: Result | None) -> Decision:
+        """The results that exist, allowed, or an observation when there is none."""
+        kept = tuple(result for result in results if result is not None)
+        return Decision(self.meta.id, Verdict.ALLOW, results=kept) if kept else Decision.observe(self.meta.id)
 
     def run(self, event: Event, ctx: Context) -> Decision:
         if event.file_path is None:
             return Decision.observe(self.meta.id)
+        waiting = untrusted(ctx, "verify", event.file_path, event.tool_name, ctx.platform)
         named = commands.command_for(ctx.config.get("verify"), event.file_path, ctx.platform)
         if named is None:
-            return Decision.observe(self.meta.id)
+            return self.said(waiting)
         command = commands.filled(named, event.file_path)
         timeout_ms = self.options["timeout_ms"]
         done = proc.run(command, event.cwd, ctx.env, timeout_ms / 1000)
@@ -47,11 +55,11 @@ class VerifyCommand(Check):
             lines = (f"io-guard stopped the verify command {shown} after {timeout_ms:,} ms, before it "
                      f"finished.",)
         elif done.ok and not output:
-            return Decision.observe(self.meta.id)
+            return self.said(waiting)
         else:
             lines = (f"io-guard ran {shown} after this {event.tool_name}, and it exited {done.exit_code}:",
                      output)
         message = "\n".join(line for line in lines if line)
         result = Result.of(Code.VERIFY_OUTPUT, message, event.tool_name, ctx.platform.os,
                            file=event.file_path, evidence={"command": shown, "exit_code": done.exit_code})
-        return Decision(self.meta.id, Verdict.ALLOW, results=(result,))
+        return self.said(result, waiting)

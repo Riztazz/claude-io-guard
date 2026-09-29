@@ -69,27 +69,19 @@ class ASettingIsReadAndWritten(ConfigTest):
                          "a remove leaves the file as it was, and the default applies again")
 
 
-class YourOwnSettingForOneProject(ConfigTest):
-    def test_user_project_turns_a_check_off_in_one_project_and_a_remove_clears_it(self):
+class AProjectOverridesYourSettings(ConfigTest):
+    def test_the_project_turns_a_check_off_that_you_turned_on_and_a_remove_clears_it(self):
         key = "commit_policy.ascii_only"
         with TemporaryProject(git=True) as root, TemporaryProject(git=True) as other:
             self.call(root, key=key, value=True)
-            done = self.call(root, key=key, value=False, scope="user_project")
-            written = json.loads((self.home / "config.json").read_bytes())
+            done = self.call(root, key=key, value=False, scope="project")
+            written = json.loads((root / ".claude" / "io-guard.json").read_bytes())
             elsewhere = self.call(other, key=key)
-            removed = self.call(root, key=key, scope="user_project", remove=True)
-            left = json.loads((self.home / "config.json").read_bytes())
-        self.assertEqual((done.applies, elsewhere.applies, written["projects"]),
-                         (False, True, {root.as_posix(): {"commit_policy": {"ascii_only": False}}}),
-                         "your own entry for a project may turn a check off there, and nowhere else")
-        self.assertEqual((removed.applies, left),
-                         (True, {"schema": 1, "commit_policy": {"ascii_only": True}}),
-                         "a remove takes the entry and projects with it, so All projects applies again")
-
-    def test_a_project_file_refusal_names_the_scope_that_may_loosen(self):
-        with TemporaryProject(git=True) as root:
-            result = self.refusal(root, key="commit_policy.ascii_only", value=False, scope="project")
-        self.assertIn("scope user_project", result.fix.text, "the refusal names the call that works")
+            removed = self.call(root, key=key, scope="project", remove=True)
+        self.assertEqual((done.applies, elsewhere.applies, written),
+                         (False, True, {"schema": 1, "commit_policy": {"ascii_only": False}}),
+                         "the project's file may turn a check off there, and nowhere else")
+        self.assertEqual(removed.applies, True, "a remove lets your own value apply again")
 
 
 class WhatTheFileMayNotHoldIsRefused(ConfigTest):
@@ -97,11 +89,8 @@ class WhatTheFileMayNotHoldIsRefused(ConfigTest):
         cases = {"an unknown key": dict(key="checks.shell.lnt.enabled", value=False),
                  "a wrong type": dict(key="checks.shell.lint.enabled", value="no"),
                  "a value outside the choices": dict(key="transport.rewrite_mode.auto", value="maybe"),
-                 "a key only the user may set": dict(key="verify", value={}, scope="project"),
-                 "a value a project may not set": dict(key="transport.rewrite_mode.auto", value="allow",
-                                                       scope="project"),
-                 "a number a project may only lower": dict(key="transport.budget_bytes", value=9000,
-                                                          scope="project"),
+                 "a key only the user may set": dict(key="telemetry.retention_days", value=1,
+                                                     scope="project"),
                  "an unknown scope": dict(key="checks.shell.lint.enabled", value=False, scope="everyone")}
         with TemporaryProject(git=True) as root:
             for name, given in cases.items():
@@ -134,7 +123,7 @@ class TheNextCallRunsWithIt(ConfigTest):
         key = "checks.shell.lint.enabled"
         with TemporaryProject(git=True) as root, TemporaryProject(git=True) as other, \
                 mock.patch.dict(os.environ, {"IOGUARD_HOME": str(self.home)}):
-            self.call(root, key=key, value=False, scope="user_project")
+            self.call(root, key=key, value=False, scope="project")
             here = contexts.get("s1", root, default_registry()).config.get(key)
             there = contexts.get("s2", other, default_registry()).config.get(key)
         self.assertEqual((here, there), (False, True), "a hook call in the project runs without the check")
@@ -177,8 +166,7 @@ class ThePageServerAnswersOnlyItsOwnPage(ConfigTest):
         sent = json.dumps({"key": "checks.shell.lint.enabled", "value": False, "scope": "project"})
         wrote, answer = self.request("POST", "/api/setting", sent.encode(), token=self.token)
         refused, why = self.request("POST", "/api/setting", json.dumps(
-            {"key": "transport.rewrite_mode.auto", "value": "allow", "scope": "project"}).encode(),
-            token=self.token)
+            {"key": "telemetry.retention_days", "value": 1, "scope": "project"}).encode(), token=self.token)
         on_disk = json.loads((self.root / ".claude" / "io-guard.json").read_bytes())
         lint = rows["checks.shell.lint.enabled"]["applies"]
         self.assertEqual((status, lint, wrote, json.loads(answer)["written"]), (200, True, 200, True),
@@ -208,16 +196,25 @@ class ThePageServerAnswersOnlyItsOwnPage(ConfigTest):
                          "one self-contained file, which calls only the paths the server answers, and names "
                          "the SVG namespace alone")
 
-    def test_each_row_carries_your_own_value_for_this_project_apart_from_the_repositorys(self):
+    def test_each_row_carries_both_files_values_and_what_applies(self):
         key = "commit_policy.ascii_only"
-        for scope, value in (("user", True), ("project", True), ("user_project", False)):
+        for scope, value in (("user", True), ("project", False)):
             sent = json.dumps({"key": key, "value": value, "scope": scope}).encode()
             self.request("POST", "/api/setting", sent, token=self.token)
         _, body = self.request("GET", "/api/settings", token=self.token)
         row = next(row for row in json.loads(body)["settings"] if row["key"] == key)
-        self.assertEqual({name: row[name] for name in ("user", "project", "own", "applies")},
-                         {"user": True, "project": True, "own": False, "applies": False},
-                         "your own entry turns the check off here, over the repository's file")
+        self.assertEqual({name: row[name] for name in ("user", "project", "applies", "project_may_set")},
+                         {"user": True, "project": False, "applies": False, "project_may_set": True},
+                         "the project's file turns the check off here, over yours")
+
+    def test_a_projects_command_is_marked_waiting_until_the_user_approves_it(self):
+        command = {".py": ["python", "-m", "py_compile", "{file}"]}
+        sent = json.dumps({"key": "verify", "value": command, "scope": "project"}).encode()
+        wrote, _ = self.request("POST", "/api/setting", sent, token=self.token)
+        _, body = self.request("GET", "/api/settings", token=self.token)
+        row = next(row for row in json.loads(body)["settings"] if row["key"] == "verify")
+        self.assertEqual((wrote, row["project"], row["waiting"], row["applies"]), (200, command, True, {}),
+                         "the project's file may name a command, which waits and does not apply yet")
 
     def test_a_global_key_a_check_reads_sits_under_that_checks_heading(self):
         _, body = self.request("GET", "/api/settings", token=self.token)

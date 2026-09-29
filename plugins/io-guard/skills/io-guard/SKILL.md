@@ -41,6 +41,7 @@ at all:
 | Stage chosen hunks of a file | `io.stage` | `mcp__plugin_io-guard_io__io_stage` |
 | Open io-guard's settings page | `io.dashboard` | `mcp__plugin_io-guard_io__io_dashboard` |
 | Read or change one io-guard setting | `io.config` | `mcp__plugin_io-guard_io__io_config` |
+| Ask the user to approve a project's commands | `io.trust` | `mcp__plugin_io-guard_io__io_trust` |
 <!-- The generated tools table ends here. -->
 
 ## What io-guard fixes on its own
@@ -112,6 +113,7 @@ A refused call did not run. A warning, or a note that io-guard fixed something, 
 | `PATTERN_INVALID` | ripgrep rejected the Grep pattern before it searched. | Call Grep again with the pattern the message gives. |
 | `PIPE_HIDES_EXIT` | A pipe gives the command the exit code of its last part, which hides a build or test failure. | Read the output for the result, not the exit code. |
 | `POWERSHELL_TRAP` | PowerShell refuses this command before it does anything. | Change the command as the message says, then run it again. |
+| `PROJECT_COMMANDS_UNTRUSTED` | The project's .claude/io-guard.json names commands io-guard starts, which the user has not approved, so io-guard ran only the user's own. | Call io.trust, so the user can approve them in the permission prompt. |
 | `READ_ONLY` | The file is read-only, so the write would fail or stop the session at a prompt. | Ask the user to make it writable, such as by checking it out in their version control. |
 | `READ_TOO_LARGE` | The file is larger than one Read returns. | Read it in the parts the message names, with offset and limit. |
 | `RESERVED_NAME` | The path is a Windows device name, such as nul or con, which Windows tools cannot open or delete as a file. | Use /dev/null in Bash, or another name for a file. |
@@ -132,6 +134,7 @@ A refused call did not run. A warning, or a note that io-guard fixed something, 
 | `TOUCHED_BY_SHELL` | A shell command changed files the agent had read, or made new ones. | Read the changed files again before the next Edit. |
 | `TRAILING_BACKSLASH_QUOTE` | A backslash before a closing double quote escapes the quote in bash, so io-guard wrote the path with forward slashes. | Nothing to do. |
 | `TRANSPORT_BUDGET` | The command is longer than the Bash tool carries on this platform. | Write the script to a file with the Write tool, then run the file. |
+| `TRUST_ASKED` | The project's .claude/io-guard.json names commands io-guard would start, so the user decides whether they may run. | Wait for the user's answer. |
 | `UNINTENDED_CHANGE` | Lines changed that the call did not ask to change. | Read the lines the message names, and put back any change the call did not make. |
-| `VERIFY_OUTPUT` | The user's verify command for this file printed something, failed, ran out of time or could not start after the write. | Read what it printed, and fix what it names before the next step. |
+| `VERIFY_OUTPUT` | The verify command for this file printed something, failed, ran out of time or could not start after the write. | Read what it printed, and fix what it names before the next step. |
 <!-- The generated codes table ends here. -->

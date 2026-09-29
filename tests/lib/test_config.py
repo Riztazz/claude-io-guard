@@ -1,5 +1,5 @@
-"""The config's five layers: defaults in code, the user's file, project files that never widen, and the user's
-own entry for the project, which may."""
+"""The config's layers: defaults in code, the user's file, and project files that override it for their
+project, save the keys that reach every project."""
 import json
 import shutil
 import tempfile
@@ -80,21 +80,24 @@ class LayersMerge(ConfigFiles):
         self.assertEqual(merged["verify"], {".py": ["a"], ".js": ["b"]}, "dictionaries deep-merge")
 
 
-class ProjectsNeverWiden(ConfigFiles):
-    def test_a_project_may_not_set_allow_as_a_rewrite_mode(self):
-        report = self.load(self.layer(Scope.PROJECT, "p.json", AUTO_ALLOW))
-        self.assertEqual((report.config.get("transport.rewrite_mode.auto"), len(report.dropped)),
-                         ("refuse", 1), "a project file that sets allow is dropped, and the default stays")
+class AProjectFileOverridesTheUsers(ConfigFiles):
+    def test_a_project_may_set_allow_as_a_rewrite_mode(self):
+        report = self.load(self.layer(Scope.USER, "u.json", {"transport": {"rewrite_mode": {"auto": "ask"}}}),
+                           self.layer(Scope.PROJECT, "p.json", AUTO_ALLOW))
+        self.assertEqual((report.config.get("transport.rewrite_mode.auto"), report.dropped), ("allow", ()),
+                         "the project's value wins over the user's for that project")
 
     def test_the_user_may_set_allow(self):
         report = self.load(self.layer(Scope.USER, "u.json", AUTO_ALLOW))
         self.assertEqual(report.config.get("transport.rewrite_mode.auto"), "allow",
                          "the rewrite mode is the user's to choose (D12)")
 
-    def test_a_project_may_not_turn_telemetry_off(self):
-        report = self.load(self.layer(Scope.PROJECT_LOCAL, "l.json", {"telemetry": {"enabled": False}}))
-        self.assertTrue(report.config.get("telemetry.enabled"),
-                        "a project-local file cannot turn telemetry off")
+    def test_a_project_may_turn_a_check_and_telemetry_off(self):
+        local = {"telemetry": {"enabled": False}, "commit_policy": {"ascii_only": False}}
+        report = self.load(self.layer(Scope.USER, "u.json", {"commit_policy": {"ascii_only": True}}),
+                           self.layer(Scope.PROJECT_LOCAL, "l.json", local))
+        found = (report.config.get("telemetry.enabled"), report.config.get("commit_policy.ascii_only"))
+        self.assertEqual(found, (False, False), "a project file may loosen what the user's file set")
 
     def test_a_project_may_not_set_a_user_only_check_key(self):
         report = self.load(self.layer(Scope.PROJECT, "p.json",
@@ -102,14 +105,14 @@ class ProjectsNeverWiden(ConfigFiles):
         self.assertIn("A project file may not set this key", report.errors[0].message,
                       "a key marked project_may_set=False is refused in a project file")
 
-    def test_a_project_file_that_sets_verify_is_dropped_whole(self):
-        project = self.layer(Scope.PROJECT, "p.json", {"verify": {".py": ["python", "evil.py", "{file}"]},
-                                                       "transport": {"budget_bytes": 5000}})
-        report = self.load(project)
-        self.assertEqual((report.errors[0].key, report.dropped, report.config.get("verify")),
-                         ("verify", (project.path,), {}),
-                         "a project may not name a command io-guard runs, and none of its file loads")
-        self.assertIn("your own config.json", report.errors[0].message, "the error names where verify goes")
+    def test_a_project_files_commands_are_held_apart_and_the_rest_loads(self):
+        command = {".py": ["python", "check.py", "{file}"]}
+        report = self.load(self.layer(Scope.USER, "u.json", {"verify": {".md": ["mdl", "{file}"]}}),
+                           self.layer(Scope.PROJECT, "p.json", {"verify": command,
+                                                                "transport": {"budget_bytes": 5000}}))
+        found = (report.config.get("verify"), dict(report.held), report.config.get("transport.budget_bytes"))
+        self.assertEqual(found, ({".md": ["mdl", "{file}"]}, {"verify": command}, 5000),
+                         "a project's command waits for approval, beside the user's, and its other keys load")
 
     def test_the_user_sets_verify_and_a_bad_shape_is_an_error(self):
         good = {".py": ["python", "-m", "py_compile", "{file}"]}
@@ -122,45 +125,30 @@ class ProjectsNeverWiden(ConfigFiles):
         return {"checks": {"verify.write": {"ascii_only": ascii_only}, "win.paths": {"prefixes": prefixes},
                            "shell.lint": {"build_commands": builds}}}
 
-    def test_a_projects_list_adds_to_a_stricter_list_and_replaces_the_others(self):
+    def test_a_projects_list_replaces_the_users(self):
         user = self.layer(Scope.USER, "u.json", self.lists([".py", ".md"], ["--a="], ["make"]))
-        cases = {"adds": ([".txt"], [".py", ".md", ".txt"]), "shrinks": ([], [".py", ".md"]),
-                 "repeats": ([".md"], [".py", ".md"])}
-        for name, (project, expected) in cases.items():
-            with self.subTest(name):
-                given = self.layer(Scope.PROJECT, "p.json", self.lists(project, ["--b="], ["ninja"]))
-                values = config.load((user, given), REAL_KEYS).config.values
-                found = [values[f"checks.{key}"] for key in ("verify.write.ascii_only", "win.paths.prefixes",
-                                                            "shell.lint.build_commands")]
-                self.assertEqual(found, [expected, ["--a=", "--b="], ["ninja"]],
-                                 "a project can add to a stricter list, never drop from it, and replaces a "
-                                 "list of its own tools")
+        given = self.layer(Scope.PROJECT, "p.json", self.lists([], ["--b="], ["ninja"]))
+        values = config.load((user, given), REAL_KEYS).config.values
+        found = [values[f"checks.{key}"] for key in ("verify.write.ascii_only", "win.paths.prefixes",
+                                                    "shell.lint.build_commands")]
+        self.assertEqual(found, [[], ["--b="], ["ninja"]], "a project's list replaces the user's, even empty")
 
-    def test_the_user_may_still_shorten_a_stricter_list(self):
-        user = self.layer(Scope.USER, "u.json", {"checks": {"verify.write": {"ascii_only": []}}})
-        found = config.load((user,), REAL_KEYS).config.get("checks.verify.write.ascii_only")
-        self.assertEqual(found, [], "the user's list is the user's")
-
-    def test_every_list_key_says_how_a_project_list_merges(self):
-        def says(key: ConfigKey) -> bool:
-            return f"A project's list {'adds' if key.project_joins else 'replaces'}" in key.doc
-
+    def test_every_list_key_says_a_project_list_replaces_it(self):
         silent = [name for name, key in config.all_keys(REAL_KEYS).items()
-                  if key.type is list and key.project_may_set and not says(key)]
-        self.assertEqual(silent, [], "each list key's text names the merge its flag gives")
+                  if key.type is list and key.project_may_set and "A project's list replaces" not in key.doc]
+        self.assertEqual(silent, [], "each list key's text names how a project's list merges")
 
-    def test_a_project_may_lower_the_transport_budget(self):
-        report = self.load(self.layer(Scope.PROJECT, "p.json", {"transport": {"budget_bytes": 4000}}))
-        self.assertEqual(report.config.get("transport.budget_bytes"), 4000,
-                         "narrowing is what a project may do")
-
-    def test_a_project_may_not_raise_it_past_the_layers_below(self):
+    def test_a_project_may_raise_a_number_past_the_users(self):
         report = self.load(self.layer(Scope.USER, "u.json", {"transport": {"budget_bytes": 5000}}),
                            self.layer(Scope.PROJECT, "p.json", {"transport": {"budget_bytes": 5500}}))
-        self.assertEqual(report.config.get("transport.budget_bytes"), 5000,
-                         "the user's 5,000 holds against the project's 5,500")
-        self.assertIn("may lower this number and not raise it past 5000", report.errors[0].message,
-                      "the error names the value the project may not pass")
+        self.assertEqual((report.config.get("transport.budget_bytes"), report.errors), (5500, ()),
+                         "the project's 5,500 wins over the user's 5,000")
+
+    def test_a_project_may_not_set_a_key_that_reaches_every_project(self):
+        report = self.load(self.layer(Scope.PROJECT, "p.json", {"telemetry": {"retention_days": 1}}))
+        self.assertEqual((report.errors[0].key, report.config.get("telemetry.retention_days")),
+                         ("telemetry.retention_days", 90),
+                         "a project cannot delete every project's telemetry")
 
     def test_a_project_regex_that_could_stall_is_refused_and_the_users_is_not(self):
         stalls = {"noise_patterns": ["^(a+)+$"]}
@@ -212,40 +200,6 @@ class BadFilesAreDroppedWhole(ConfigFiles):
                            self.layer(Scope.PROJECT, "p.json", {"bogus": 1}))
         self.assertEqual((report.config.get("pipeline.soft_ms"), len(report.loaded)), (150, 1),
                          "the guard runs on the layers that loaded")
-
-
-class TheUsersEntryForAProjectMayLoosen(ConfigFiles):
-    def layers(self, user: dict, project: dict | None = None) -> tuple[ConfigLayer, ...]:
-        """The user's file, the project's file, then the user's entry for the project folder "game"."""
-        own = self.layer(Scope.USER, "config.json", user)
-        repo = self.layer(Scope.PROJECT, "p.json", project or {})
-        return own, repo, ConfigLayer(Scope.USER_PROJECT, own.path, self.folder / "game")
-
-    def test_the_entry_turns_off_what_the_user_turned_on_for_this_project_only(self):
-        user = {"commit_policy": {"ascii_only": True},
-                "projects": {(self.folder / "game").as_posix(): {"commit_policy": {"ascii_only": False}}}}
-        here = self.load(*self.layers(user))
-        own, repo, _ = self.layers(user)
-        elsewhere = self.load(own, repo, ConfigLayer(Scope.USER_PROJECT, own.path, self.folder / "other"))
-        self.assertEqual((here.config.get("commit_policy.ascii_only"),
-                          elsewhere.config.get("commit_policy.ascii_only"), here.errors), (False, True, ()),
-                         "the user's entry may loosen, and only in its own project")
-
-    def test_the_entry_wins_over_the_repositorys_file(self):
-        user = {"projects": {str(self.folder / "game"): {"transport": {"rewrite_mode": {"auto": "allow"}}}}}
-        report = self.load(*self.layers(user, {"transport": {"rewrite_mode": {"auto": "ask"}}}))
-        self.assertEqual(report.config.get("transport.rewrite_mode.auto"), "allow",
-                         "the user's own choice for a project loads after the repository's file")
-
-    def test_a_bad_entry_drops_the_users_file_whole(self):
-        user = {"pipeline": {"soft_ms": 150}, "projects": {"relative/game": {"pipeline": {"soft_ms": "x"}},
-                                                           (self.folder / "game").as_posix(): {"bogus": 1}}}
-        report = self.load(*self.layers(user))
-        named = sorted(error.key for error in report.errors)
-        bogus = f"projects.{(self.folder / 'game').as_posix()}.bogus"
-        self.assertEqual((report.config.get("pipeline.soft_ms"), named),
-                         (300, [bogus, "projects.relative/game"]),
-                         "every entry is checked with the user's file, and one error drops the file")
 
 
 if __name__ == "__main__":

@@ -59,8 +59,7 @@ class WinPaths(Check):
                                        "their arguments, whose slash arguments io-guard leaves alone. A "
                                        "project's list replaces it."),
             "prefixes": ConfigKey(list, [], "Argument prefixes Git Bash must always pass as written, beside "
-                                  "the ones io-guard finds. A project's list adds to the user's.",
-                                  project_joins=True),
+                                  "the ones io-guard finds. A project's list replaces it."),
         },
         codes=frozenset({Code.MSYS_PATH, Code.RESERVED_NAME}),
         description="Keeps Git Bash from turning slash arguments into paths, and a redirect to nul into a "

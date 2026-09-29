@@ -133,6 +133,7 @@ A few jobs have no safe built-in tool, so the io server adds them:
 | `io.stage` | Stage the hunks of a file that meet the lines you name, or that one task wrote, and never commit |
 | `io.config` | Read one io-guard setting, or write it into your config or the project's |
 | `io.dashboard` | Open io-guard's settings page, on this machine only |
+| `io.trust` | Let io-guard run the `verify` and `format` commands a project names, after your yes |
 
 The three that change a file write it once, only when every place they name matched once, and a failed one
 writes nothing and names the lines it nearly matched. Two subagents editing one file take turns. After one of
@@ -193,38 +194,36 @@ Until 1.0, installs follow the latest commit. From 1.0 on, releases are tagged.
 ## Configure it
 
 Every setting has a default, and every default is a setting. Your settings live in `config.json` in io-guard's
-folder, and a project can add `.claude/io-guard.json`. A project file can only make io-guard stricter: it can't
-approve commands or make io-guard run a program, since any repository you clone can ship one. It holds for the
-whole project, from any subfolder a session works in, and for the project's files only: a file outside it gets
-your settings alone.
+folder, for every project. A project can add `.claude/io-guard.json`, and anything in it overrides yours for
+that project, so a repository that ships one works as it is from the first session. It holds for the whole
+project, from any subfolder a session works in, and for the project's files only: a file outside it gets your
+settings alone. A project's list replaces yours. `checks.verify.write.ascii_only` takes whole file names, such
+as `LICENSE` or `.gitignore`, beside extensions.
 
-Your own choices for one project go in your `config.json` too, under `projects`, keyed by the project's folder.
-They can do anything your file can, turning a check off included, and they win over the project's file:
+Three settings stay yours alone, because they reach every project: `telemetry.retention_days`, and the
+variables the session probe exports, `checks.session.probe.env` and `env_windows`.
 
-```json
-{"commit_policy": {"ascii_only": true},
- "projects": {"C:/work/game": {"commit_policy": {"ascii_only": false}}}}
-```
-
-Here every project refuses a non-ASCII commit message except `C:/work/game`. A project's list for
-`checks.verify.write.ascii_only` or `checks.win.paths.prefixes`, where a longer list is stricter, adds to
-yours and can't drop anything from it. Its list for any other key replaces yours, and each key's description
-says which. `ascii_only` takes whole file names, such as `LICENSE` or `.gitignore`, beside extensions.
+**A project's commands wait for your yes.** `verify` and `format` name programs io-guard starts, and any
+repository you clone can ship a `.claude/io-guard.json`. So a project's commands don't run until you approve
+them. io-guard tells Claude once a session, Claude calls `io.trust`, and Claude Code's own permission prompt
+shows you each command. Say yes and they run from the next tool call. io-guard keeps the approval in
+`trust.json` in its folder, tied to those exact commands, so a pull that changes one asks again. A command that
+runs a script from inside the repository gets a warning in the prompt, since a pull can change the script
+without changing the command.
 
 To change a setting without opening the file, ask Claude, such as "turn off shell.lint for this project".
-`io.config` writes it into your file, for every project or for this one, or into the project's file, checked
-the way io-guard checks the whole file, so a value the file couldn't load is refused and nothing is written. A
-change applies from the next tool call.
+`io.config` writes it into your file or the project's, checked the way io-guard checks the whole file, so a
+value the file couldn't load is refused and nothing is written. A change applies from the next tool call.
 
 To see every setting at once, pick `settings` under io-guard in the plugin menu, type `/io-guard:settings`, or
 ask Claude to open io-guard's settings page. `io.dashboard` serves it on `127.0.0.1`, on this machine only and
 behind a token in its URL, and Claude opens it in the desktop app's browser pane. Claude also gives you a link,
 Open io-guard's settings page, which opens the same page in any browser on this machine. Each setting shows a
-line of help and a tooltip with its key and default, then two columns: All projects, and Only this project, both in your own
-config. The project's column shows the value the project takes, greyed, from All projects or from the project's
-`.claude/io-guard.json`, until you press Change for this project. Use all projects' value undoes that. A change
-saves at once through `io.config`, and the file comes back two-space formatted. The page's server stops five
-minutes after you close the page, or after `io.dashboard.idle_minutes`, and asking again opens a new one.
+line of help and a tooltip with its key and default, then two columns: All projects, from your `config.json`,
+and Only this project, from the project's `.claude/io-guard.json`. The project's column shows your value,
+greyed, until you press Change for this project, and Use all projects' value undoes that. A change saves at
+once through `io.config`, and the file comes back two-space formatted. The page's server stops five minutes
+after you close the page, or after `io.dashboard.idle_minutes`, and asking again opens a new one.
 
 The page's Stats switch shows what io-guard fixed, warned about and refused over the last 1, 7 or 30 days, for
 this project or for all of them: a bar per day, every code with its counts, and the time each call took. Click

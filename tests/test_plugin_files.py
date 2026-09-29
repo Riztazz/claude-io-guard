@@ -3,6 +3,7 @@ import json
 import re
 import unittest
 
+from ioguard.checks import restore_ask, run_rules, trust_ask
 from ioguard.mcp.server import registry
 from tests import PLUGIN_SCRIPTS, REPO
 
@@ -27,6 +28,14 @@ class PluginFilesAgree(unittest.TestCase):
                  if hook["type"] == "mcp_tool"}
         self.assertTrue(named, "hooks.json has at least one mcp_tool hook")
         self.assertLessEqual(named, servers, "an mcp_tool hook names plugin:<plugin>:<server> from .mcp.json")
+
+    def test_every_io_tool_a_check_asks_about_reaches_the_pretooluse_hook(self):
+        groups = load(PLUGIN / "hooks" / "hooks.json")["hooks"]["PreToolUse"]
+        matcher = next(group["matcher"] for group in groups)
+        missing = [name for name in (run_rules.RUN, restore_ask.RESTORE, trust_ask.TRUST)
+                   if name not in matcher.split("|")]
+        self.assertEqual(missing, [], "a check that answers ask on an io tool never runs unless the hook "
+                                      "matches that tool")
 
     def test_the_server_and_the_command_hooks_start_python_through_pyrun(self):
         server = load(PLUGIN / ".mcp.json")["mcpServers"]["io"]

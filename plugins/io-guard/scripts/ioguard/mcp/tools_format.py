@@ -18,10 +18,11 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 
+from ioguard.checks.trust_ask import untrusted
 from ioguard.lib import commands, edits, paths, proc, text
 from ioguard.lib.context import Context
 from ioguard.lib.git import GitError
-from ioguard.lib.results import Code, Fix, callable_name
+from ioguard.lib.results import Code, Fix, callable_name, render
 from ioguard.mcp.in_place import (Loaded, Place, Written, encoded, held, load, places_shown, refused,
                                   write)
 from ioguard.mcp.toolspec import InvalidArguments, ToolCall, ToolFailure, ToolSpec, cancelled, doc
@@ -83,14 +84,16 @@ class FormatOutput:
     note: str = doc("What the built-in Edit tool needs before its next use of a changed file, or, after a "
                     "dry run, that nothing was written.")
     dry_run: bool = doc("True when io.format wrote nothing and each file carries its diff.", default=False)
+    waiting: str = doc("PROJECT_COMMANDS_UNTRUSTED when the project names a format command the user has not "
+                       "approved, which io.format did not run, else empty.", default="")
 
     def written_bytes(self) -> int:
         return 0 if self.dry_run else sum(each.bytes for each in self.files if each.changed)
 
     def render(self) -> str:
         told = [each.render(self.dry_run) for each in self.files]
-        return "\n".join([*told, self.note] if self.dry_run or any(each.changed for each in self.files)
-                         else told)
+        noted = [*told, self.note] if self.dry_run or any(each.changed for each in self.files) else told
+        return "\n".join([*noted, self.waiting] if self.waiting else noted)
 
 
 @dataclass(frozen=True)
@@ -111,6 +114,9 @@ def format_files(given: FormatInput, call: ToolCall) -> FormatOutput:
         path = paths.normalise(raw, call.cwd, ctx.platform)
         targets.setdefault(paths.resolved(path), path)
     named = lines_by_file(given, call, targets)
+    notices = (untrusted(ctx, "format", path, TOOL, ctx.platform) for path in targets.values())
+    found = next(filter(None, notices), None)
+    waiting = "" if found is None else render(found)
     with ExitStack() as stack:
         for key in sorted(targets):
             stack.enter_context(held(targets[key], ctx, TOOL))
@@ -119,9 +125,9 @@ def format_files(given: FormatInput, call: ToolCall) -> FormatOutput:
             raise ToolFailure(cancelled(TOOL))
         if given.dry_run:
             return FormatOutput([seen(each, Written(each.data, each.data != each.loaded.data), diffed(each))
-                                 for each in planned], DRY_NOTE, dry_run=True)
+                                 for each in planned], DRY_NOTE, dry_run=True, waiting=waiting)
         files = [seen(each, write(each.loaded, each.data, ctx, TOOL)) for each in planned]
-    return FormatOutput(files, NOTE)
+    return FormatOutput(files, NOTE, waiting=waiting)
 
 
 def lines_by_file(given: FormatInput, call: ToolCall, targets: dict[str, Path]) -> dict[str, list[Place]]:

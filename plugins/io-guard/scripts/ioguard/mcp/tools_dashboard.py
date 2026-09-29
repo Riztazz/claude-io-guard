@@ -19,8 +19,8 @@ from typing import Any
 from ioguard import CONFIG_SCHEMA
 from ioguard.checks.registry import default_registry
 from ioguard.lib import config_edit, locks, telemetry, telemetry_summary
-from ioguard.lib.config import ConfigKey, Scope, all_keys, flatten, load, project_key, validate, widened
-from ioguard.lib.context import Context, config_layers, project_root
+from ioguard.lib.config import ConfigKey, Scope, all_keys, load, validate
+from ioguard.lib.context import Context, config_layers, project_root, trusted
 from ioguard.lib.results import Code, Fix, Result, callable_name
 from ioguard.mcp.dashboard_http import Dashboard, Rejected
 from ioguard.mcp.toolspec import ToolCall, ToolFailure, ToolSpec, doc, structured
@@ -28,10 +28,9 @@ from ioguard.mcp.toolspec import ToolCall, ToolFailure, ToolSpec, doc, structure
 log = logging.getLogger("ioguard.mcp")
 
 NAME = "io.config"
-SCOPES = {"user": Scope.USER, "user_project": Scope.USER_PROJECT, "project": Scope.PROJECT}
+SCOPES = {"user": Scope.USER, "project": Scope.PROJECT}
 FROM_FILE = "stats-from.json"             # in io-guard's folder: the time the page's stats count from
 READ_BY = {"commit_policy": "commit.policy"}      # a global key's first part, and the check that reads it
-OWN_INSTEAD = "Call it again with scope user_project to set it for this project in your own config instead."
 
 
 @dataclass(frozen=True)
@@ -39,17 +38,15 @@ class ConfigInput:
     key: str = doc("The setting, as a dotted key, such as checks.shell.lint.enabled or "
                    "transport.rewrite_mode.auto.")
     value: Any = doc("The new value, as JSON. Leave it out to read the setting.", default=None)
-    scope: str = doc("user, for every project in your own config.json in io-guard's folder, user_project, "
-                     "for this project alone in the same file, which may also turn a check off, or project, "
-                     "for the repository's .claude/io-guard.json, which may only make a check stricter.",
-                     default="user")
+    scope: str = doc("user, for every project in your own config.json in io-guard's folder, or project, for "
+                     "this project's .claude/io-guard.json, which overrides yours here.", default="user")
     remove: bool = doc("Remove the setting from the file, so the layer below it applies.", default=False)
 
 
 @dataclass(frozen=True)
 class ConfigOutput:
     key: str = doc("The setting.")
-    scope: str = doc("user, user_project or project.")
+    scope: str = doc("user or project.")
     file: str = doc("The file the scope names, as a path with forward slashes.")
     about: str = doc("What the setting does.")
     choices: tuple[str, ...] = doc("The values it takes, or empty for any of its type.")
@@ -73,7 +70,7 @@ def refused(message: str, ctx: Context, file: Path | None = None, fix: str | Non
 
 
 def file_for(scope: Scope, ctx: Context, root: Path) -> Path:
-    if scope in (Scope.USER, Scope.USER_PROJECT):
+    if scope is Scope.USER:
         if ctx.data_dir is None:
             raise refused("io-guard has no folder of its own here, so it has no user config.json.", ctx)
         return ctx.data_dir / "config.json"
@@ -95,11 +92,9 @@ def read_raw(file: Path, ctx: Context) -> dict:
     return raw
 
 
-def problem(new: dict, scope: Scope, keys: dict[str, ConfigKey], file: Path, below: dict) -> str | None:
+def problem(new: dict, scope: Scope, keys: dict[str, ConfigKey], file: Path) -> str | None:
     """The first error the loader would find in the file as written, or None."""
     errors = [error for error in validate(new, scope, keys, file) if not error.warning]
-    if not errors and scope.project:
-        errors = list(widened(flatten(new, keys), keys, below, file))
     return errors[0].render() if errors else None
 
 
@@ -117,28 +112,21 @@ def setting(ctx: Context, cwd: Path, given: ConfigInput) -> ConfigOutput:
     root = project_root(cwd)
     file = file_for(scope, ctx, root)
     layers = config_layers(ctx.data_dir, root)
-    below = load([layer for layer in layers if layer.scope < scope], check_keys).config.values
     change = given.remove or given.value is not None
-    own = scope is Scope.USER_PROJECT
     with locks.file_lock(file, ctx.data_dir or file.parent):
         raw = read_raw(file, ctx)
-        folder = (project_key(raw, root) or root.as_posix()) if own else ""
-        held = config_edit.entry_of(raw, folder) if own else raw
-        before = config_edit.value_at(held, given.key)
-        value = None if given.remove else given.value
-        edited = config_edit.placed(held, given.key, value) if change else held
-        new = config_edit.with_entry(raw, folder, edited) if own else edited
-        found = problem(new, Scope.USER if own else scope, keys, file, below) if change else None
+        before = config_edit.value_at(raw, given.key)
+        new = config_edit.placed(raw, given.key, None if given.remove else given.value) if change else raw
+        found = problem(new, scope, keys, file) if change else None
         if found is not None:
-            raise refused(found, ctx, file, OWN_INSTEAD if scope is Scope.PROJECT else None)
+            raise refused(found, ctx, file)
         written = change and new != raw
         if written:
             ctx.fs.make_folders(file.parent)
             ctx.fs.write_atomic(file, config_edit.encoded(new))
     applies = load(layers, check_keys).config.values.get(given.key)
-    after = config_edit.value_at(edited, given.key)
     return ConfigOutput(given.key, given.scope, file.as_posix(), spec.doc, tuple(map(str, spec.choices)),
-                        spec.project_may_set, before, after, applies, written)
+                        spec.project_may_set, before, config_edit.value_at(new, given.key), applies, written)
 
 
 def configure(given: ConfigInput, call: ToolCall) -> ConfigOutput:
@@ -163,22 +151,21 @@ def file_state(file: Path, ctx: Context) -> tuple[dict, str | None]:
 
 
 def settings(ctx: Context, cwd: Path) -> dict:
-    """Every setting with what the user's file sets for every project and for this one, what the repository's
-    file sets, and what applies, for the dashboard page. Plain JSON, since the page reads it."""
+    """Every setting with what the user's file and the project's file set, what applies, and whether the
+    project's file may set it, for the dashboard page. Plain JSON, since the page reads it."""
     registry = default_registry()
     check_keys = registry.keys()
     keys = all_keys(check_keys)
     root = project_root(cwd)
-    files = {name: file_for(SCOPES[name], ctx, root) for name in ("user", "project")}
+    files = {name: file_for(scope, ctx, root) for name, scope in SCOPES.items()}
     groups = {check_id: check_class.meta.description for check_id, check_class in registry.classes.items()}
     states = {name: file_state(file, ctx) for name, file in files.items()}
-    user = states["user"][0]
-    own = config_edit.entry_of(user, project_key(user, root) or root.as_posix())
-    applies = load(config_layers(ctx.data_dir, root), check_keys).config.values
+    config, held = trusted(load(config_layers(ctx.data_dir, root), check_keys), ctx.data_dir, root)
     rows = [{"key": key, "group": group_of(key), "about": spec.doc, "type": spec.type.__name__,
-             "choices": list(spec.choices), "default": spec.default, "applies": applies.get(key),
-             "user": config_edit.value_at(user, key), "own": config_edit.value_at(own, key),
-             "project": config_edit.value_at(states["project"][0], key)}
+             "choices": list(spec.choices), "default": spec.default, "applies": config.values.get(key),
+             "user": config_edit.value_at(states["user"][0], key),
+             "project": config_edit.value_at(states["project"][0], key),
+             "project_may_set": spec.project_may_set, "waiting": key in held}
             for key, spec in sorted(keys.items()) if key != "schema"]
     return {"project": root.as_posix(), "files": {name: file.as_posix() for name, file in files.items()},
             "errors": {name: error for name, (_, error) in states.items() if error}, "groups": groups,

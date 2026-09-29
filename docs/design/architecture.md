@@ -53,6 +53,7 @@ plugins/io-guard/
         context.py                 Context, the ports, SessionState, Probe
         decisions.py               Verdict, Rewrite, Decision, compose
         telemetry.py               Telemetry, TraceContext, session_files, expire, erase
+        trust.py                   fingerprint, approved, approve: the project commands the user approved
         telemetry_summary.py       Summary, files, summarise, page: every session's telemetry summed
         platform.py                Platform, detect
         probing.py                 tool_version, claude_version, console_encoding, case_insensitive
@@ -97,6 +98,7 @@ plugins/io-guard/
         run_rules.py               run.rules: RULE_DENIED and RULE_ASKED at the PreToolUse hook on io.run
         commit_policy.py           commit.policy: COMMIT_POLICY for a commit message the user's policy forbids
         restore_ask.py             restore.ask: RESTORE_ASKED at the PreToolUse hook on io.restore
+        trust_ask.py               trust.ask: TRUST_ASKED on io.trust, and PROJECT_COMMANDS_UNTRUSTED's text
       hooks/
         entry.py                   run_event: an event in, the answer dict out, never raising
         answer.py                  Outcome -> hook JSON, per event and rewrite mode
@@ -115,6 +117,7 @@ plugins/io-guard/
         tools_format.py            io.format
         tools_history.py           io.snapshot, io.restore, io.compare, io.stage
         tools_dashboard.py         io.config and io.dashboard: one setting, the settings page and its stats
+        tools_trust.py             io.trust: the project's commands, approved in the permission prompt
         dashboard_http.py          Dashboard: the page and its JSON API on 127.0.0.1, behind a token
         tools_hook.py              hook.pre_tool_use, hook.post_tool_use, hook.post_tool_use_failure, hook.ping
         skill.py                   the skill page's tool and code tables, which tools/skill.py writes
@@ -586,11 +589,11 @@ class ConfigKey:                             # in lib.config, which validates it
     type: type
     default: Any
     doc: str
-    project_may_set: bool = True
+    project_may_set: bool = True             # False for a key whose effect reaches every project
     choices: tuple = ()                      # the values it takes, or () for any of its type
-    project_forbids: tuple = ()              # values a project file may not set
-    project_narrows: bool = False            # a project file may lower this number and never raise it
     shape: Optional[Callable[[Any], Optional[str]]] = None   # what is wrong inside a list or dict value
+    project_regex: bool = False              # regexes, which a project file sets only if bounded
+    runs: bool = False                       # programs io-guard starts: a project's value waits for approval
 
 @dataclass(frozen=True)
 class CheckMeta:
@@ -953,38 +956,25 @@ Policy data lives in `io-guard.json`. The file carries no comments, so its keys 
 }
 ```
 
-Five layers merge in this order, and a later layer overrides an earlier one key by key.
+Three layers merge in this order, and a later layer overrides an earlier one key by key (D38, task 80).
 
-| Layer | File | May widen |
+| Layer | File | Sets |
 |---|---|---|
-| Defaults | `config.defaults()` in code | |
-| User | `config.json` in io-guard's folder, `~/.claude/io-guard` by default (D30) | yes |
-| Project | `<project>/.claude/io-guard.json` | no |
-| Project local | `<project>/.claude/io-guard.local.json`, gitignored | no |
-| User project | the entry for `<project>` under `projects` in the user's `config.json` (task 76) | yes |
+| Defaults | `config.defaults()` in code | every key |
+| User | `config.json` in io-guard's folder, `~/.claude/io-guard` by default (D30) | every key |
+| Project | `<project>/.claude/io-guard.json`, then `<project>/.claude/io-guard.local.json` | every key but three, and its commands wait for approval |
 
-The user project layer is the user's own choice for one project, kept in the user's file, which no repository
-ships. So it may set anything the user layer may, a check turned off included, and it loads last, over the
-repository's files. Its key is the project's absolute folder, matched as the file system names folders, as
-`verify` keys a project's own commands:
-
-```json
-{"commit_policy": {"ascii_only": true},
- "projects": {"C:/work/game": {"commit_policy": {"ascii_only": false}}}}
-```
-
-The user's file is checked with its entries, each error named `projects.<folder>.<key>`, and one error drops
-the file and every entry in it.
+A project file overrides the user's for that project. Three keys reach every project, so only the user's file
+sets them: `telemetry.retention_days`, since every project's telemetry shares one folder, and
+`checks.session.probe.env` and `env_windows`, which the session probe exports before any prompt could ask.
+`ConfigKey.project_may_set` marks them.
 
 `<project>` is `lib.context.project_root` of the hook's `cwd`: the nearest folder at or above it that holds one
 of the two project files, else the nearest that holds `.git`, else `cwd` itself. The hooks keep one Context per
 session and project root, and telemetry names the project by the root. A call on a file outside the root runs
 with `Context.for_file`, whose config holds the defaults and the user layer alone (task 57).
 
-A list replaces the list below it, except in a project layer for a key marked `project_joins`, where a longer
-list is stricter: there the project's entries are added after the list below, and nothing is dropped. The keys
-marked are `checks.verify.write.ascii_only` and `checks.win.paths.prefixes`, and every list key's text says
-which way it merges, which a test holds (task 45).
+A list replaces the list below it, a project's too, and every list key's text says so, which a test holds.
 
 **Every policy value is a key here, with its default in code (D16).** A number that decides behaviour and has no
 key is a defect. The values above are the defaults the lead set on 2026-09-27. A key enters `lib.config` with
@@ -1009,16 +999,14 @@ Task 24 added `io.edit.max_bytes` of 16 MB and `io.edit.wait_ms` of 5,000, which
 `io.append` share. Task 25 added `io.run.timeout_s` of 120, `io.run.handle_ttl_s` of 3,600,
 `io.read_log.max_lines` of 500 and `noise_patterns`. Task 26 added `format`, the command `io.format` runs per
 extension, clang-format for C and C++ by default, and `io.format.timeout_s` of 30. Task 29 added
-`commit_policy.forbid`, empty and the user's alone, and `commit_policy.ascii_only`, false, which a project file
-may only turn on. Task 32 added `io.snapshot.max_files` of 5,000 and `io.snapshot.max_bytes` of 512 MB, which a
-project may lower. Task 39 added `invisible_allowed`, the characters, as `U+00A0`, a write may add without an
-`INVISIBLE_ADDED` warning. A key marked `project_regex`, `noise_patterns` and `checks.shell.results.error_patterns`,
+`commit_policy.forbid`, empty, and `commit_policy.ascii_only`, false. Task 32 added `io.snapshot.max_files` of
+5,000 and `io.snapshot.max_bytes` of 512 MB. Task 39 added `invisible_allowed`, the characters, as `U+00A0`,
+a write may add without an `INVISIBLE_ADDED` warning. A key marked `project_regex`, `noise_patterns` and `checks.shell.results.error_patterns`,
 holds regexes io-guard runs on every line of output, and Python's `re` has no timeout. So a project file's
 pattern that does not compile, is over 200 characters, or repeats a group that repeats inside, such as
-`(a+)+`, drops the file (`lib.patterns`). The user's own `config.json` may still set one.
-Each other key arrives with its check. A key marked `project_narrows`, such as
-the budget, takes a lower number from a project file and refuses a higher one. A key with a `shape`, such as
-`verify`, has its inner values checked too, and a wrong one drops the file like any other error.
+`(a+)+`, drops the file (`lib.patterns`), since a stall is a denial of service on every write. The user's own
+`config.json` may still set one. Each other key arrives with its check. A key with a `shape`, such as `verify`,
+has its inner values checked too, and a wrong one drops the file like any other error.
 
 **The rewrite mode is the user's (D12).** For each permission mode the user layer sets `refuse`, `ask` or `allow`.
 In `refuse` the call is refused and the reason carries the corrected command, so the model reruns it and the
@@ -1026,14 +1014,23 @@ auto-mode classifier judges it. In `ask` the user sees the corrected command. In
 classifier sees it. The user edits `config.json`, calls `io.config`, or uses the dashboard page, and the README
 shows each. io-guard declares no `userConfig`, which could not hold nested keys anyway.
 
-A project file restricts and never widens. It disables a check, adds `skip_trees` and `noise_patterns`, and
-narrows `budget_bytes`. It cannot set `verify` or `format` commands, set `rewrite_mode` to `allow`, or turn telemetry
-off. `ConfigKey.project_may_set` marks each check key. The scope rule exists because a cloned repository must
-not be able to approve commands or make io-guard run a program (D24). A `verify` or `format` command is a
-program io-guard starts, so only the user's own `config.json` names one. Each key maps an extension to a
-command, such as `".py": ["python", "-m", "py_compile", "{file}"]`, and an absolute project root to its own map
-of extensions, which wins for that project's files (task 18). A format command's argument that holds `{first}`
-and `{last}` repeats once per line range (task 26).
+**A project's commands wait for the user's approval (D38).** `verify` and `format` name programs io-guard
+starts, and `ConfigKey.runs` marks them. `load` holds a project file's values of those keys apart, in
+`LoadReport.held`, and `context.trusted` merges them into the config only when `trust.json` in io-guard's folder
+approves exactly them: the SHA-256 of their canonical JSON, keyed by the project's resolved folder (`lib.trust`).
+Until then `Context.held` carries them, `verify.command` and `io.format` run the user's own commands only, and
+each says once per session `PROJECT_COMMANDS_UNTRUSTED`, naming the commands and `io.trust`. `io.trust`'s
+PreToolUse hook, `checks.trust_ask`, answers `ask` with `TRUST_ASKED`, listing each command and any file inside
+the project it runs, so Claude Code's own permission prompt puts them to the user, the one control the model
+cannot answer. The tool writes the approval only for a fingerprint that hook recorded. A changed command changes
+the fingerprint and waits again, and `config_stamp` watches `trust.json`, so an approval applies from the next
+call. A script the command runs from inside the project can change in a pull while the command stays the same,
+which the prompt says and the fingerprint cannot see.
+
+Each command key maps an extension to a command, such as `".py": ["python", "-m", "py_compile", "{file}"]`, and
+an absolute project root to its own map of extensions, which wins for that project's files (task 18). A format
+command's argument that holds `{first}` and `{last}` repeats once per line range (task 26). A program named
+without a folder starts only from where PATH holds it (task 79).
 
 Loading happens once per process and fails loudly. `validate` reports an unknown key with the file, the key
 and the nearest known key, a type mismatch with the expected type, and a scope violation with the layer that
@@ -1450,14 +1447,25 @@ io.config(key, value = None, scope = "user", remove = False)
 
 - **Read.** With no `value` and no `remove`, the call writes nothing and names what the file sets, what
   applies for the project, and what the key does.
-- **Write.** `scope` `user` is `config.json` in io-guard's folder, `user_project` is the project's entry under
-  `projects` in the same file (task 76), and `project` is the project root's `.claude/io-guard.json`.
-  `lib.config_edit` places the key where the file already keeps its neighbours, `entry_of` and `with_entry`
-  read and write one project's entry, and `remove` takes the key out with every object it empties, the entry
-  and `projects` included. The file as it would be is checked with `validate`, and a project file with
-  `widened` too, so a value the loader would drop answers `CONFIG_REFUSED` and nothing is written. A refusal at
-  `project` names `user_project` as the scope that may loosen. The write is one `write_atomic` under
-  `file_lock`.
+- **Write.** `scope` `user` is `config.json` in io-guard's folder, and `project` is the project root's
+  `.claude/io-guard.json`, which overrides it for that project. `lib.config_edit` places the key where the file
+  already keeps its neighbours, and `remove` takes it out with every object it empties. The file as it would
+  be is checked with `validate`, so a value the loader would drop answers `CONFIG_REFUSED` and nothing is
+  written. A `verify` or `format` command written to the project's file waits for `io.trust`. The write is one
+  `write_atomic` under `file_lock`.
+
+### Approve a project's commands
+
+`mcp/tools_trust.py` holds `io.trust` (task 80).
+
+```python
+io.trust() -> TrustOutput(project, commands, approved)
+```
+
+The PreToolUse hook on the call, `checks.trust_ask`, answers `ask` with `TRUST_ASKED` when the project's config
+names commands the user has not approved, and records their fingerprint. With the user's yes, the tool writes
+the approval to `trust.json`. A call the hook did not ask about refuses with `TRUST_ASKED` and approves nothing.
+With nothing waiting, the call says so and writes nothing.
 
 ### Keep files, and put them back
 
@@ -1608,14 +1616,14 @@ from it. A background run keeps running when its call is cancelled, because its 
 - **The page.** One list of every setting, grouped by check, with the rewrite modes first, and a global key a
   check reads under that check (`READ_BY`). Each setting is a row of three columns, whose headings stay at the
   top: the setting, with a one-line help that `?` opens in full and a tooltip with its key and default, then
-  "All projects", the user's file, then "Only <project>", the user's entry for the project, each with the
-  control its type takes in the same place on every row (tasks 74 and 76). The project column writes
-  `user_project`, so it may turn a check off. With no entry it shows the value the project takes, greyed: from
-  the repository's `.claude/io-guard.json` when that sets one, and it says so, else from All projects. "Change
-  for this project" starts the entry from that value, and "Use all projects' value" or "Use the repository's
-  value" removes it. A line above the headings names the file both columns save in (task 78). Below 640
-  pixels, and for a list or a JSON value, the two columns stack under the setting, each with its heading. A change saves at once and the page reads the settings again, so a refused value goes
-  back to the saved one and its message stays on the card. It follows the system's light or dark scheme until
+  "All projects", the user's file, then "Only <project>", the project's `.claude/io-guard.json`, each with the
+  control its type takes in the same place on every row (tasks 74 and 80). With no value in the project's
+  file, the project column shows the user's, greyed, with "Change for this project", and "Use all projects'
+  value" removes the project's. A key only the user's file sets says so, and a project command that waits for
+  approval says to ask for `io.trust`. A line above the headings names each column's file (task 78). Below 640
+  pixels, and for a list or a JSON value, the two columns stack under the setting, each with its heading. A
+  change saves at once and the page reads the settings again, so a refused value goes back to the saved one and
+  its message stays on the card. It follows the system's light or dark scheme until
   a pick at the top, kept in `localStorage`.
 - **The stats.** A switch at the top shows Stats instead of Settings: the last 1, 7 or 30 days, of this project
   or of all projects. It shows the totals fixed, warned and refused, a bar per day, and every code with its
