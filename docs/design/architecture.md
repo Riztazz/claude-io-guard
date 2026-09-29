@@ -750,7 +750,8 @@ def write_atomic(path: Path, data: bytes, retries: int = 5) -> WriteReport
 # drift.py, task 18
 def drift(before: Profile, after: Profile) -> Drift         # endings, BOM, encoding and odd bytes that changed
 def edited(before: str, old: str, new: str, replace_all: bool) -> Optional[Edited]   # the text and new lines
-def changed_lines(expected: str, actual: str) -> tuple[int, ...]   # endings read as LF, BOM dropped
+def changed_lines(expected: str, actual: str) -> tuple[int, ...]   # endings read as LF, BOM dropped. Task
+                                                            # 102: exact to EXACT_LINES (500) lines, then fast
 def frontmatter_end(text: str) -> int                        # task 50: the last line of a --- block, or 0
 def lines_holding(text: str, pattern: Pattern, among: Optional[tuple[int, ...]] = None) -> tuple[int, ...]
 def would_collapse(expected: int, actual: int, percent: int) -> bool

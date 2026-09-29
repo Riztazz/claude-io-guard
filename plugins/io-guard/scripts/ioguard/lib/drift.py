@@ -14,6 +14,7 @@ STYLES = (Eol.CRLF, Eol.LF, Eol.CR)
 CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 REPLACEMENT = re.compile(re.escape(chr(0xFFFD)))
 NON_ASCII = re.compile(r"[^\x00-\x7f]")
+EXACT_LINES = 500       # lines diffed exactly, a cost that grows past their square when lines repeat
 
 
 @dataclass(frozen=True)
@@ -84,7 +85,9 @@ def edited(before: str, old: str, new: str, replace_all: bool) -> Edited | None:
 
 def changed_lines(expected: str, actual: str) -> tuple[int, ...]:
     """The lines of actual, counted from 1, that differ from expected. A line removed shows as the line
-    after it. The common head and tail are skipped before the diff, so one edit in a long file stays cheap."""
+    after it. The common head and tail are skipped before the diff, so one edit in a long file stays cheap.
+    Past EXACT_LINES lines of difference on either side, lines repeated often are matched last, which keeps
+    the diff fast on a rewrite of repeated lines and can name more lines than changed."""
     want, got = lines(expected), lines(actual)
     head = 0
     while head < min(len(want), len(got)) and want[head] == got[head]:
@@ -92,8 +95,8 @@ def changed_lines(expected: str, actual: str) -> tuple[int, ...]:
     tail = 0
     while tail < min(len(want), len(got)) - head and want[-1 - tail] == got[-1 - tail]:
         tail += 1
-    middle = difflib.SequenceMatcher(None, want[head:len(want) - tail], got[head:len(got) - tail],
-                                     autojunk=False)
+    left, right = want[head:len(want) - tail], got[head:len(got) - tail]
+    middle = difflib.SequenceMatcher(None, left, right, autojunk=max(len(left), len(right)) > EXACT_LINES)
     found: set[int] = set()
     for tag, _, _, start, end in middle.get_opcodes():
         if tag != "equal":

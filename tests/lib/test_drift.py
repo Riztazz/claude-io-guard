@@ -1,4 +1,5 @@
 """lib.drift compares a file after a write with the file before it and with the text the call asked for."""
+import time
 import unittest
 
 from ioguard.lib.drift import changed_lines, drift, edited, frontmatter_end, restored, would_collapse
@@ -60,6 +61,20 @@ class ChangedLinesAreCountedFromOne(unittest.TestCase):
             with self.subTest(name):
                 self.assertEqual(changed_lines(expected, actual), lines,
                                  "only lines whose text differs count, never their endings")
+
+    def test_a_relaid_file_of_repeated_lines_compares_in_linear_time(self):
+        before = '{\n  "a": 1,\n  "b": [\n    1,\n    2\n  ]\n},\n' * 3000
+        after = '{"a": 1, "b": [1, 2]},\n{\n  "a": 1,\n},\n' * 3000
+        started = time.perf_counter()
+        found = changed_lines(before, after)
+        self.assertEqual((bool(found), time.perf_counter() - started < 0.5), (True, True),
+                         "a Write that relays 21,000 lines of repeated text cannot stall the check")
+
+    def test_a_small_difference_in_a_large_file_is_still_exact(self):
+        before = "".join(f"line {number}\n" for number in range(20_000))
+        after = before.replace("line 700\n", "line seven hundred\n").replace("line 900\n", "")
+        self.assertEqual(changed_lines(before, after), (701, 901),
+                         "the common head and tail go first, so a few changes in a long file are exact")
 
 
 class FrontmatterEndsAtItsSecondRule(unittest.TestCase):
