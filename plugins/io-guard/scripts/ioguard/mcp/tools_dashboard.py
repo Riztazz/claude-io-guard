@@ -4,7 +4,9 @@ io.dashboard: the settings page, served on 127.0.0.1 by this io server, which wr
 A write is checked the way the loader checks the whole file, so a value the file could not load is never
 written, and a project file never sets what only the user may (docs/design/architecture.md, section 5). The
 file is written whole through write_atomic, under the file lock every io-guard process shares, and each
-session's hooks load it again from their next call. The page server starts on the first io.dashboard call for
+session's hooks load it again from their next call. A write of a key marked runs into the user's file waits
+for the user's yes in Claude Code's permission prompt (checks.trust_ask), which the page cannot show, so the
+page refuses such a write. The page server starts on the first io.dashboard call for
 a project and runs as long as this io server does.
 """
 import difflib
@@ -18,6 +20,7 @@ from typing import Any
 
 from ioguard import CONFIG_SCHEMA
 from ioguard.checks.registry import default_registry
+from ioguard.checks.trust_ask import config_write, needs_yes
 from ioguard.lib import config_edit, locks, telemetry, telemetry_summary
 from ioguard.lib.config import ConfigKey, Scope, all_keys, load, validate
 from ioguard.lib.context import Context, config_layers, project_root, trusted
@@ -130,7 +133,11 @@ def setting(ctx: Context, cwd: Path, given: ConfigInput) -> ConfigOutput:
 
 
 def configure(given: ConfigInput, call: ToolCall) -> ConfigOutput:
-    return setting(call.context, call.cwd, given)
+    ctx, sent = call.context, vars(given)
+    if needs_yes(sent) and not ctx.session.take_ask(call.tool_use_id, config_write(sent), ctx.clock.now()):
+        raise ToolFailure(Result.of(Code.CONFIG_ASKED, f"{NAME} wrote nothing, because no permission prompt "
+                                    f"on this call put {given.key} to the user.", NAME, ctx.platform.os))
+    return setting(ctx, call.cwd, given)
 
 
 def group_of(key: str) -> str:
@@ -196,6 +203,13 @@ BOARDS: dict[Path, Dashboard] = {}
 def written(ctx: Context, cwd: Path, given: dict) -> dict:
     """A setting the page sent, written as io.config writes it, as the JSON the page reads."""
     known = {name: given[name] for name in ("key", "scope", "value", "remove") if name in given}
+    if needs_yes(known):
+        mine = (ctx.data_dir / "config.json").as_posix() if ctx.data_dir else "io-guard's config.json"
+        raise Rejected({"code": Code.CONFIG_REFUSED.value,
+                        "message": f"{known['key']} names a program io-guard starts, or a variable one "
+                                   f"reads, and this page cannot ask you to approve it, so it wrote nothing. "
+                                   f"Ask Claude to set it with io.config, which shows the permission prompt, "
+                                   f"or edit {mine} yourself."})
     try:
         return structured(setting(ctx, cwd, ConfigInput(**known)))
     except ToolFailure as failure:

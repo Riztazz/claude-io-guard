@@ -13,9 +13,14 @@ from pathlib import Path
 from unittest import mock
 from urllib.parse import parse_qs, urlsplit
 
+from ioguard.checks import trust_ask
+from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import Registry, default_registry
+from ioguard.checks.trust_ask import TrustAsk
 from ioguard.hooks import entry
 from ioguard.lib.context import Context, LiveFs, project_root
+from ioguard.lib.decisions import Verdict
+from ioguard.lib.events import Event, Surface
 from ioguard.lib.platform import detect
 from ioguard.lib.results import Code
 from ioguard.lib.telemetry import Telemetry, TelemetryEvent
@@ -23,6 +28,7 @@ from ioguard.mcp.dashboard_http import PAGE, Dashboard
 from ioguard.mcp.progress import CancelToken
 from ioguard.mcp.tools_dashboard import BOARDS, ConfigInput, DashboardInput, configure, dashboard
 from ioguard.mcp.toolspec import ToolCall, ToolFailure
+from tests.support import events
 from tests.support.project import TemporaryProject
 
 
@@ -104,6 +110,61 @@ class WhatTheFileMayNotHoldIsRefused(ConfigTest):
         with TemporaryProject(git=True) as root:
             result = self.refusal(root, key="checks.shell.lnt.enabled", value=False)
         self.assertIn("The nearest is checks.shell.lint.enabled.", result.message, "the typo's fix is named")
+
+
+class ACommandOrAVariableWaitsForTheUsersYes(ConfigTest):
+    WRITES = {"a command": {"key": "verify", "value": {".py": ["python", "-m", "py_compile", "{file}"]}},
+              "a variable": {"key": "checks.session.probe.env", "value": {"BASH_ENV": "C:/x/evil.sh"}}}
+
+    def asked(self, root: Path, tool_input: dict):
+        """The PreToolUse hook on an io.config call, as the server runs it."""
+        registry = Registry()
+        registry.register(TrustAsk)
+        raw = events.pre_tool_use(trust_ask.CONFIG, tool_input, root)
+        event = Event.from_hook_json(raw, Surface.MCP_HOOK, self.ctx.platform)
+        return Pipeline(registry).run(event, self.ctx)
+
+    def sent(self, root: Path, tool_use_id: str | None, **given):
+        return configure(ConfigInput(**given), ToolCall(lambda: self.ctx, CancelToken(), root, None,
+                                                        tool_use_id=tool_use_id))
+
+    def test_the_hook_asks_and_only_the_call_it_asked_about_writes(self):
+        for name, given in self.WRITES.items():
+            with self.subTest(name), TemporaryProject(git=True) as root:
+                with self.assertRaises(ToolFailure) as unasked:
+                    self.sent(root, events.TOOL_USE_ID, **given)
+                before = (self.home / "config.json").exists()
+                outcome = self.asked(root, given)
+                result = outcome.decisions[0].results[0]
+                done = self.sent(root, events.TOOL_USE_ID, **given)
+                self.assertEqual((unasked.exception.result.code, before), (Code.CONFIG_ASKED, False),
+                                 "with no prompt from the hook, io.config writes nothing")
+                self.assertEqual((outcome.verdict, result.code, done.written, done.after),
+                                 (Verdict.ASK, Code.CONFIG_ASKED, True, given["value"]),
+                                 "the hook puts the write to the user, and the call it asked about writes")
+                self.assertIn(given["key"], result.message, "the prompt names the setting")
+                (self.home / "config.json").unlink()
+
+    def test_a_declined_config_ask_lets_no_other_call_write(self):
+        given = self.WRITES["a command"]
+        with TemporaryProject(git=True) as root:
+            self.asked(root, given)
+            for other in ("toolu_02OTHER", None):
+                with self.subTest(tool_use_id=other):
+                    with self.assertRaises(ToolFailure, msg="a call no hook saw writes nothing"):
+                        self.sent(root, other, **given)
+        self.assertFalse((self.home / "config.json").exists(), "the user's file was never written")
+
+    def test_a_read_a_removal_a_project_write_and_any_other_key_ask_nothing(self):
+        cases = {"a read": {"key": "verify"}, "a removal": {"key": "verify", "remove": True},
+                 "a project write": {**self.WRITES["a command"], "scope": "project"},
+                 "another key": {"key": "checks.shell.lint.enabled", "value": False}}
+        with TemporaryProject(git=True) as root:
+            for name, given in cases.items():
+                with self.subTest(name):
+                    self.assertEqual(self.asked(root, given).verdict, Verdict.OBSERVE,
+                                     "only a command or a variable for every project asks")
+                    self.sent(root, None, **given)
 
 
 class TheNextCallRunsWithIt(ConfigTest):
@@ -215,6 +276,17 @@ class ThePageServerAnswersOnlyItsOwnPage(ConfigTest):
         row = next(row for row in json.loads(body)["settings"] if row["key"] == "verify")
         self.assertEqual((wrote, row["project"], row["waiting"], row["applies"]), (200, command, True, {}),
                          "the project's file may name a command, which waits and does not apply yet")
+
+    def test_the_page_refuses_a_command_or_a_variable_for_every_project(self):
+        answers = []
+        for key, value in (("verify", {".py": ["python", "x.py"]}), ("checks.session.probe.env", {"A": "1"})):
+            sent = json.dumps({"key": key, "value": value, "scope": "user"}).encode()
+            status, body = self.request("POST", "/api/setting", sent, token=self.token)
+            answers.append((status, json.loads(body)["code"], "io.config" in json.loads(body)["message"]))
+        self.assertEqual((answers, (self.home / "config.json").exists()),
+                         ([(400, "CONFIG_REFUSED", True)] * 2, False),
+                         "the page cannot show the permission prompt, so it writes neither, and names "
+                         "io.config")
 
     def test_a_global_key_a_check_reads_sits_under_that_checks_heading(self):
         _, body = self.request("GET", "/api/settings", token=self.token)

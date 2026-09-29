@@ -32,7 +32,7 @@ class PluginFilesAgree(unittest.TestCase):
     def test_every_io_tool_a_check_asks_about_reaches_the_pretooluse_hook(self):
         groups = load(PLUGIN / "hooks" / "hooks.json")["hooks"]["PreToolUse"]
         matcher = next(group["matcher"] for group in groups)
-        missing = [name for name in (run_rules.RUN, restore_ask.RESTORE, trust_ask.TRUST)
+        missing = [name for name in (run_rules.RUN, restore_ask.RESTORE, trust_ask.TRUST, trust_ask.CONFIG)
                    if name not in matcher.split("|")]
         self.assertEqual(missing, [], "a check that answers ask on an io tool never runs unless the hook "
                                       "matches that tool")

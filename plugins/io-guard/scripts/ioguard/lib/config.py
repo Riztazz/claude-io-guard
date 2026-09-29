@@ -40,7 +40,8 @@ class ConfigKey:
     choices: tuple = ()              # the values it takes, or () for any of its type
     shape: Callable[[Any], str | None] | None = None   # what is wrong inside a list or dict value, or None
     project_regex: bool = False      # its strings are regexes, which a project file sets only if bounded
-    runs: bool = False               # names programs io-guard starts, so a project's value waits for approval
+    runs: bool = False               # names a program io-guard starts, or a variable a started program reads,
+                                     # so a project's value waits for io.trust and io.config asks to write it
 
 
 @dataclass(frozen=True)

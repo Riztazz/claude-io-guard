@@ -284,6 +284,11 @@ CONFIG_STEPS = (f"Do these in order, one tool call each. 1. Load {IO_CONFIG} wit
                 f"{IO_CONFIG} with these exact arguments: "
                 '{"key": "telemetry.retention_days", "value": 1, "scope": "project"} '
                 "Then quote each result's first line word for word.")
+CONFIG_ASKED_STEPS = (f"Do these in order, one tool call each. 1. Load {IO_CONFIG} with the ToolSearch tool, "
+                      f"with the query select:{IO_CONFIG} 2. Call {IO_CONFIG} with these exact arguments: "
+                      '{"key": "verify", "value": {".py": ["python", "-m", "py_compile", "{file}"]}, '
+                      '"scope": "user"} '
+                      "Then quote its result, or any refusal, word for word and reply DONE.")
 IO_DASHBOARD = "mcp__plugin_io-guard_io__io_dashboard"
 DASHBOARD_STEPS = (f"Do these in order, one tool call each. 1. Load {IO_DASHBOARD} with the ToolSearch tool, "
                    f"with the query select:{IO_DASHBOARD} 2. Call {IO_DASHBOARD} with no arguments. 3. Run "
@@ -553,6 +558,9 @@ PROBES = {
                          setup={".clang-format": FORMAT_STYLE, "a.cpp": FORMAT_CPP}),
     "live-config": Probe(0, "", guard="", allowed=("ToolSearch", IO_CONFIG), prompt=CONFIG_STEPS, git=True,
                          check=(".claude/io-guard.json",), setup={"README.md": b"probe\n"}),
+    "live-config-asked": Probe(0, "record", guard="", server=True, extra_args=PERMIT,
+                               allowed=("ToolSearch", IO_CONFIG), prompt=CONFIG_ASKED_STEPS, git=True,
+                               setup={"README.md": b"probe\n"}, user_config={"schema": 1}),
     "live-dashboard": Probe(0, "", guard="", allowed=("ToolSearch", IO_DASHBOARD, "Bash"),
                             prompt=DASHBOARD_STEPS, git=True, setup={"README.md": b"probe\n"}),
     "live-settings-skill": Probe(0, "", guard="", allowed=("Skill", "ToolSearch", IO_DASHBOARD),
@@ -1138,6 +1146,18 @@ def config_written(summary: dict, name: str) -> bool:
     return summary["files"][".claude/io-guard.json"] == CONFIG_FILE and "CONFIG_REFUSED" in seen(summary)
 
 
+def config_asked(summary: dict, name: str) -> bool:
+    """The hook answered ask with CONFIG_ASKED, the permission prompt tool received the io.config call, and
+    io.config wrote verify into the user's file on that yes."""
+    folder, _ = latest(name)
+    permit = folder / "permit.jsonl"
+    lines = permit.read_bytes().decode("utf-8").splitlines() if permit.is_file() else []
+    prompted = any("probe_permit" in line and IO_CONFIG in line for line in lines)
+    asked = any("CONFIG_ASKED" in json.dumps(event) for event in summary["hook_events"])
+    wrote = any('"written":true' in str(result["content"]) for result in summary["results"])
+    return prompted and asked and wrote
+
+
 def settings_linked(summary: dict, name: str) -> bool:
     """The settings skill called io.dashboard, and its reply links the URL, token included, in Markdown."""
     link = re.search(r"\[Open io-guard's settings page\]\(http://127\.0\.0\.1:\d+/\?token=[\w-]+\)",
@@ -1343,6 +1363,7 @@ VERDICTS = {
     "live-stage": staged_one_hunk,
     "live-format": formatted_changed_lines,
     "live-config": config_written,
+    "live-config-asked": config_asked,
     "live-dashboard": lambda s, n: "<title>io-guard settings</title>" in json.dumps(s["results"]),
     "live-settings-skill": settings_linked,
     "live-format-dry": dry_run_shown,

@@ -86,6 +86,7 @@ A refused call did not run. A warning, or a note that io-guard fixed something, 
 | `BUDGET_EXCEEDED` | io-guard ran out of time on this call and skipped its remaining checks. | Nothing to do, because the call went ahead without those checks. |
 | `CANCELLED` | The client cancelled the io tool call before it finished. | Call the tool again if its result is still needed. |
 | `COMMIT_POLICY` | The commit message holds text the user's commit policy forbids, so the commit did not run. | Take that text out of the message, then commit again. |
+| `CONFIG_ASKED` | io.config would write a command io-guard starts, or a variable a Bash call starts with, so the user decides whether it is written. | Wait for the user's answer. |
 | `CONFIG_REFUSED` | The setting was not written: the key is unknown, the value does not fit it, or this file may not set it. | Use a key and a value the message names. |
 | `CONTROL_BYTES_ADDED` | The write added NUL or other control bytes to a text file. | Remove them with the Edit tool, on the lines the message names. |
 | `DIALECT_MISMATCH` | The command is written for the other shell. | Send it to the tool for that shell, or write it for this one. |

@@ -2,7 +2,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|PowerShell|Edit|Write|Read|Grep|Glob|mcp__plugin_io-guard_io__io_run|mcp__plugin_io-guard_io__io_restore|mcp__plugin_io-guard_io__io_trust",
+        "matcher": "Bash|PowerShell|Edit|Write|Read|Grep|Glob|mcp__plugin_io-guard_io__io_run|mcp__plugin_io-guard_io__io_restore|mcp__plugin_io-guard_io__io_trust|mcp__plugin_io-guard_io__io_config",
         "hooks": [
           {
             "type": "mcp_tool",

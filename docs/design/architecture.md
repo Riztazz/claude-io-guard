@@ -98,7 +98,8 @@ plugins/io-guard/
         run_rules.py               run.rules: RULE_DENIED and RULE_ASKED at the PreToolUse hook on io.run
         commit_policy.py           commit.policy: COMMIT_POLICY for a commit message the user's policy forbids
         restore_ask.py             restore.ask: RESTORE_ASKED at the PreToolUse hook on io.restore
-        trust_ask.py               trust.ask: TRUST_ASKED on io.trust, and PROJECT_COMMANDS_UNTRUSTED's text
+        trust_ask.py               trust.ask: TRUST_ASKED on io.trust, CONFIG_ASKED on io.config, and
+                                   PROJECT_COMMANDS_UNTRUSTED's text
       hooks/
         entry.py                   run_event: an event in, the answer dict out, never raising
         answer.py                  Outcome -> hook JSON, per event and rewrite mode
@@ -465,6 +466,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Output | `EXIT_BENIGN`, `OUTPUT_SAVED`, `ERRORS_IN_OUTPUT`, `MOJIBAKE`, `STALE_BINARY` | 22, in `CODES` |
 | Internal | `GUARD_ERROR`, `REWRITE_CONFLICT`, `BUDGET_EXCEEDED` | 07, in `CODES` |
 | Internal | `CONFIG_REFUSED`, a setting `io.config` would write into a file the loader drops | 33, in `CODES` |
+| Internal | `TRUST_ASKED`, `PROJECT_COMMANDS_UNTRUSTED` and `CONFIG_ASKED`, all warnings | 80 and 82, in `CODES` |
 | Internal | `SERVER_DOWN`, `CANCELLED` | 23, in `CODES` |
 | Internal | `HANDLE_EXPIRED`, with the first tool that makes a handle | 25, in `CODES` |
 | Location | `RESTORE_ASKED`, a warning, and `SNAPSHOT_TOO_LARGE` | 32, in `CODES` |
@@ -599,7 +601,8 @@ class ConfigKey:                             # in lib.config, which validates it
     choices: tuple = ()                      # the values it takes, or () for any of its type
     shape: Optional[Callable[[Any], Optional[str]]] = None   # what is wrong inside a list or dict value
     project_regex: bool = False              # regexes, which a project file sets only if bounded
-    runs: bool = False                       # programs io-guard starts: a project's value waits for approval
+    runs: bool = False                       # a program io-guard starts, or a variable one reads: a project's
+                                             # value waits for io.trust, and io.config asks to write it (82)
 
 @dataclass(frozen=True)
 class CheckMeta:
@@ -1113,7 +1116,7 @@ scoped name `plugin:io-guard:io`, and the tools are `hook.pre_tool_use`, `hook.p
 {
   "hooks": {
     "PreToolUse": [{
-      "matcher": "Bash|PowerShell|Edit|Write|Read|Grep|Glob|mcp__plugin_io-guard_io__io_run",
+      "matcher": "Bash|PowerShell|Edit|Write|Read|Grep|Glob|mcp__plugin_io-guard_io__io_run|...",
       "hooks": [{
         "type": "mcp_tool",
         "server": "plugin:io-guard:io",
@@ -1147,8 +1150,10 @@ scoped name `plugin:io-guard:io`, and the tools are `hook.pre_tool_use`, `hook.p
 
 PostToolUse and PostToolUseFailure bind the same way to `hook.post_tool_use` and
 `hook.post_tool_use_failure`, with `"tool_response": "${tool_response}"` and `"error": "${error}"` added to the
-map, and their matchers leave `io.run` out. The PreToolUse matcher names `io.run`'s callable name, so
-`run.rules` holds it to the user's Bash and PowerShell rules (task 25). The hook on the plugin's own tool fires,
+map, and their matchers leave the io tools out. The PreToolUse matcher names the callable names of `io.run`,
+`io.restore`, `io.trust` and `io.config`, in full, so `run.rules` holds `io.run` to the user's Bash and
+PowerShell rules (task 25), and `restore.ask` and `trust.ask` put the other three to the user (tasks 32, 80
+and 82). The hook on the plugin's own tool fires,
 and its `ask` brings up the permission prompt although `--allowedTools` allowed the tool (`context.md`, "Hooks
 and MCP", row 36).
 
@@ -1459,6 +1464,14 @@ io.config(key, value = None, scope = "user", remove = False)
   be is checked with `validate`, so a value the loader would drop answers `CONFIG_REFUSED` and nothing is
   written. A `verify` or `format` command written to the project's file waits for `io.trust`. The write is one
   `write_atomic` under `file_lock`.
+- **Ask.** A key marked `runs`, which names a program io-guard starts or a variable one reads (`verify`,
+  `format`, `checks.session.probe.env` and `env_windows`), reaches every project from the user's file. So a
+  write of one with `scope` `user` waits for the user's yes (task 82). The PreToolUse hook on the call,
+  `checks.trust_ask`, answers `ask` with `CONFIG_ASKED`, naming the key and the value as JSON, and records the
+  write under the call's tool use id. `io.config` writes it only when that hook asked about this call, and
+  otherwise answers `CONFIG_ASKED` and writes nothing. A read, a removal and a project file's write ask
+  nothing. The settings page cannot show the prompt, so `POST /api/setting` refuses such a write with
+  `CONFIG_REFUSED`, naming `io.config` and the file.
 
 ### Approve a project's commands
 
@@ -1608,7 +1621,8 @@ from it. A background run keeps running when its call is cancelled, because its 
 - **What it answers.** `GET /` is `ui/dashboard.html`. `GET /api/settings` is every setting with what the user's
   file and the project's file set, what applies, and what each may set. `POST /api/setting` takes
   `{key, scope, value, remove}` and runs the same `setting` call as `io.config`, so a refusal is
-  `CONFIG_REFUSED` with its message. `GET /api/stats?days=7&scope=project` is `telemetry_summary.page` over
+  `CONFIG_REFUSED` with its message. A write of a key marked `runs` into the user's file is refused, since only
+  `io.config` can put it to the permission prompt (task 82). `GET /api/stats?days=7&scope=project` is `telemetry_summary.page` over
   io-guard's folder, for 1 to 90 days, of this project or with `scope=all` of every project (task 66).
   `POST /api/stats/from` takes `{"from": "now"}` or `{"from": null}` and writes `stats-from.json` in io-guard's
   folder. `POST /api/stats/delete` takes `{"confirm": true}` and deletes every telemetry file (task 72).

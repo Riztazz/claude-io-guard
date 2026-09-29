@@ -213,7 +213,9 @@ without changing the command.
 
 To change a setting without opening the file, ask Claude, such as "turn off shell.lint for this project".
 `io.config` writes it into your file or the project's, checked the way io-guard checks the whole file, so a
-value the file couldn't load is refused and nothing is written. A change applies from the next tool call.
+value the file couldn't load is refused and nothing is written. A change applies from the next tool call. A
+command or a variable for every project, `verify`, `format` or the session's Bash variables in your own file,
+waits for your yes in Claude Code's permission prompt, and the settings page leaves those to `io.config`.
 
 To see every setting at once, pick `settings` under io-guard in the plugin menu, type `/io-guard:settings`, or
 ask Claude to open io-guard's settings page. `io.dashboard` serves it on `127.0.0.1`, on this machine only and

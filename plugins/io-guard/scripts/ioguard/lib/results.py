@@ -209,6 +209,9 @@ CODES: tuple[CodeSpec, ...] = (
     CodeSpec("TRUST_ASKED", Layer.INTERNAL, Severity.WARNING,
              "The project's .claude/io-guard.json names commands io-guard would start, so the user decides "
              "whether they may run.", "Wait for the user's answer.", "0.1"),
+    CodeSpec("CONFIG_ASKED", Layer.INTERNAL, Severity.WARNING,
+             "io.config would write a command io-guard starts, or a variable a Bash call starts with, so the "
+             "user decides whether it is written.", "Wait for the user's answer.", "0.1"),
     CodeSpec("PROJECT_COMMANDS_UNTRUSTED", Layer.INTERNAL, Severity.WARNING,
              "The project's .claude/io-guard.json names commands io-guard starts, which the user has not "
              "approved, so io-guard ran only the user's own.",

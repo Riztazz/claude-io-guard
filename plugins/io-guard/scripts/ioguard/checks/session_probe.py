@@ -120,9 +120,9 @@ class SessionProbe(Check):
         cost=Cost.EXPENSIVE, reads=frozenset(), writes=frozenset(), after=frozenset(), codes=frozenset(),
         config={
             "env": ConfigKey(dict, ENV, "Variables every later Bash call starts with.",
-                             project_may_set=False),
+                             project_may_set=False, runs=True),
             "env_windows": ConfigKey(dict, ENV_WINDOWS, "More variables for Bash calls on Windows.",
-                                     project_may_set=False),
+                                     project_may_set=False, runs=True),
         },
         description="Measures the machine at session start and gives every shell call UTF-8 defaults.")
 
