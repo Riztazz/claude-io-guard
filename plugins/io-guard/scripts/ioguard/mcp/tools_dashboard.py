@@ -16,7 +16,7 @@ from typing import Any
 
 from ioguard import CONFIG_SCHEMA
 from ioguard.checks.registry import default_registry
-from ioguard.lib import config_edit, locks
+from ioguard.lib import config_edit, locks, telemetry_summary
 from ioguard.lib.config import ConfigKey, Scope, all_keys, flatten, load, validate, widened
 from ioguard.lib.context import Context, config_layers, project_root
 from ioguard.lib.results import Code, Fix, Result, callable_name
@@ -195,6 +195,20 @@ def written(ctx: Context, cwd: Path, given: dict) -> dict:
         raise Rejected({"code": failure.result.code.value, "message": failure.result.message}) from None
 
 
+def stats(ctx: Context, root: Path, query: dict) -> dict:
+    """The telemetry of the last days, 1 to 90, of this project or of every project, as the page draws it,
+    with each code's meaning. Command heads stay on this machine: the page is the only reader."""
+    try:
+        days = min(90, max(1, int(query.get("days", 7))))
+    except ValueError:
+        days = 7
+    whole = query.get("scope") == "all"
+    folders = [] if ctx.data_dir is None else [ctx.data_dir]
+    project = None if whole else ctx.project_name(root)
+    return {**telemetry_summary.page(folders, days, ctx.clock.now(), project),
+            "scope": "all" if whole else "project"}
+
+
 def forget(root: Path, board: Dashboard) -> None:
     """Drop a stopped page server, unless a newer one already took its place."""
     with BOARD_LOCK:
@@ -208,7 +222,8 @@ def dashboard(given: DashboardInput, call: ToolCall) -> DashboardOutput:
         if root not in BOARDS:
             idle_s = ctx.config.get("io.dashboard.idle_minutes") * 60
             board = Dashboard(lambda: settings(ctx, root), lambda sent: written(ctx, root, sent),
-                              idle_s=idle_s, on_stop=lambda: forget(root, board))
+                              idle_s=idle_s, on_stop=lambda: forget(root, board),
+                              stats=lambda query: stats(ctx, root, query))
             BOARDS[root] = board
         url = BOARDS[root].start()
         minutes = BOARDS[root].idle_s / 60

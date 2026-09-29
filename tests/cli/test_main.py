@@ -38,6 +38,14 @@ class TheToolsRunTheCommands(unittest.TestCase):
         self.assertEqual((report["records"], report["projects"]), (1, ["Demo"]),
                          "the report covers the corpus")
 
+    def test_report_html_writes_a_page_file(self):
+        with TemporaryProject() as root:
+            (root / "home" / "events").mkdir(parents=True)
+            done = run("report.py", "--data", str(root / "home"), "--html", "stats.html", cwd=root)
+            page = (root / "stats.html").read_bytes()
+        self.assertEqual((done.returncode, b"window.IOGUARD_STATIC" in page), (0, True),
+                         f"the file holds the page and its data: {done.stderr!r}")
+
     def test_replay_with_no_corpus_says_how_to_build_one(self):
         with TemporaryProject() as root:
             done = run("replay.py", "--corpus", "missing", cwd=root)

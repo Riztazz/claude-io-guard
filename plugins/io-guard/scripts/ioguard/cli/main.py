@@ -3,7 +3,7 @@
     corpus NAME=FOLDER [NAME=FOLDER ...] [--out corpus]
     replay [--corpus corpus] [--project NAME ...] [--out FILE]
     precommit
-    report [--data FOLDER ...] [--days 7]
+    report [--data FOLDER ...] [--days 7] [--html FILE]
     measure NAME=FOLDER [NAME=FOLDER ...] [--since YYYY-MM-DD] [--data FOLDER ...]
     check COMMAND [--tool Bash|PowerShell] [--cwd FOLDER]
     profile FILE [FILE ...]
@@ -20,6 +20,7 @@ from pathlib import Path
 
 from ioguard.checks.registry import default_registry
 from ioguard.cli import check, corpus, measure, precommit, replay, report
+from ioguard.lib import telemetry_summary
 from ioguard.lib.context import home_folder
 from ioguard.lib.decisions import Verdict
 
@@ -51,6 +52,7 @@ def parser() -> argparse.ArgumentParser:
     week.add_argument("--data", type=Path, action="append", default=[],
                       help="a folder io-guard wrote telemetry to, repeatable, io-guard's own by default")
     week.add_argument("--days", type=int, default=7, help="the days to report, counting back from now")
+    week.add_argument("--html", type=Path, help="write the dashboard page's stats to this file instead")
     rate = commands.add_parser("measure", help="the baseline's failure classes before and after io-guard")
     rate.add_argument("sources", nargs="+", type=source, metavar="NAME=FOLDER")
     rate.add_argument("--since", type=measure.since_date, default=measure.ADOPTED,
@@ -101,14 +103,18 @@ def main(argv: Sequence[str]) -> int:
             if missing:
                 print(f"io-guard has no folder at {missing[0]}. Name the folder with --data.")
                 return 1
-            print(report.run(folders, args.days, datetime.now(timezone.utc)))
+            if args.html is not None:
+                args.html.write_bytes(report.static_page(folders, args.days, datetime.now(timezone.utc)))
+                print(f"Wrote the last {args.days} days to {args.html}, which opens in any browser.")
+            else:
+                print(report.run(folders, args.days, datetime.now(timezone.utc)))
         case "measure":
             before, after = measure.measure(corpus.records(args.sources, corpus.Tally(Counter(), Counter())),
                                             args.since)
             since = datetime.strptime(args.since, "%Y-%m-%d").replace(tzinfo=timezone.utc)
             folders = args.data or [home_folder(os.environ)]
-            telemetry = report.summarise(report.files(folders, since), since)
-            print(measure.render(before, after, report.spread(telemetry.hook_ms).get("p95")))
+            telemetry = telemetry_summary.summarise(telemetry_summary.files(folders, since), since)
+            print(measure.render(before, after, telemetry_summary.spread(telemetry.hook_ms).get("p95")))
         case "check":
             if not args.cwd.is_dir():
                 print(f"{args.cwd} is not a folder. Name the folder the command runs from with --cwd.")

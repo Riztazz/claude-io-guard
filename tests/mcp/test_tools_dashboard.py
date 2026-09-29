@@ -18,6 +18,7 @@ from ioguard.hooks import entry
 from ioguard.lib.context import Context, LiveFs, project_root
 from ioguard.lib.platform import detect
 from ioguard.lib.results import Code
+from ioguard.lib.telemetry import Telemetry, TelemetryEvent
 from ioguard.mcp.dashboard_http import PAGE, Dashboard
 from ioguard.mcp.progress import CancelToken
 from ioguard.mcp.tools_dashboard import BOARDS, ConfigInput, DashboardInput, configure, dashboard
@@ -167,15 +168,33 @@ class ThePageServerAnswersOnlyItsOwnPage(ConfigTest):
     def test_the_page_is_ascii_loads_nothing_from_outside_and_calls_only_the_api(self):
         page = PAGE.read_bytes()
         calls = sorted(set(re.findall(rb'fetch\("([^"]+)"', page)))
-        self.assertEqual((page.isascii(), re.findall(rb"https?://", page), calls),
-                         (True, [], [b"/api/ping", b"/api/setting", b"/api/settings"]),
-                         "one self-contained file, which calls the two paths the server answers")
+        outside = re.findall(rb"https?://(?!www\.w3\.org/2000/svg\")", page)
+        self.assertEqual((page.isascii(), outside, calls),
+                         (True, [], [b"/api/ping", b"/api/setting", b"/api/settings", b"/api/stats?days="]),
+                         "one self-contained file, which calls only the paths the server answers, and names "
+                         "the SVG namespace alone")
 
     def test_the_settings_carry_each_checks_description_for_its_heading(self):
         status, body = self.request("GET", "/api/settings", token=self.token)
         groups = json.loads(body)["groups"]
         self.assertIn("quoting, escaping or dialect", groups["shell.lint"],
                       "a group heading says what it does")
+
+    def test_the_stats_count_this_project_or_every_project_with_each_codes_meaning(self):
+        telemetry = Telemetry(self.home)
+        now = self.ctx.clock.now()
+        for project, code in ((self.root.name, "SHELL_WRITE"), ("other", "PIPE_HIDES_EXIT")):
+            telemetry.record(TelemetryEvent(ts=now, session="s1", event="PreToolUse", surface="mcp_hook",
+                                            platform="win32", project=project, check="shell.writes",
+                                            code=code, severity="refused", cmd_head="sed -i s/a/b/ x"))
+        _, own = self.request("GET", "/api/stats?days=7", token=self.token)
+        _, every = self.request("GET", "/api/stats?days=7&scope=all", token=self.token)
+        own, every = json.loads(own), json.loads(every)
+        command = own["recent"]["SHELL_WRITE"][0]["command"]
+        self.assertEqual((list(own["codes"]), sorted(every["codes"]), command),
+                         (["SHELL_WRITE"], ["PIPE_HIDES_EXIT", "SHELL_WRITE"], "sed -i s/a/b/ x"),
+                         "this project's lines alone, or every project's, with the lines behind each code")
+        self.assertIn("fix", own["meanings"]["SHELL_WRITE"], "each code comes with its meaning and fix")
 
     def test_the_answer_names_the_checks_turned_off(self):
         self.request("POST", "/api/setting", json.dumps({"key": "checks.shell.lint.enabled", "value": False,

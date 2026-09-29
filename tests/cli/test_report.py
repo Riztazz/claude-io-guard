@@ -2,6 +2,7 @@
 about and refused, times the calls, and fits one screen on a generated week."""
 import json
 import random
+import re
 import shutil
 import tempfile
 import unittest
@@ -9,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ioguard.cli import report
+from ioguard.lib import telemetry_summary
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Verdict
 from ioguard.lib.fakes import FakeClock
@@ -60,8 +62,8 @@ class AWeekFitsOneScreen(unittest.TestCase):
 
     def test_the_week_merges_every_session_across_the_month(self):
         since = NOW - timedelta(days=7)
-        paths = report.files([self.folder], since)
-        found = report.summarise(paths, since)
+        paths = telemetry_summary.files([self.folder], since)
+        found = telemetry_summary.summarise(paths, since)
         months = {path.parent.name for path in paths}
         self.assertEqual((months, len(found.sessions), found.events["tools/call"]),
                          ({"2026-09", "2026-10"}, 84, 84),
@@ -80,20 +82,40 @@ class AWeekFitsOneScreen(unittest.TestCase):
 
     def test_days_before_the_period_are_left_out(self):
         since = NOW - timedelta(days=1, hours=12)
-        found = report.summarise(report.files([self.folder], since), since)
+        found = telemetry_summary.summarise(telemetry_summary.files([self.folder], since), since)
         self.assertEqual(len(found.sessions), 24, "the last day and a half hold the sessions of two days")
 
     def test_the_counts_a_tool_result_may_carry_hold_no_command_or_error_text(self):
         since = NOW - timedelta(days=7)
-        carried = json.dumps(report.summarise(report.files([self.folder], since), since).counts())
+        found = telemetry_summary.summarise(telemetry_summary.files([self.folder], since), since)
+        carried = json.dumps(found.counts())
         self.assertEqual(("sed -i" in carried, "KeyError" in carried, "game" in carried),
                          (False, False, False),
                          "a tool result lands in the model's context, so it takes counts and percentiles")
 
 
+class TheHtmlFileCarriesThePagesStats(unittest.TestCase):
+    def test_the_file_is_the_page_with_every_projects_stats_written_in(self):
+        folder = Path(tempfile.mkdtemp(prefix="ioguard-html-"))
+        self.addCleanup(shutil.rmtree, folder, True)
+        telemetry = Telemetry(folder)
+        telemetry.record(TelemetryEvent(ts=NOW - timedelta(days=2), session="s", event="PreToolUse",
+                                        surface="mcp_hook", platform="win32", project="game",
+                                        check="shell.writes", code="SHELL_WRITE", severity="refused",
+                                        cmd_head="echo '</script><b>' > a.txt"))
+        page = report.static_page([folder], 7, NOW)
+        inline = re.search(rb"window\.IOGUARD_STATIC = (.*?);</script>", page)
+        data = json.loads(inline[1])
+        self.assertEqual((page.isascii(), page.count(b"</script>"), len(data["days"]), data["codes"]),
+                         (True, 2, 8, {"SHELL_WRITE": {"refused": 1}}),
+                         "one ASCII file, whose data cannot close its own script, with every day of the week")
+        self.assertEqual(data["recent"]["SHELL_WRITE"][0]["command"], "echo '</script><b>' > a.txt",
+                         "the command reads back as it was, though it held a closing script tag")
+
+
 class EveryLineEndsWhole(unittest.TestCase):
     def test_names_past_the_width_are_counted_never_cut(self):
-        found = report.Report(lines=1, first=NOW, last=NOW)
+        found = telemetry_summary.Summary(lines=1, first=NOW, last=NOW)
         found.events.update({f"PostToolUseFailureOf{number}": 100 - number for number in range(12)})
         found.projects.update({f"project-with-a-long-name-{number}": 10 for number in range(9)})
         lines = report.render(found, 1).splitlines()
@@ -103,7 +125,7 @@ class EveryLineEndsWhole(unittest.TestCase):
                                 "a line ends on a count or on how many were left out, never inside a name")
 
     def test_an_info_code_is_counted_in_its_own_column(self):
-        found = report.Report(lines=1, first=NOW, last=NOW)
+        found = telemetry_summary.Summary(lines=1, first=NOW, last=NOW)
         found.codes["EXIT_BENIGN"]["info"] += 3
         lines = report.render(found, 1).splitlines()
         header = next(line for line in lines if line.startswith("Code"))
@@ -121,7 +143,7 @@ class ALineIsReadAsWritten(unittest.TestCase):
         good = TelemetryEvent(ts=NOW, session="s", event="PreToolUse", surface="mcp_hook", platform="darwin",
                               tool="Bash", latency_ms=4.0).to_json()
         path.write_bytes(json.dumps(good).encode() + b"\n{not json\n")
-        found = report.summarise([path], NOW - timedelta(days=1))
+        found = telemetry_summary.summarise([path], NOW - timedelta(days=1))
         self.assertEqual((found.lines, found.unreadable, found.platforms["darwin"]), (1, 1, 1),
                          "a torn last line from a crash is counted, and the rest still reads")
 
@@ -134,7 +156,8 @@ class ALineIsReadAsWritten(unittest.TestCase):
         says = saying("b.says", Verdict.ALLOW, results=results, layer=Layer.BYTES)
         pipeline_of(upper, says).run(bash_event("ls"), Context.fake(clock=FakeClock(NOW),
                                                                     telemetry=Telemetry(folder)))
-        found = report.summarise(report.files([folder], NOW - timedelta(days=1)), NOW - timedelta(days=1))
+        since = NOW - timedelta(days=1)
+        found = telemetry_summary.summarise(telemetry_summary.files([folder], since), since)
         counted = {code: dict(severities) for code, severities in found.codes.items()}
         self.assertEqual(counted, {Code.TOUCHED_BY_SHELL.value: {"warning": 1},
                                    Code.SHELL_WRITE.value: {"refused": 1},
@@ -142,11 +165,27 @@ class ALineIsReadAsWritten(unittest.TestCase):
                          "both results count, and the rewrite counts once as fixed")
         self.assertEqual(len(found.hook_ms), 1, "the run's time is one hook call")
 
+    def test_the_page_data_has_every_day_and_one_projects_lines_when_asked(self):
+        folder = Path(tempfile.mkdtemp(prefix="ioguard-report-"))
+        self.addCleanup(shutil.rmtree, folder, True)
+        telemetry = Telemetry(folder)
+        for project in ("game", "tools"):
+            telemetry.record(TelemetryEvent(ts=NOW, session="s", event="PostToolUse", surface="mcp_hook",
+                                            platform="win32", project=project, check="shell.touched",
+                                            code="TOUCHED_BY_SHELL", severity="warning"))
+        since = NOW - timedelta(days=3)
+        paths = telemetry_summary.files([folder], since)
+        one = telemetry_summary.page_data(telemetry_summary.summarise(paths, since, "game"), since, NOW)
+        self.assertEqual(([day["warning"] for day in one["days"]], one["codes"]),
+                         ([0, 0, 0, 1], {"TOUCHED_BY_SHELL": {"warning": 1}}),
+                         "each day from since on, the empty ones too, and one project's line alone")
+
     def test_a_command_shape_is_its_program_and_its_option_or_subcommand(self):
         for command, expected in (("sed -i 's/a/b/' x", "sed -i"), ("git status --short", "git status"),
                                   ("C:/tools/python.exe script.py", "python.exe"), ("", "")):
             with self.subTest(command=command):
-                self.assertEqual(report.shape(command), expected, "the shape names the program, never a path")
+                self.assertEqual(telemetry_summary.shape(command), expected,
+                                 "the shape names the program, never a path")
 
 
 if __name__ == "__main__":

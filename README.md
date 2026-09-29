@@ -212,6 +212,11 @@ a tooltip with its key and default, and under it the project's override, if the 
 saves at once through `io.config`, and the file comes back two-space formatted. The page's server stops five
 minutes after you close the page, or after `io.dashboard.idle_minutes`, and asking again opens a new one.
 
+The page's Stats switch shows what io-guard fixed, warned about and refused over the last 1, 7 or 30 days, for
+this project or for all of them: a bar per day, every code with its counts, and the time each call took. Click
+a code to see what it means, how to fix it, and its last 20 lines with the command behind each. The stats come
+from the telemetry in io-guard's folder and never leave your machine.
+
 io-guard's folder is `~/.claude/io-guard`, or `io-guard` inside `CLAUDE_CONFIG_DIR` when you've moved `~/.claude`,
 or wherever `IOGUARD_HOME` points. It holds your `config.json`, the file locks that keep two sessions from
 writing one file at once, the telemetry, each session's heartbeat, the snapshots, and the edit journal:
@@ -379,7 +384,8 @@ docs/                 the architecture drawing, the design and its review, and t
 - After adding a code or an io tool, run `python tools/skill.py` to write the skill's tables. A test fails until
   you do.
 - See what io-guard fixed, warned about and refused this week with `python tools/report.py`. It reads the
-  telemetry in io-guard's folder, and `--data` names another folder.
+  telemetry in io-guard's folder, and `--data` names another folder. `--html FILE` writes the settings page's
+  stats into one file that opens in any browser.
 - Compare the failure classes before and after io-guard with `python tools/measure.py NAME=FOLDER ...`, one
   pair per transcript folder under `~/.claude/projects/`, and `--since` the day io-guard went on.
 - After a Claude Code update, run `python tools/probes/run_probe.py run all`, then `verdicts`, to recheck every

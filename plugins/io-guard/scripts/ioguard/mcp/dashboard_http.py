@@ -9,6 +9,7 @@ either. A change is a POST of JSON, which a form on another page cannot send.
     GET  /                 the page, ui/dashboard.html
     GET  /api/settings     every setting, what each file sets and what applies
     GET  /api/ping         nothing, from an open page, so the server knows it is still used
+    GET  /api/stats        ?days=7&scope=project|all: what io-guard fixed, warned about and refused
     POST /api/setting      {"key", "scope", "value", "remove"}: the same write as io.config
 
 The server stops once no request came for io.dashboard.idle_minutes, and the next io.dashboard starts another.
@@ -46,8 +47,9 @@ class Dashboard:
     on_stop, so the next io.dashboard starts a new one. The open page asks every 30 seconds."""
 
     def __init__(self, settings: Callable[[], dict], write: Callable[[dict], dict], page: Path = PAGE,
-                 idle_s: float = 0.0, on_stop: Callable[[], None] | None = None) -> None:
-        self.settings, self.write, self.page = settings, write, page
+                 idle_s: float = 0.0, on_stop: Callable[[], None] | None = None,
+                 stats: Callable[[dict], dict] | None = None) -> None:
+        self.settings, self.write, self.page, self.stats = settings, write, page, stats
         self.idle_s, self.on_stop = idle_s, on_stop
         self.token = secrets.token_urlsafe(24)
         self.server: ThreadingHTTPServer | None = None
@@ -138,6 +140,9 @@ def handler_for(board: Dashboard) -> type[BaseHTTPRequestHandler]:
                 self.json(200, board.settings())
             elif path == "/api/ping":
                 self.json(200, {"idle_s": board.idle_s})
+            elif path == "/api/stats" and board.stats is not None:
+                query = {name: values[0] for name, values in parse_qs(urlsplit(self.path).query).items()}
+                self.json(200, board.stats(query))
             elif path is not None:
                 self.json(404, {"message": f"The dashboard has no {path}."})
 

@@ -234,6 +234,12 @@ Code = Enum("Code", {spec.code: spec.code for spec in CODES})
 SPECS: dict[Code, CodeSpec] = {Code[spec.code]: spec for spec in CODES}
 
 
+def meanings() -> dict[str, dict[str, str]]:
+    """Each code's general sentence, fix, severity and layer, as JSON, for a page that names a code."""
+    return {spec.code: {"summary": spec.summary, "fix": spec.fix, "severity": spec.severity.value,
+                        "layer": spec.layer.name.lower()} for spec in CODES}
+
+
 CALLABLE_PREFIX = "mcp__plugin_io-guard_io__"
 
 

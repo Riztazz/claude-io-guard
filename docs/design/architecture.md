@@ -46,13 +46,14 @@ plugins/io-guard/
         git.py                     Git, the GitPort implementation
         locks.py                   holders, file_lock
         proc.py                    run, Pump, background
-        results.py                 CodeSpec, CODES, Code, Result, Fix, render, callable_name
+        results.py                 CodeSpec, CODES, Code, Result, Fix, render, callable_name, meanings
         config.py                  Config, SCHEMA, load, validate, merge
         config_edit.py             placed, value_at, encoded: one setting written where its file keeps it
         events.py                  HookEvent, Tool, PermissionMode, Surface, Event
         context.py                 Context, the ports, SessionState, Probe
         decisions.py               Verdict, Rewrite, Decision, compose
         telemetry.py               Telemetry, TraceContext
+        telemetry_summary.py       Summary, files, summarise, page: every session's telemetry summed
         platform.py                Platform, detect
         probing.py                 tool_version, find, claude_version, console_encoding, case_insensitive
         text.py                    visible, snippet, head, invisible_added
@@ -113,7 +114,7 @@ plugins/io-guard/
         tools_run.py               io.run, io.status, io.read_log
         tools_format.py            io.format
         tools_history.py           io.snapshot, io.restore, io.compare, io.stage
-        tools_dashboard.py         io.config and io.dashboard: one setting, and the settings page
+        tools_dashboard.py         io.config and io.dashboard: one setting, the settings page and its stats
         dashboard_http.py          Dashboard: the page and its JSON API on 127.0.0.1, behind a token
         tools_hook.py              hook.pre_tool_use, hook.post_tool_use, hook.post_tool_use_failure, hook.ping
         skill.py                   the skill page's tool and code tables, which tools/skill.py writes
@@ -125,7 +126,7 @@ plugins/io-guard/
         corpus.py                  Record, build, load: transcripts -> corpus/<project>.jsonl
         replay.py                  Replay, replay, render: the corpus through the pipeline, offline
         precommit.py               staged_results, run: each staged file against HEAD, for the git hook
-        report.py                  files, summarise, render: the week's telemetry by code, tool and time
+        report.py                  render, static_page: the week's telemetry printed, or as one page file
         measure.py                 measure, render: task 31's classes per 1,000 calls before and after io-guard
 tests/                             mirrors ioguard, plus fixtures/, support/, mcp/, replay/
 tools/                             ioguard.py, corpus.py, replay.py, measure.py, report.py, probes/
@@ -1571,7 +1572,8 @@ from it. A background run keeps running when its call is cancelled, because its 
 - **What it answers.** `GET /` is `ui/dashboard.html`. `GET /api/settings` is every setting with what the user's
   file and the project's file set, what applies, and what each may set. `POST /api/setting` takes
   `{key, scope, value, remove}` and runs the same `setting` call as `io.config`, so a refusal is
-  `CONFIG_REFUSED` with its message.
+  `CONFIG_REFUSED` with its message. `GET /api/stats?days=7&scope=project` is `telemetry_summary.page` over
+  io-guard's folder, for 1 to 90 days, of this project or with `scope=all` of every project (task 66).
 - **Where it opens.** The tool's note tells the model to open the URL in the desktop app's browser pane, or any
   browser on this machine.
 - **When it stops.** The open page asks `GET /api/ping` every 30 seconds. A watcher stops the server once no
@@ -1584,14 +1586,21 @@ from it. A background run keeps running when its call is cancelled, because its 
   value. A key the project may not set says so, and a value it may not pick is greyed. A change saves at once
   and the page reads the settings again, so a refused value goes back to the saved one and its message stays
   on the card. It follows the system's light or dark scheme until a pick at the top, kept in `localStorage`.
+- **The stats.** A switch at the top shows Stats instead of Settings: the last 1, 7 or 30 days, of this project
+  or of all projects. It shows the totals fixed, warned and refused, a bar per day, and every code with its
+  counts. A code opens to its meaning, its fix and its last 20 lines, with the command head of each. Then the
+  checks, the time of a hook call, an io tool call and one tool use, and the projects when all are shown. The
+  command heads reach only the page, never a tool result, since a tool result lands in the model's context.
+- **The page as a file.** `tools/report.py --html FILE` writes the same page with every project's stats inlined
+  as `window.IOGUARD_STATIC`, in place of `<!-- io-guard static data -->`. It opens in any browser and shows
+  only the stats, since a file has no server to write a setting through.
 
 ### The ui resource
 
 Not built. Neither the desktop Code tab nor the CLI renders an MCP App (task 03), so the page is served over
 HTTP instead. When a client renders one, `resources/list` returns `ui://io-guard/dashboard` with `mimeType`
 `text/html;profile=mcp-app`, `resources/read` returns `ui/dashboard.html`, and `io.dashboard` carries
-`_meta.ui.resourceUri` on its `tools/list` entry. The stats, and `tools/report.py --html` rendering the same
-page with the data inlined, are task 66.
+`_meta.ui.resourceUri` on its `tools/list` entry.
 
 ## 8. Share the process safely
 
@@ -1684,13 +1693,15 @@ event derives `trace_id` from `tool_use_id`, so the PreToolUse decision, the io 
 verification of one tool use share a trace, and `prompt_id` joins them to Claude Code's own OpenTelemetry
 events. `tools/report.py` groups by `trace_id` to show what one tool use cost end to end.
 
-`python tools/report.py [--data FOLDER ...] [--days 7]` (task 28) merges every session file of the days asked,
-from io-guard's folder unless `--data` names others. The probes keep their own folder,
+`python tools/report.py [--data FOLDER ...] [--days 7] [--html FILE]` (task 28) merges every session file of
+the days asked, from io-guard's folder unless `--data` names others. The probes keep their own folder,
 `workbench/io-guard-home`, through `IOGUARD_HOME`. It prints one screen: the calls by event, tool, project and
 platform, the codes split into fixed, warned and refused, the time of a hook call, an io tool call and one tool
 use across its trace as p50, p90, p99 and max, the command shapes behind refusals, and each kind of
-`GUARD_ERROR` with its count. It holds command shapes and error hashes, so it prints to a terminal. `Report.counts()` is what a tool result, such as
-the dashboard's, may carry: counts and percentiles, and no command, path, project or error text.
+`GUARD_ERROR` with its count. It holds command shapes and error hashes, so it prints to a terminal, and
+`--html` writes the dashboard page's stats into one file instead. `lib.telemetry_summary` does the summing for
+both. `Summary.counts()` is what a tool result may carry: counts and percentiles, and no command, path, project
+or error text.
 
 ## 10. Abstract the platform
 

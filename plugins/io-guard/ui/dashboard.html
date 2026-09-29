@@ -62,23 +62,65 @@
   .chip button { border: 0; background: transparent; padding: 0 6px; }
   .err { color: var(--bad); font-size: 12px; margin-top: 6px; }
   .banner { border: 1px solid var(--bad); color: var(--bad); border-radius: 8px; padding: 8px 12px; margin: 12px 0; }
+  .controls { margin: 12px 0; justify-content: flex-start; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 12px 0; }
+  .metric { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+  .metric .value { font-size: 22px; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  th.n, td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.code-row { cursor: pointer; }
+  tr.code-row:hover { background: var(--soft); }
+  .detail { background: var(--card); }
+  .detail td { padding: 10px 12px; }
+  .events { font-family: ui-monospace, monospace; font-size: 12px; margin: 8px 0 0; padding: 0; list-style: none; }
+  .events li { padding: 3px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin: 4px 0 0; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; }
+  .s-fixed { fill: var(--line); background: var(--line); }
+  .s-warning { fill: var(--muted); background: var(--muted); }
+  .s-refused { fill: var(--fg); background: var(--fg); }
+  svg text { fill: var(--muted); font-size: 11px; }
 </style>
 </head>
 <body>
 <main>
 <header>
-  <div><h1>io-guard settings</h1><div class="muted" id="project">Loading.</div></div>
-  <div class="seg" role="group" aria-label="Theme">
-    <button type="button" data-theme-pick="light">Light</button>
-    <button type="button" data-theme-pick="dark">Dark</button>
+  <div><h1 id="heading">io-guard settings</h1><div class="muted" id="project">Loading.</div></div>
+  <div class="row">
+    <div class="seg" role="group" aria-label="View" id="views">
+      <button type="button" data-view="settings" aria-pressed="true">Settings</button>
+      <button type="button" data-view="stats" aria-pressed="false">Stats</button>
+    </div>
+    <div class="seg" role="group" aria-label="Theme">
+      <button type="button" data-theme-pick="light">Light</button>
+      <button type="button" data-theme-pick="dark">Dark</button>
+    </div>
   </div>
 </header>
-<input type="search" id="search" placeholder="Filter, such as shell.lint or rewrite" aria-label="Filter settings">
 <div id="banners"></div>
+<div id="settings-view">
+<input type="search" id="search" placeholder="Filter, such as shell.lint or rewrite" aria-label="Filter settings">
 <div id="list"></div>
 <p class="muted">Hover an option for its key and default, and press ? for its whole help. A change saves at once and
 applies from the next tool call. Greyed means the project can't set it, and the line says why.</p>
+</div>
+<div id="stats-view" hidden>
+  <div class="row controls">
+    <div class="seg" role="group" aria-label="Days" id="days">
+      <button type="button" data-days="1">1 day</button>
+      <button type="button" data-days="7" aria-pressed="true">7 days</button>
+      <button type="button" data-days="30">30 days</button>
+    </div>
+    <div class="seg" role="group" aria-label="Projects" id="scope">
+      <button type="button" data-scope="project" aria-pressed="true">This project</button>
+      <button type="button" data-scope="all">All projects</button>
+    </div>
+  </div>
+  <div id="stats"></div>
+</div>
 </main>
+<!-- io-guard static data -->
 <script>
 "use strict";
 const token = new URLSearchParams(location.search).get("token") || "";
@@ -312,23 +354,200 @@ async function load() {
   render();
 }
 
+const STATIC = window.IOGUARD_STATIC || null;
+const SEVERITIES = ["fixed", "warning", "refused", "info"];
+const SVG = "http://www.w3.org/2000/svg";
+const WORDS = {fixed: "Fixed", warning: "Warned", refused: "Refused", info: "Info"};
+const query = {days: 7, scope: "project"};
+let stats = null;
+let opened = null;
+
+function pressed(group, name, value) {
+  for (const button of document.querySelectorAll("#" + group + " button")) {
+    button.setAttribute("aria-pressed", String(button.dataset[name] === String(value)));
+  }
+}
+
+function show(view) {
+  document.getElementById("settings-view").hidden = view !== "settings";
+  document.getElementById("stats-view").hidden = view !== "stats";
+  document.getElementById("heading").textContent = view === "stats" ? "io-guard stats" : "io-guard settings";
+  pressed("views", "view", view);
+  if (view === "stats" && stats === null) loadStats();
+}
+
+async function loadStats() {
+  if (STATIC) {
+    stats = STATIC;
+  } else {
+    const answer = await fetch("/api/stats?days=" + query.days + "&scope=" + query.scope,
+      {headers: {"X-IOGuard-Token": token}});
+    if (!answer.ok) {
+      document.getElementById("stats").replaceChildren(make("p", {class: "err", text: "The stats did not load."}));
+      return;
+    }
+    stats = await answer.json();
+  }
+  renderStats();
+}
+
+const total = counts => Object.values(counts || {}).reduce((sum, count) => sum + count, 0);
+const number = count => count.toLocaleString("en-US");
+
+function table(heads, rows) {
+  const head = make("tr", {}, ...heads.map((text, at) => make("th", {class: at ? "n" : "", text: text})));
+  return make("table", {}, make("thead", {}, head), make("tbody", {}, ...rows));
+}
+
+function severityCells(counts) {
+  return ["fixed", "warning", "refused"].map(severity => make("td", {class: "n", text: number(counts[severity] || 0)}));
+}
+
+function chart(days) {
+  const width = 720, height = 150, base = 128;
+  const most = Math.max(1, ...days.map(day => (day.fixed || 0) + (day.warning || 0) + (day.refused || 0)));
+  const step = width / Math.max(days.length, 1);
+  const bar = Math.max(2, Math.min(28, step * 0.7));
+  const svg = document.createElementNS(SVG, "svg");
+  svg.setAttribute("viewBox", "0 0 " + width + " " + height);
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "Codes per day");
+  const label = Math.ceil(days.length / 8);
+  days.forEach((day, at) => {
+    let top = base;
+    const x = at * step + (step - bar) / 2;
+    for (const severity of ["fixed", "warning", "refused"]) {
+      const tall = (day[severity] || 0) / most * (base - 8);
+      if (tall <= 0) continue;
+      const rect = document.createElementNS(SVG, "rect");
+      const shape = {x: x, y: top - tall, width: bar, height: tall, class: "s-" + severity};
+      for (const [name, value] of Object.entries(shape)) rect.setAttribute(name, String(value));
+      const tip = document.createElementNS(SVG, "title");
+      tip.textContent = day.day + ": " + number(day[severity]) + " " + WORDS[severity].toLowerCase();
+      rect.append(tip);
+      svg.append(rect);
+      top -= tall;
+    }
+    if (at % label === 0) {
+      const text = document.createElementNS(SVG, "text");
+      text.setAttribute("x", String(x + bar / 2));
+      text.setAttribute("y", String(height - 4));
+      text.setAttribute("text-anchor", "middle");
+      text.textContent = day.day.slice(5);
+      svg.append(text);
+    }
+  });
+  const legend = make("div", {class: "legend"}, ...["fixed", "warning", "refused"].map(severity =>
+    make("span", {}, make("span", {class: "swatch s-" + severity}), WORDS[severity])));
+  return make("div", {class: "card"}, svg, legend);
+}
+
+function codeDetail(code) {
+  const meaning = stats.meanings[code] || {summary: "", fix: ""};
+  const when = event => event.ts ? event.ts.slice(0, 19).replace("T", " ") : "";
+  const events = (stats.recent[code] || []).map(event => make("li", {text: [when(event), event.project,
+    event.tool || event.event, event.check, event.command || event.file_ext].filter(Boolean).join("  ")}));
+  const cell = make("td", {colspan: "5"}, make("div", {text: meaning.summary}),
+    make("div", {class: "muted", text: "Fix: " + meaning.fix}),
+    events.length ? make("ul", {class: "events"}, ...events) : make("div", {class: "muted", text: "No recent lines."}));
+  return make("tr", {class: "detail"}, cell);
+}
+
+function renderStats() {
+  const box = document.getElementById("stats");
+  const sums = {fixed: 0, warning: 0, refused: 0, info: 0};
+  for (const counts of Object.values(stats.codes)) {
+    for (const severity of SEVERITIES) sums[severity] += counts[severity] || 0;
+  }
+  const where = stats.scope === "all" || STATIC ? "every project" : "this project";
+  const parts = [make("p", {class: "muted", text: "The last " + stats.days_asked + " days, " + where + ". " +
+    number(stats.sessions) + " sessions, " + number(stats.lines) + " lines."})];
+  parts.push(make("div", {class: "metrics"},
+    ...[["Hook and io calls", total(stats.events)], ["Fixed", sums.fixed], ["Warned", sums.warning],
+        ["Refused", sums.refused]].map(([name, count]) =>
+      make("div", {class: "metric"}, make("div", {class: "muted", text: name}),
+        make("div", {class: "value", text: number(count)})))));
+  if (!stats.lines) {
+    box.replaceChildren(...parts, make("p", {text: "io-guard wrote nothing in these days."}));
+    return;
+  }
+  parts.push(chart(stats.days));
+  const codes = Object.entries(stats.codes).sort((a, b) => total(b[1]) - total(a[1]) || a[0].localeCompare(b[0]));
+  const rows = [];
+  for (const [code, counts] of codes) {
+    rows.push(make("tr", {class: "code-row", tabindex: "0", title: (stats.meanings[code] || {}).summary || "",
+      onclick: () => { opened = opened === code ? null : code; renderStats(); },
+      onkeydown: event => { if (event.key === "Enter") { opened = opened === code ? null : code; renderStats(); } }},
+      make("td", {}, make("code", {text: code})), ...severityCells(counts),
+      make("td", {class: "n", text: number(counts.info || 0)})));
+    if (opened === code) rows.push(codeDetail(code));
+  }
+  parts.push(make("h2", {text: "Codes"}),
+    make("p", {class: "group-about", text: "Click a code for what it means, its fix and its last lines."}),
+    table(["Code", "Fixed", "Warned", "Refused", "Info"], rows));
+  const checks = Object.entries(stats.checks).sort((a, b) => total(b[1]) - total(a[1]));
+  parts.push(make("h2", {text: "Checks"}),
+    table(["Check", "Fixed", "Warned", "Refused"], checks.map(([check, counts]) =>
+      make("tr", {}, make("td", {text: check}), ...severityCells(counts)))));
+  const latency = [["One hook call", stats.latency.hook], ["One io tool call", stats.latency.io],
+                   ["One tool use, all its hooks", stats.latency.use]];
+  parts.push(make("h2", {text: "Time taken"}),
+    table(["Milliseconds", "p50", "p90", "p99", "Max", "Calls"], latency.map(([name, spread]) =>
+      make("tr", {}, make("td", {text: name}), ...["p50", "p90", "p99", "max"].map(at =>
+        make("td", {class: "n", text: spread.n ? String(spread[at]) : "-"})),
+        make("td", {class: "n", text: number(spread.n)})))));
+  if (stats.scope === "all" || STATIC) {
+    const projects = Object.entries(stats.projects).sort((a, b) => b[1] - a[1]);
+    parts.push(make("h2", {text: "Projects"}),
+      table(["Project", "Calls"], projects.map(([name, count]) =>
+        make("tr", {}, make("td", {text: name}), make("td", {class: "n", text: number(count)})))));
+  }
+  box.replaceChildren(...parts);
+}
+
 try { const saved = localStorage.getItem("io-guard-theme"); if (saved) document.documentElement.dataset.theme = saved; }
 catch (error) { }
 for (const button of document.querySelectorAll("[data-theme-pick]")) {
   button.addEventListener("click", () => theme(button.dataset.themePick));
 }
+for (const button of document.querySelectorAll("[data-view]")) {
+  button.addEventListener("click", () => show(button.dataset.view));
+}
+for (const button of document.querySelectorAll("[data-days]")) {
+  button.addEventListener("click", () => {
+    query.days = Number(button.dataset.days);
+    pressed("days", "days", query.days);
+    loadStats();
+  });
+}
+for (const button of document.querySelectorAll("[data-scope]")) {
+  button.addEventListener("click", () => {
+    query.scope = button.dataset.scope;
+    pressed("scope", "scope", query.scope);
+    loadStats();
+  });
+}
 document.getElementById("search").addEventListener("input", filter);
-setInterval(async () => {
-  try {
-    const answer = await fetch("/api/ping", {headers: {"X-IOGuard-Token": token}});
-    if (answer.ok) return;
-  } catch (failure) { }
-  document.getElementById("banners").replaceChildren(make("div", {class: "banner",
-    text: "This page's server has stopped, after the session ended or the page sat unused. Ask Claude to " +
-          "open io-guard's settings again for a new page."}));
-}, 30000);
 theme();
-load().catch(error => { document.getElementById("project").textContent = "The settings did not load: " + error; });
+if (STATIC) {
+  document.getElementById("views").hidden = true;
+  document.getElementById("days").hidden = true;
+  document.getElementById("scope").hidden = true;
+  document.getElementById("project").textContent = "Written by tools/report.py --html. Every project.";
+  show("stats");
+} else {
+  setInterval(async () => {
+    try {
+      const answer = await fetch("/api/ping", {headers: {"X-IOGuard-Token": token}});
+      if (answer.ok) return;
+    } catch (failure) { }
+    document.getElementById("banners").replaceChildren(make("div", {class: "banner",
+      text: "This page's server has stopped, after the session ended or the page sat unused. Ask Claude to " +
+            "open io-guard's settings again for a new page."}));
+  }, 30000);
+  load().catch(error => { document.getElementById("project").textContent = "The settings did not load: " + error; });
+}
 </script>
 </body>
 </html>
