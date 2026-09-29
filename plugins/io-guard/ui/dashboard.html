@@ -303,6 +303,15 @@ for (const button of document.querySelectorAll("[data-theme-pick]")) {
   button.addEventListener("click", () => theme(button.dataset.themePick));
 }
 document.getElementById("search").addEventListener("input", filter);
+setInterval(async () => {
+  try {
+    const answer = await fetch("/api/ping", {headers: {"X-IOGuard-Token": token}});
+    if (answer.ok) return;
+  } catch (failure) { }
+  document.getElementById("banners").replaceChildren(make("div", {class: "banner",
+    text: "This page's server has stopped, after the session ended or the page sat unused. Ask Claude to " +
+          "open io-guard's settings again for a new page."}));
+}, 30000);
 theme();
 load().catch(error => { document.getElementById("project").textContent = "The settings did not load: " + error; });
 </script>

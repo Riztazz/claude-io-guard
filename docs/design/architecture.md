@@ -1573,6 +1573,10 @@ from it. A background run keeps running when its call is cancelled, because its 
   `CONFIG_REFUSED` with its message.
 - **Where it opens.** The tool's note tells the model to open the URL in the desktop app's browser pane, or any
   browser on this machine.
+- **When it stops.** The open page asks `GET /api/ping` every 30 seconds. A watcher stops the server once no
+  request came for `io.dashboard.idle_minutes`, 5 by default, and drops it, so the next `io.dashboard` starts a
+  new one on a new port with a new token (task 68). 0 keeps it up until the io server stops. An open page whose
+  ping fails says to ask for the page again.
 - **The page.** One list of every setting, grouped by check, with the rewrite modes first. Each option shows
   your value with the control its type takes, a one-line help that `?` opens in full, and a tooltip with its
   key and default. The line under it, "This project", is "Same as yours" or "Override" with the project's own

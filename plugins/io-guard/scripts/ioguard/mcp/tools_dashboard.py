@@ -195,17 +195,31 @@ def written(ctx: Context, cwd: Path, given: dict) -> dict:
         raise Rejected({"code": failure.result.code.value, "message": failure.result.message}) from None
 
 
+def forget(root: Path, board: Dashboard) -> None:
+    """Drop a stopped page server, unless a newer one already took its place."""
+    with BOARD_LOCK:
+        if BOARDS.get(root) is board:
+            del BOARDS[root]
+
+
 def dashboard(given: DashboardInput, call: ToolCall) -> DashboardOutput:
     ctx, root = call.context, project_root(call.cwd)
     with BOARD_LOCK:
         if root not in BOARDS:
-            BOARDS[root] = Dashboard(lambda: settings(ctx, root), lambda sent: written(ctx, root, sent))
+            idle_s = ctx.config.get("io.dashboard.idle_minutes") * 60
+            board = Dashboard(lambda: settings(ctx, root), lambda sent: written(ctx, root, sent),
+                              idle_s=idle_s, on_stop=lambda: forget(root, board))
+            BOARDS[root] = board
         url = BOARDS[root].start()
+        minutes = BOARDS[root].idle_s / 60
     rows = settings(ctx, root)["settings"]
     off = tuple(row["group"] for row in rows if row["key"].endswith(".enabled") and row["applies"] is False)
+    again = callable_name("io.dashboard")
+    stops = (f" The page stops {minutes:g} minutes after it closes, and calling {again} again opens a new "
+             f"one." if minutes else "")
     return DashboardOutput(url, root.as_posix(), off,
                            "Open the URL in the desktop app's browser pane, or in any browser on this "
-                           "machine. A change there applies from the next tool call.")
+                           f"machine. A change there applies from the next tool call.{stops}")
 
 
 SPECS = (ToolSpec("io.dashboard", "Open io-guard's settings page",

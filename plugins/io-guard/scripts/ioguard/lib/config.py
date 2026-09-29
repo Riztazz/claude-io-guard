@@ -150,6 +150,9 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
                                           "character.", project_forbids=(False,)),
     "io.format.timeout_s": ConfigKey(int, 30, "Seconds a format command may take on one file, after which "
                                      "io-guard stops it and io.format writes nothing."),
+    "io.dashboard.idle_minutes": ConfigKey(int, 5, "Minutes the settings page's server waits with no open "
+                                           "page asking before it stops. 0 keeps it up until the session "
+                                           "ends.", project_may_set=False),
     **{f"transport.rewrite_mode.{mode}": ConfigKey(
         str, default, f"What happens to a rewritten command in the {mode} permission mode.",
         choices=REWRITE_MODES, project_forbids=("allow",)) for mode, default in REWRITE_DEFAULTS.items()},

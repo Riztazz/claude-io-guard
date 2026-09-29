@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 import unittest
 import urllib.request
 from pathlib import Path
@@ -17,7 +18,7 @@ from ioguard.hooks import entry
 from ioguard.lib.context import Context, LiveFs, project_root
 from ioguard.lib.platform import detect
 from ioguard.lib.results import Code
-from ioguard.mcp.dashboard_http import PAGE
+from ioguard.mcp.dashboard_http import PAGE, Dashboard
 from ioguard.mcp.progress import CancelToken
 from ioguard.mcp.tools_dashboard import BOARDS, ConfigInput, DashboardInput, configure, dashboard
 from ioguard.mcp.toolspec import ToolCall, ToolFailure
@@ -167,7 +168,7 @@ class ThePageServerAnswersOnlyItsOwnPage(ConfigTest):
         page = PAGE.read_bytes()
         calls = sorted(set(re.findall(rb'fetch\("([^"]+)"', page)))
         self.assertEqual((page.isascii(), re.findall(rb"https?://", page), calls),
-                         (True, [], [b"/api/setting", b"/api/settings"]),
+                         (True, [], [b"/api/ping", b"/api/setting", b"/api/settings"]),
                          "one self-contained file, which calls the two paths the server answers")
 
     def test_the_settings_carry_each_checks_description_for_its_heading(self):
@@ -181,6 +182,41 @@ class ThePageServerAnswersOnlyItsOwnPage(ConfigTest):
                                                         "scope": "project"}).encode(), token=self.token)
         again = dashboard(DashboardInput(), ToolCall(lambda: self.ctx, CancelToken(), self.root, None))
         self.assertEqual(again.checks_off, ("shell.lint",), "the summary names what the project turned off")
+
+
+class AnUnusedPageServerStops(unittest.TestCase):
+    def test_the_idle_time_counts_from_the_last_request(self):
+        board = Dashboard(dict, dict, idle_s=300)
+        board.last = 1000.0
+        forever = Dashboard(dict, dict, idle_s=0)
+        forever.last = 0.0
+        self.assertEqual((board.expired(1299.0), board.expired(1300.0), forever.expired(10.0 ** 9)),
+                         (False, True, False), "five minutes unasked stops it, and 0 never does")
+
+    def test_a_server_nobody_asks_stops_and_says_so(self):
+        stopped = []
+        board = Dashboard(dict, dict, idle_s=0.05, on_stop=lambda: stopped.append(True))
+        self.addCleanup(board.stop)
+        board.start()
+        deadline = time.monotonic() + 5
+        while not stopped and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertEqual((board.server, stopped), (None, [True]), "the server stopped and told its owner")
+
+    def test_the_tool_names_the_idle_stop_and_a_new_call_after_it_starts_again(self):
+        home = Path(tempfile.mkdtemp(prefix="ioguard-idle-"))
+        self.addCleanup(shutil.rmtree, home, True)
+        (home / ".git").mkdir()
+        ctx = Context.fake(platform=detect(), fs=LiveFs(), data_dir=home)
+        call = ToolCall(lambda: ctx, CancelToken(), home, None)
+        first = dashboard(DashboardInput(), call)
+        board = BOARDS[project_root(home)]
+        board.stop()
+        board.on_stop()
+        second = dashboard(DashboardInput(), call)
+        self.addCleanup(BOARDS.pop(project_root(home)).stop)
+        self.assertIn("stops 5 minutes after it closes", first.note, "the model learns the page stops")
+        self.assertNotEqual(first.url, second.url, "a new call after the stop opens a new server")
 
 
 if __name__ == "__main__":

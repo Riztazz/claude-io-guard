@@ -8,12 +8,16 @@ either. A change is a POST of JSON, which a form on another page cannot send.
 
     GET  /                 the page, ui/dashboard.html
     GET  /api/settings     every setting, what each file sets and what applies
+    GET  /api/ping         nothing, from an open page, so the server knows it is still used
     POST /api/setting      {"key", "scope", "value", "remove"}: the same write as io.config
+
+The server stops once no request came for io.dashboard.idle_minutes, and the next io.dashboard starts another.
 """
 import hmac
 import json
 import secrets
 import threading
+import time
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -36,13 +40,19 @@ class Rejected(Exception):
 
 
 class Dashboard:
-    """One running page server: its URL, and the two calls its API makes."""
+    """One running page server: its URL, the two calls its API makes, and how long it waits unasked.
 
-    def __init__(self, settings: Callable[[], dict], write: Callable[[dict], dict],
-                 page: Path = PAGE) -> None:
+    With idle_s above 0, a watcher stops the server once no request has come for idle_s seconds, and calls
+    on_stop, so the next io.dashboard starts a new one. The open page asks every 30 seconds."""
+
+    def __init__(self, settings: Callable[[], dict], write: Callable[[dict], dict], page: Path = PAGE,
+                 idle_s: float = 0.0, on_stop: Callable[[], None] | None = None) -> None:
         self.settings, self.write, self.page = settings, write, page
+        self.idle_s, self.on_stop = idle_s, on_stop
         self.token = secrets.token_urlsafe(24)
         self.server: ThreadingHTTPServer | None = None
+        self.last = time.monotonic()
+        self.lock = threading.Lock()
 
     @property
     def url(self) -> str:
@@ -54,17 +64,40 @@ class Dashboard:
 
     def start(self) -> str:
         """Listen on a free port and serve in a daemon thread. The URL, with its token."""
-        if self.server is None:
-            self.server = ThreadingHTTPServer(("127.0.0.1", 0), handler_for(self))
-            self.server.daemon_threads = True
-            threading.Thread(target=self.server.serve_forever, name="io-guard dashboard", daemon=True).start()
-        return self.url
+        with self.lock:
+            self.last = time.monotonic()
+            if self.server is None:
+                self.server = ThreadingHTTPServer(("127.0.0.1", 0), handler_for(self))
+                self.server.daemon_threads = True
+                threading.Thread(target=self.server.serve_forever, name="io-guard dashboard",
+                                 daemon=True).start()
+                if self.idle_s > 0:
+                    threading.Thread(target=self.watch, name="io-guard dashboard idle", daemon=True).start()
+            return self.url
 
     def stop(self) -> None:
-        if self.server is not None:
-            self.server.shutdown()
-            self.server.server_close()
-            self.server = None
+        with self.lock:
+            server, self.server = self.server, None
+        if server is not None:
+            server.shutdown()
+            server.server_close()
+
+    def touch(self) -> None:
+        self.last = time.monotonic()
+
+    def expired(self, now: float) -> bool:
+        """Whether nothing asked the server for idle_s seconds by now, with idle_s above 0."""
+        return self.idle_s > 0 and now - self.last >= self.idle_s
+
+    def watch(self) -> None:
+        """Stop the server once nothing asked it for idle_s seconds, then tell on_stop."""
+        while self.server is not None:
+            time.sleep(min(self.idle_s / 4, 5.0))
+            if self.server is not None and self.expired(time.monotonic()):
+                self.stop()
+                if self.on_stop is not None:
+                    self.on_stop()
+                return
 
     def allowed(self, host: str | None, token: str | None) -> bool:
         return host == f"127.0.0.1:{self.port}" and hmac.compare_digest(token or "", self.token)
@@ -94,6 +127,7 @@ def handler_for(board: Dashboard) -> type[BaseHTTPRequestHandler]:
             if not board.allowed(self.headers.get("Host"), token):
                 self.json(403, {"message": "This page needs the URL io.dashboard gave, token and all."})
                 return None
+            board.touch()
             return parts.path
 
         def do_GET(self) -> None:
@@ -102,6 +136,8 @@ def handler_for(board: Dashboard) -> type[BaseHTTPRequestHandler]:
                 self.answer(200, board.page.read_bytes(), "text/html; charset=utf-8")
             elif path == "/api/settings":
                 self.json(200, board.settings())
+            elif path == "/api/ping":
+                self.json(200, {"idle_s": board.idle_s})
             elif path is not None:
                 self.json(404, {"message": f"The dashboard has no {path}."})
 

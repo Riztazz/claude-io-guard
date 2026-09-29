@@ -208,7 +208,8 @@ To see every setting at once, ask Claude to open io-guard's settings page. `io.d
 `127.0.0.1`, on this machine only and behind a token in its URL, and Claude opens it in the desktop app's
 browser pane. Any browser on this machine opens the same URL. Each option shows your value, a line of help and
 a tooltip with its key and default, and under it the project's override, if the project sets one. A change
-saves at once through `io.config`, and the file comes back two-space formatted.
+saves at once through `io.config`, and the file comes back two-space formatted. The page's server stops five
+minutes after you close the page, or after `io.dashboard.idle_minutes`, and asking again opens a new one.
 
 io-guard's folder is `~/.claude/io-guard`, or `io-guard` inside `CLAUDE_CONFIG_DIR` when you've moved `~/.claude`,
 or wherever `IOGUARD_HOME` points. It holds your `config.json`, the file locks that keep two sessions from
