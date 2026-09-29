@@ -54,8 +54,9 @@ tightens.
   fact about the file. Write through `lib.bytesio.write_atomic` and nothing else.
 - **A hook reads one event from `sys.stdin.buffer`, writes one ASCII JSON answer to `sys.stdout.buffer`, and exits
   0.** Diagnostics go to the debug log. An exception goes to the fail-open boundary.
-- **A subprocess is `lib.proc.run` with an argument list and a timeout.** Never `shell=True`. Git runs as
-  `git -c core.quotepath=false` with `-z` wherever paths are parsed.
+- **A subprocess is `lib.proc.run` with an argument list and a timeout.** Never `shell=True`. Git runs
+  through `lib.git.GIT`: `-c core.quotepath=false`, `-c core.fsmonitor=false` so a repository's config runs
+  no program, and `--literal-pathspecs`, with `-z` wherever paths are parsed.
 - **A check reads `ctx.platform` and `ctx.probe`, never `sys.platform`.** Every platform difference lives behind a
   `lib` function that takes the `Platform`. The environment is `ctx.env` and io-guard's folder `ctx.data_dir`, never
   `os.environ`, so a test sets both.

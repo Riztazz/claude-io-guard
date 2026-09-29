@@ -11,6 +11,7 @@ cd inside ( ) holds for that subshell, and popd goes back to the folder pushd le
 write only when git tracks its target, and the refusal of an in-place edit, such as sed -i or a script body,
 names io.edit, which makes several changes in one call. A write to the scratchpad, to a device, or outside any
 repository passes. A target built from a variable, or named after a cd the check cannot follow, passes too.
+Git's answer for a path holds for the session until a command names git, which can add or remove a file.
 A script file that writes to a path it does not spell out, given a tracked file, gets a warning that names
 io.edit, or io.format when it runs a formatter. A script file the shell creates inside a repository gets a
 warning that points at the scratchpad (GIT-1). A
@@ -51,6 +52,7 @@ PS_MOVERS = {"copy-item", "move-item", "copy", "move", "cpi", "mi", "cp", "mv"}
 IN_PLACE = {"a script body", "a script file"}   # with every ... -i, writes that change a file in places
 XARGS_VALUED = {"-n", "-I", "-d", "-P", "-L", "-s", "-E", "-a"}
 ASSIGNMENT = re.compile(r"^[A-Za-z_]\w*=")
+RUNS_GIT = re.compile(r"(?<![\w.-])git(?:\.exe)?(?=\s|$)", re.I)
 
 
 @dataclass(frozen=True)
@@ -392,7 +394,8 @@ def targets(write: Write, ctx: Context) -> list[Path]:
 
 
 def tracked(path: Path, ctx: Context) -> bool | None:
-    """Whether git tracks path, asked once per session. None when git cannot say."""
+    """Whether git tracks path, asked once per session until the session runs a git command. None when git
+    cannot say."""
     with ctx.session.lock:
         if path in ctx.session.tracked:
             return ctx.session.tracked[path]
@@ -425,6 +428,9 @@ class ShellWrites(Check):
 
     def run(self, event: Event, ctx: Context) -> Decision:
         command = event.command or ""
+        if RUNS_GIT.search(command):
+            with ctx.session.lock:
+                ctx.session.tracked.clear()
         bash = event.tool is not Tool.POWERSHELL
         scripts = script_files(command, event, ctx) if bash else []
         found = (bash_writes(command, event, ctx, scripts=scripts) if bash

@@ -238,6 +238,22 @@ class TheRefusalAndTheWarning(unittest.TestCase):
             Pipeline(registry).run(event, ctx)
         self.assertEqual(len(git.asked), 1, "the answer is cached for the session")
 
+    def test_a_git_command_drops_the_cached_answers(self):
+        git = CountingGit(root=ROOT, tracked=TRACKED)
+        ctx = Context.fake(platform=WINDOWS, git=git)
+        registry = Registry()
+        registry.register(ShellWrites)
+
+        def verdict(command: str) -> Verdict:
+            event = Event.from_hook_json(events.bash(command, ROOT), Surface.MCP_HOOK, WINDOWS)
+            return Pipeline(registry).run(event, ctx).verdict
+
+        self.assertIsNot(verdict("echo x > new.py"), Verdict.DENY, "new.py is untracked at first")
+        git.tracked = TRACKED | {ROOT / "new.py"}
+        verdict("git add new.py && git commit -m new")
+        self.assertIs(verdict("sed -i 's/x/y/' new.py"), Verdict.DENY,
+                      "after a git command, git is asked again, and new.py is tracked now")
+
 
 WRITES_ITS_ARGUMENT = b"import sys\nwith open(sys.argv[1], 'w') as out:\n    out.write('x')\n"
 

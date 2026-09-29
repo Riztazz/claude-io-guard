@@ -1,8 +1,10 @@
 """Git through its porcelain: repository root, tracked files, status, attributes, changed lines, staged paths,
 stored bytes and one file's unstaged diff, all read-only, and one write, a patch applied to the index.
 
-Every call passes -c core.quotepath=false, so a non-ASCII path comes back as UTF-8, uses -z wherever it
-parses paths, and has a timeout. A call that fails raises GitError, so a caller never mistakes a failure for
+Every call passes -c core.quotepath=false, so a non-ASCII path comes back as UTF-8, and
+-c core.fsmonitor=false, so no program a repository's own config names runs. It passes
+--literal-pathspecs, so a file name such as [id].tsx is never a pattern. It uses -z wherever it parses
+paths, and has a timeout. A call that fails raises GitError, so a caller never mistakes a failure for
 an answer. A path that is not UTF-8 decodes with its bytes kept as surrogates, which the file system takes
 back on macOS, so one odd file name never stops a check.
 """
@@ -15,6 +17,7 @@ from pathlib import Path
 from ioguard.lib import proc
 
 PATHS = "surrogateescape"
+GIT = ("git", "-c", "core.quotepath=false", "-c", "core.fsmonitor=false", "--literal-pathspecs")
 
 
 class GitError(Exception):
@@ -45,14 +48,15 @@ class LineRange:
 
 
 def parse_status(raw: bytes) -> GitStatus:
-    """Parse git status --porcelain=v1 -z, where a rename carries its old path as the next field."""
+    """Parse git status --porcelain=v1 -z, where a rename or copy in either column carries its old path as
+    the next field."""
     fields = raw.decode("utf-8", PATHS).split("\0")
     entries, at = [], 0
     while at < len(fields) and fields[at]:
         field = fields[at]
         index, worktree, path = field[0], field[1], field[3:]
         original = None
-        if index in "RC":
+        if index in "RC" or worktree in "RC":
             at += 1
             original = fields[at]
         entries.append(StatusEntry(path, index, worktree, original))
@@ -102,7 +106,7 @@ class Git:
         return min(self.timeout_s, left)
 
     def run(self, cwd: Path, *args: str) -> proc.RunResult:
-        return proc.run(["git", "-c", "core.quotepath=false", *args], cwd=cwd, timeout_s=self.time_left(args))
+        return proc.run([*GIT, *args], cwd=cwd, timeout_s=self.time_left(args))
 
     def checked(self, cwd: Path, *args: str) -> bytes:
         result = self.run(cwd, *args)
@@ -167,8 +171,8 @@ class Git:
     def stage_patch(self, root: Path, patch: bytes) -> None:
         """Apply patch to the index only, as git apply --cached, which a -U0 patch needs --unidiff-zero for.
         GitError carries git's own reason when it refuses."""
-        result = proc.run(["git", "-c", "core.quotepath=false", "apply", "--cached", "--unidiff-zero",
-                           "--recount", "-"], cwd=root, timeout_s=self.time_left(("apply",)), stdin=patch)
+        result = proc.run([*GIT, "apply", "--cached", "--unidiff-zero", "--recount", "-"], cwd=root,
+                          timeout_s=self.time_left(("apply",)), stdin=patch)
         if not result.ok:
             raise GitError(f"git apply --cached in {root} failed: {reason(result)}")
 

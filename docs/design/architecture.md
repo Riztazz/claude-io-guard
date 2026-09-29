@@ -309,7 +309,8 @@ class SessionState:
     warned: MutableSet[str]                      # one user warning per key per session
     budget_override: Optional[int]               # learned from an EOF failure
     first_cut: Optional[int]                     # task 109: the shortest cut command where no cut is known
-    tracked: MutableMapping[Path, bool]          # whether git tracks a path, asked once by shell.writes
+    tracked: MutableMapping[Path, bool]          # whether git tracks a path, asked once by shell.writes,
+                                                 # and cleared by a command that names git (task 110)
     asked: MutableMapping[str, tuple[str, datetime]]   # task 85: by tool_use_id, the content key a PreToolUse
                                                  # check put to the user and when, for io.run, io.restore and
                                                  # io.trust
@@ -875,7 +876,9 @@ def resolved(path: Path, platform: Optional[Platform] = None) -> str
 class LockTable: lock(path) -> threading.Lock               # task 24: one per resolved path, per process
 
 # git.py
-class Git(GitPort): ...                                     # every call: -c core.quotepath=false, -z, timeout
+class Git(GitPort): ...                                     # every call: -c core.quotepath=false,
+                                                            # -c core.fsmonitor=false, --literal-pathspecs,
+                                                            # -z, timeout (task 110)
     def within(self, seconds: float) -> Git                 # task 87: every call ends by then
                                                             # paths decode with surrogateescape, never raise
 def parse_status(raw: bytes) -> GitStatus

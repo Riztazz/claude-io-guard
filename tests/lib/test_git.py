@@ -1,4 +1,5 @@
 """Git's output parses into typed values, and the live Git port answers from a real repository."""
+import sys
 import unittest
 from pathlib import Path
 
@@ -14,6 +15,12 @@ class GitOutputParses(unittest.TestCase):
                          (StatusEntry("src/a.cpp", " ", "M"), StatusEntry("new file.txt", "?", "?"),
                           StatusEntry("new.txt", "R", " ", "old.txt")),
                          "porcelain -z status gives each entry, and a rename carries its old path")
+
+    def test_a_rename_in_either_column_carries_its_old_path(self):
+        raw = b" R b.txt\0a.txt\0 M c.txt\0"
+        self.assertEqual(parse_status(raw).entries,
+                         (StatusEntry("b.txt", " ", "R", "a.txt"), StatusEntry("c.txt", " ", "M")),
+                         "a worktree rename, as git add -N gives, reads its old path too")
 
     def test_empty_status_has_no_entries(self):
         self.assertEqual(parse_status(b"").entries, (), "a clean tree has no status entries")
@@ -95,6 +102,36 @@ class LiveGitAnswers(unittest.TestCase):
             self.assertEqual(blobs, (b"one\r\n", b"one\n", None),
                              "blob gives the committed and the staged bytes, and None for a file new to the "
                              "commit")
+
+    def test_a_repositorys_fsmonitor_program_never_runs(self):
+        with TemporaryProject({"a.txt": b"one\n"}, git=True) as root:
+            marker = root / "ran.txt"
+            (root / "hook.py").write_bytes(f"open({marker.as_posix()!r}, 'w').write('x')\n".encode())
+            hook = f'"{Path(sys.executable).as_posix()}" "{(root / "hook.py").as_posix()}"'
+            git = Git()
+            git.run(root, "config", "core.fsmonitor", hook)
+            (root / "a.txt").write_bytes(b"two\n")
+            git.root(root)
+            git.status(root)
+            git.is_tracked(root / "a.txt")
+            git.changed_ranges(root / "a.txt")
+            self.assertFalse(marker.exists(),
+                             "io-guard's git calls run no program a repository's config names")
+
+    def test_a_file_name_is_a_name_and_never_a_pattern(self):
+        with TemporaryProject({"i.tsx": b"x\n"}, git=True) as root:
+            (root / "[id].tsx").write_bytes(b"y\n")
+            self.assertFalse(Git().is_tracked(root / "[id].tsx"),
+                             "[id].tsx is untracked, though as a pattern it would match i.tsx")
+
+    def test_a_worktree_rename_parses_from_a_real_status(self):
+        with TemporaryProject({"a.txt": b"one\ntwo\nthree\n"}, git=True) as root:
+            git = Git()
+            (root / "a.txt").rename(root / "b.txt")
+            git.run(root, "add", "-N", "b.txt")
+            entries = git.status(root).entries
+            self.assertEqual({entry.path for entry in entries}, {"b.txt"},
+                             "the rename is one entry for b.txt, with no piece of a path left over")
 
     def test_outside_a_repository_root_is_none(self):
         with TemporaryProject({"a.txt": b"x"}) as root:

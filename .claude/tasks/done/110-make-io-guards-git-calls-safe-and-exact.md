@@ -3,7 +3,7 @@ title: Make io-guard's git calls run no repository hook and read paths exactly
 stage: I
 area: lib
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: []
 platforms: [windows, macos]
@@ -44,3 +44,23 @@ The code review of 2026-09-29: slice A items 7 and 11, slice B items 10 and 11.
 ## Done when
 
 - The four cases behave as built, and `live-touched` still passes.
+
+## What changed
+
+- `lib/git.py`: `GIT` is the one prefix every call starts with, `git -c core.quotepath=false -c
+  core.fsmonitor=false --literal-pathspecs`, `stage_patch` included. `parse_status` reads the old path for
+  `R` or `C` in either column.
+- `checks/shell_writes.py`: `RUNS_GIT` clears the session's `tracked` answers when a command names git,
+  before the check asks again. The cache stays otherwise, so a write to a new file still asks git once. A git
+  command run through `io.run`, or from the user's own terminal, clears nothing, since shell.writes never
+  sees it.
+- Tests, each failing first (5 failures): a repository whose `core.fsmonitor` names a Python hook that
+  writes a marker, with `root`, `status`, `is_tracked` and `changed_ranges` run and no marker left; `[id].tsx`
+  untracked beside a tracked `i.tsx`; `" R b.txt\0a.txt\0"` parsed, and a real `git add -N` rename giving
+  one entry (`tests/lib/test_git.py`); `echo x > new.py`, a commit of it, then `sed -i` on it refused
+  (`tests/checks/test_shell_writes.py`). The suite of 1,015 passes on Windows, 2 skipped. One full run of
+  seven reported one error it did not name, and six runs after it passed, so the error is not identified.
+- `live-touched` passed on the CLI 2.1.283, with task 111's uncommitted change also in the tree.
+- Docs: `docs/design/architecture.md` (`Git`, `SessionState.tracked`), `.claude/skills/io-guard-dev/SKILL.md`
+  (how git runs).
+- Checked on Windows on 2026-09-29.
