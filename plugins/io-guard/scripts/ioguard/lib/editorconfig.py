@@ -15,9 +15,10 @@ ALTERNATIVES = 256                  # the globs one {a,b} set stands for at most
 
 
 def parse(text: str) -> tuple[bool, list[tuple[str, dict[str, str]]]]:
-    """Whether the file says root = true, and its sections in order, each a glob and its properties."""
+    """Whether the file says root = true, and its sections in order, each a glob and its properties. A BOM
+    at the start is the file's, not part of its first line."""
     root, sections = False, []
-    for line in text.splitlines():
+    for line in text.removeprefix(chr(0xFEFF)).splitlines():
         if not line.strip() or line.lstrip().startswith(("#", ";")):
             continue
         if header := SECTION.match(line):

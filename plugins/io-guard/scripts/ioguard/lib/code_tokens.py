@@ -67,10 +67,12 @@ def scanned(text: str, pattern: re.Pattern, comments: tuple[str, ...]) -> tuple[
 
 def python_tokens(text: str) -> tuple[Token, ...]:
     """Python's own tokens less comments, line breaks and docstrings, with indent and dedent kept as kinds. A
-    file Python cannot tokenize is read as a hash-comment file."""
+    file Python cannot tokenize is read as a hash-comment file. The 3.14 tokenizer raises more than
+    TokenError on text it cannot read: a UnicodeDecodeError for a lone CR before a non-ASCII character, a
+    UnicodeEncodeError for a lone surrogate, and a SystemError under fuzzing, so any failure falls back."""
     try:
         raw = list(tokenize.generate_tokens(io.StringIO(text).readline))
-    except (tokenize.TokenError, SyntaxError, IndentationError):
+    except Exception:
         return scanned(text, HASH_TOKEN, comments=("#",))
     kinds = (tokenize.INDENT, tokenize.DEDENT)
     significant = [token for token in raw if token.type not in (tokenize.NL, tokenize.COMMENT)]

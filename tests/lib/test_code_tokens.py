@@ -61,6 +61,13 @@ class ACodeChangeIsFoundWhereItIs(unittest.TestCase):
         found = compare("x = (1  # old\n", "x = (1  # new\n", ".py", "code")
         self.assertEqual((found.same, found.how), (True, "code"), "an unclosed bracket still compares")
 
+    def test_python_the_tokenizer_raises_on_still_compares(self):
+        for text in ("a\r" + chr(0xE9), "# c\r" + chr(0xE9) + "\n", "x = '" + chr(0xD800) + "'\n"):
+            with self.subTest(text=ascii(text)):
+                found = compare(text, text, ".py", "code")
+                self.assertTrue(found.same,
+                                "a file Python's tokenizer fails on compares by its hash comments")
+
 
 class AKindWithNoRulesComparesExactly(unittest.TestCase):
     def test_an_unknown_kind_compares_every_line(self):

@@ -296,7 +296,7 @@ def target_profile(siblings: Sequence[Profile], editorconfig: Mapping[str, str],
     if style in ("tab", "space"):
         size = editorconfig.get("indent_size", "")
         indent = Indent(IndentKind.TABS if style == "tab" else IndentKind.SPACES,
-                        int(size) if style == "space" and size.isdigit() else None, 0, 0)
+                        int(size) if style == "space" and size.isascii() and size.isdigit() else None, 0, 0)
     else:
         kind = majority([sibling.indent.kind for sibling in siblings], (IndentKind.NONE,)) or IndentKind.NONE
         width = majority([sibling.indent.width for sibling in siblings if sibling.indent.kind is kind],

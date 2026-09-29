@@ -157,6 +157,13 @@ class ANewFilesProfile(unittest.TestCase):
                          (Bom.UTF8, IndentKind.TABS, False),
                          ".editorconfig's charset, indent_style and insert_final_newline decide")
 
+    def test_an_indent_size_that_is_not_ascii_digits_names_no_width(self):
+        for size in (chr(0xB2), chr(0x0664), "tab", ""):
+            with self.subTest(indent_size=ascii(size)):
+                found = target_profile([], {"indent_style": "space", "indent_size": size}, {})
+                self.assertEqual((found.indent.kind, found.indent.width), (IndentKind.SPACES, None),
+                                 "a superscript two or an Arabic-Indic digit is not a width io-guard reads")
+
 
 class ConvertingText(unittest.TestCase):
     def test_endings_bom_and_final_newline(self):

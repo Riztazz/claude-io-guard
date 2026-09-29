@@ -3,7 +3,7 @@ title: Survive a broken .editorconfig or Python file
 stage: I
 area: lib
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: []
 platforms: [windows, macos]
@@ -38,3 +38,19 @@ The code review of 2026-09-29, slice B items 12 and 13. Rerun on Windows on 2026
 ## Done when
 
 - Each input gives a result, never `GUARD_ERROR`.
+
+## What changed
+
+- `lib/editorconfig.py`: `parse` drops a BOM at the start of the file, so `root = true` on the first line
+  still counts.
+- `lib/profile.py`: `target_profile` reads `indent_size` only when it is ASCII digits. A superscript two
+  raised `ValueError`, and an Arabic-Indic four read as a width of 4.
+- `lib/code_tokens.py`: `python_tokens` falls back to hash comments on any exception the tokenizer raises.
+  The fallback keeps `how` as `code`, as the unclosed-bracket case already did, with no separate note.
+- Tests, each failing first: a BOM before `root = true` (`tests/lib/test_editorconfig.py`); `indent_size` of
+  U+00B2, U+0664, `tab` and empty (`tests/lib/test_profile.py`); `a\r` with U+00E9, a comment line with a lone
+  CR before U+00E9, and a lone surrogate (`tests/lib/test_code_tokens.py`). The suite of 1,033 passes on
+  Windows, 2 skipped.
+- `live-conform` passed on the CLI 2.1.283.
+- Docs: none describe these parsers' edge cases.
+- Checked on Windows on 2026-09-29.

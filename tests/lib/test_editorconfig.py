@@ -48,6 +48,11 @@ class PropertiesMerge(unittest.TestCase):
         self.assertEqual((found["end_of_line"], found["indent_style"]), ("crlf", "tab"),
                          "the nearer file and the later section win, and nothing above root = true counts")
 
+    def test_a_bom_before_the_first_line_is_not_part_of_it(self):
+        root, sections = editorconfig.parse(chr(0xFEFF) + "root = true\n[*]\nindent_style = tab\n")
+        self.assertEqual((root, sections), (True, [("*", {"indent_style": "tab"})]),
+                         "a file saved with a BOM still says root = true")
+
 
 if __name__ == "__main__":
     unittest.main()
