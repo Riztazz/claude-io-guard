@@ -3,7 +3,8 @@
 Every policy value is a key with its default in code (D16). A later layer overrides an earlier one key by
 key. Dictionaries merge, lists replace, and a list key that ends in "extra" appends. A project file overrides
 the user's file for that project, with two limits. A key marked project_may_set=False reaches every project,
-so only the user's file sets it. A regex in a key marked project_regex that lib.patterns finds could stall
+or approves a command in Claude Code's place as a rewrite mode of allow does, so only the user's file sets
+it. A regex in a key marked project_regex that lib.patterns finds could stall
 drops the file, since io-guard runs it on every line of output. A file with any error is dropped whole, and
 the guard runs on the layers that loaded.
 """
@@ -84,14 +85,32 @@ class LoadReport:
     loaded: tuple[Path, ...]
     dropped: tuple[Path, ...]
     held: Mapping[str, Any] = MappingProxyType({})   # the project files' values of keys marked runs
+    changed: Mapping[str, tuple[Any, Any]] = MappingProxyType({})   # key: (the user's value, the project's)
 
     @property
     def user_message(self) -> str | None:
-        """The one message the user sees: the first dropped file and its first error."""
+        """The one message the user sees: the first dropped file and its first error, then each setting the
+        project's files change from the user's own, so a cloned repository never turns a check off
+        unseen."""
         first = next((error for error in self.errors if not error.warning), None)
-        if first is None:
-            return None
-        return f"io-guard ignored {first.file.as_posix()} because of an error in it. {first.render()}"
+        dropped = (f"io-guard ignored {first.file.as_posix()} because of an error in it. {first.render()}"
+                   if first else None)
+        named = [f"{key} {shown(now)} (yours {shown(was)})"
+                 for key, (was, now) in sorted(self.changed.items())[:CHANGES_NAMED]]
+        more = len(self.changed) - len(named)
+        changes = (f"This project's .claude/io-guard.json changes {len(self.changed)} of your io-guard "
+                   f"settings here: {'; '.join(named)}{f' and {more} more' if more else ''}."
+                   if named else None)
+        return "\n".join(filter(None, (dropped, changes))) or None
+
+
+def shown(value: Any) -> str:
+    """A setting's value in a message: a list or an object by its size, anything else as JSON."""
+    if isinstance(value, list):
+        return f"a list of {len(value)}"
+    if isinstance(value, Mapping):
+        return f"an object of {len(value)}"
+    return json.dumps(value, ensure_ascii=True)
 
 
 REWRITE_MODES = ("refuse", "ask", "allow")
@@ -158,12 +177,14 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
                                            "page asking before it stops. 0 keeps it up until the session "
                                            "ends."),
     **{f"transport.rewrite_mode.{mode}": ConfigKey(
-        str, default, f"What happens to a rewritten command in the {mode} permission mode.",
-        choices=REWRITE_MODES) for mode, default in REWRITE_DEFAULTS.items()},
+        str, default, f"What happens to a rewritten command in the {mode} permission mode. Only your own "
+        f"config sets it, since allow approves the command in Claude Code's place.",
+        choices=REWRITE_MODES, project_may_set=False) for mode, default in REWRITE_DEFAULTS.items()},
 }
 ENABLED = ConfigKey(bool, True, "Run this check.")
 USER_FILE = "Set it in your own config.json in io-guard's folder, ~/.claude/io-guard."
 FILE_LIMIT = 256 * 1024          # bytes: a bigger config file is dropped whole rather than read
+CHANGES_NAMED = 8                # the settings a project changes that the message names, the rest counted
 
 
 def all_keys(check_keys: Mapping[str, Mapping[str, ConfigKey]]) -> dict[str, ConfigKey]:
@@ -264,9 +285,10 @@ def read_file(path: Path) -> tuple[Any, ConfigError | None]:
 def load(layers: Sequence[ConfigLayer], check_keys: Mapping[str, Mapping[str, ConfigKey]]) -> LoadReport:
     """Merge the layer files that exist over the defaults. A file with an error is left out whole. A project
     file's values of keys marked runs are held apart, merged with each other, for the caller to merge once the
-    user approved them."""
+    user approved them. The report names each value the project files change from the user's."""
     keys = all_keys(check_keys)
     values = dict(defaults(check_keys).values)
+    users: dict[str, Any] | None = None
     held: dict[str, Any] = {}
     errors, loaded, dropped = [], [], []
     for layer in layers:
@@ -280,9 +302,12 @@ def load(layers: Sequence[ConfigLayer], check_keys: Mapping[str, Mapping[str, Co
             continue
         flat = {key: value for key, value in flatten(raw, keys).items() if key in keys}
         if layer.scope.project:
+            users = dict(values) if users is None else users
             held = merge(held, {key: value for key, value in flat.items() if keys[key].runs})
             flat = {key: value for key, value in flat.items() if not keys[key].runs}
         values = merge(values, flat)
         loaded.append(layer.path)
+    changed = {key: (users.get(key), value) for key, value in values.items()
+               if users is not None and value != users.get(key)}
     return LoadReport(Config(MappingProxyType(values)), tuple(errors), tuple(loaded), tuple(dropped),
-                      MappingProxyType(held))
+                      MappingProxyType(held), MappingProxyType(changed))

@@ -96,11 +96,33 @@ class AFileTooBigIsDroppedWhole(ConfigFiles):
 
 
 class AProjectFileOverridesTheUsers(ConfigFiles):
-    def test_a_project_may_set_allow_as_a_rewrite_mode(self):
-        report = self.load(self.layer(Scope.USER, "u.json", {"transport": {"rewrite_mode": {"auto": "ask"}}}),
-                           self.layer(Scope.PROJECT, "p.json", AUTO_ALLOW))
-        self.assertEqual((report.config.get("transport.rewrite_mode.auto"), report.dropped), ("allow", ()),
-                         "the project's value wins over the user's for that project")
+    def test_a_project_may_not_set_a_rewrite_mode(self):
+        user = self.layer(Scope.USER, "u.json", {"transport": {"rewrite_mode": {"auto": "ask"}}})
+        report = config.load((user, self.layer(Scope.PROJECT, "p.json", AUTO_ALLOW)), REAL_KEYS)
+        self.assertEqual((report.config.get("transport.rewrite_mode.auto"), report.errors[0].key),
+                         ("ask", "transport.rewrite_mode.auto"),
+                         "allow approves a command in Claude Code's place, so a cloned repository cannot "
+                         "set it")
+
+    def test_the_user_hears_once_what_a_project_changes(self):
+        project = {"checks": {"commit.policy": {"enabled": False}}, "pipeline": {"hard_ms": 1},
+                   "commit_policy": {"forbid": ["x", "y"]}, "verify": {".py": ["python", "{file}"]}}
+        report = config.load((self.layer(Scope.USER, "u.json", {"pipeline": {"soft_ms": 100}}),
+                              self.layer(Scope.PROJECT, "p.json", project)), REAL_KEYS)
+        message = report.user_message
+        self.assertEqual(sorted(report.changed), ["checks.commit.policy.enabled", "commit_policy.forbid",
+                                                  "pipeline.hard_ms"],
+                         "each value the project changes is named, and a held command is not in force")
+        for part in ("changes 3 of your io-guard settings", "pipeline.hard_ms 1 (yours 2000)",
+                     "checks.commit.policy.enabled false (yours true)",
+                     "commit_policy.forbid a list of 2 (yours a list of 0)"):
+            with self.subTest(part=part):
+                self.assertIn(part, message, "the message says what the project turned off or loosened")
+
+    def test_a_project_file_that_changes_nothing_says_nothing(self):
+        report = config.load((self.layer(Scope.PROJECT, "p.json", {"pipeline": {"hard_ms": 2000}}),),
+                             REAL_KEYS)
+        self.assertIsNone(report.user_message, "a value equal to the user's is no change")
 
     def test_the_user_may_set_allow(self):
         report = self.load(self.layer(Scope.USER, "u.json", AUTO_ALLOW))

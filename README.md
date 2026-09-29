@@ -203,8 +203,11 @@ project, from any subfolder a session works in, and for the project's files only
 settings alone. A project's list replaces yours. `checks.verify.write.ascii_only` takes whole file names, such
 as `LICENSE` or `.gitignore`, beside extensions.
 
-Four settings stay yours alone, because they reach every project: `telemetry.retention_days`,
-`io.saved_days`, and the variables the session probe exports, `checks.session.probe.env` and `env_windows`.
+Some settings stay yours alone, because they reach every project: `telemetry.retention_days`,
+`io.saved_days`, and the variables the session probe exports, `checks.session.probe.env` and `env_windows`. The
+rewrite modes, `transport.rewrite_mode.*`, stay yours too, because `allow` approves a command in Claude Code's
+place. When a project's file changes any of your other settings, io-guard tells you once a session, naming
+each one beside your own value.
 
 **A project's commands wait for your yes.** `verify` and `format` name programs io-guard starts, and any
 repository you clone can ship a `.claude/io-guard.json`. So a project's commands don't run until you approve

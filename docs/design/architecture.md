@@ -985,12 +985,15 @@ Three layers merge in this order, and a later layer overrides an earlier one key
 |---|---|---|
 | Defaults | `config.defaults()` in code | every key |
 | User | `config.json` in io-guard's folder, `~/.claude/io-guard` by default (D30) | every key |
-| Project | `<project>/.claude/io-guard.json`, then `<project>/.claude/io-guard.local.json` | every key but three, and its commands wait for approval |
+| Project | `<project>/.claude/io-guard.json`, then `<project>/.claude/io-guard.local.json` | every key but the user-only ones below, and its commands wait for approval |
 
-A project file overrides the user's for that project. Four keys reach every project, so only the user's file
-sets them: `telemetry.retention_days` and `io.saved_days`, since every project's files share one folder, and
-`checks.session.probe.env` and `env_windows`, which the session probe exports before any prompt could ask.
-`ConfigKey.project_may_set` marks them.
+A project file overrides the user's for that project. Some keys only the user's file sets:
+`telemetry.retention_days` and `io.saved_days`, since every project's files share one folder,
+`checks.session.probe.env` and `env_windows`, which the session probe exports before any prompt could ask, and
+`transport.rewrite_mode.*`, since `allow` approves a rewritten command in Claude Code's place (task 84, D43).
+`ConfigKey.project_may_set` marks them. `LoadReport.changed` holds each value the project's files change from
+the user's, and `LoadReport.user_message` names them, up to `CHANGES_NAMED` (8), in the one message the hooks
+give once per session and project, such as `checks.commit.policy.enabled false (yours true)`.
 
 `<project>` is `lib.context.project_root` of the hook's `cwd`: the nearest folder at or above it that holds one
 of the two project files, else the nearest that holds `.git`, else `cwd` itself. The hooks keep one Context per
