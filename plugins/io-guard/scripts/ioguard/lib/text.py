@@ -1,4 +1,5 @@
-"""Text shown to the model: the characters it cannot see made visible, and numbered lines of a file.
+"""Text shown to the model: the characters it cannot see made visible, a repository's words quoted, and
+numbered lines of a file.
 
 The Read tool shows a tab, a trailing space, a CR, a BOM and a private-use glyph as nothing or as a plain
 space, which is how an old_string comes to miss. visible writes each as an ASCII marker in brackets, and
@@ -6,6 +7,7 @@ snippet numbers the lines as the Read tool does, so the model can match what it 
 invisible_added names the characters of that kind a write brought in, such as the U+FEFF a JSON escape in a
 tool call turns into.
 """
+import json
 import re
 from collections import Counter
 
@@ -35,6 +37,12 @@ def invisible_added(before: str, after: str,
         if name not in allowed:
             found.append((body[:body.find(char)].count("\n") + 1, name))
     return tuple(sorted(found))
+
+
+def quoted(word: str) -> str:
+    """A word from a repository as one JSON string, so a newline, a control character or a quote in it shows
+    as an escape and cannot read as io-guard's own text."""
+    return json.dumps(word, ensure_ascii=True)
 
 
 def visible(text: str) -> str:

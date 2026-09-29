@@ -5,11 +5,15 @@ test that demands a producing test per code all read it. A code is append-only: 
 change. Each check appends its codes in the task that builds it. docs/design/architecture.md, section 2,
 lists the codes the plan settled on.
 """
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum, IntEnum
 from pathlib import Path
 from typing import Any
+
+DIRECTION = f"{chr(0x202A)}-{chr(0x202E)}{chr(0x2066)}-{chr(0x2069)}"        # the direction overrides
+CONTROL = re.compile(f"[\\x00-\\x08\\x0b-\\x1f\\x7f-\\x9f{DIRECTION}]")        # all but tab and newline
 
 
 class Severity(Enum):
@@ -279,9 +283,12 @@ class Result:
 
     @classmethod
     def of(cls, code: Code, message: str, tool: str, platform: str, **fields: Any) -> "Result":
-        """A result with the severity its code declares, unless fields names another."""
+        """A result with the severity its code declares, unless fields names another. A control character or
+        a direction override in the message, which a file name or a command from a repository can carry,
+        shows as its \\u escape, so it cannot move the text of the lines around it."""
         severity = fields.pop("severity", SPECS[code].severity)
-        return cls(code=code, severity=severity, message=message, tool=tool, platform=platform, **fields)
+        shown = CONTROL.sub(lambda found: f"\\u{ord(found[0]):04x}", message)
+        return cls(code=code, severity=severity, message=shown, tool=tool, platform=platform, **fields)
 
     def render(self) -> str:
         return render(self)

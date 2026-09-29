@@ -57,7 +57,7 @@ plugins/io-guard/
         telemetry_summary.py       Summary, files, summarise, page: every session's telemetry summed
         platform.py                Platform, detect
         probing.py                 tool_version, claude_version, console_encoding, case_insensitive
-        text.py                    visible, snippet, head, invisible_added
+        text.py                    visible, quoted, snippet, head, invisible_added
         transcript.py              refusals: the calls Claude Code refused before any hook, from the transcript
         output.py                  exit_code, saved_path, error_lines, mojibake, excerpt: what a shell result says
         heartbeat.py               Heartbeat, parse, skipped_since: the io server's beat, and Claude Code's skip
@@ -442,7 +442,9 @@ class Result:
 
 `CODES` is the one declaration. The `Code` enum, the skill's code table, the telemetry vocabulary and the
 meta test that demands one producing test per code all read it. `Result.of(code, message, tool, platform)`
-builds a result with the severity its code declares.
+builds a result with the severity its code declares, and writes each control character in the message but
+tab and newline, and each direction override, as its `\u` escape, since a file name or a command from a
+repository can carry one (task 88).
 
 **`CODES` holds the codes that something already produces.** The meta test fails on a code no test names, so
 a code enters `CODES` in the task that builds its check, with that check's tests. Task 07 settled the full
@@ -1036,7 +1038,9 @@ approves exactly them: the SHA-256 of their canonical JSON, keyed by the project
 Until then `Context.held` carries them, `verify.command` and `io.format` run the user's own commands only, and
 each says once per session `PROJECT_COMMANDS_UNTRUSTED`, naming the commands and `io.trust`. `io.trust`'s
 PreToolUse hook, `checks.trust_ask`, answers `ask` with `TRUST_ASKED`, listing each command and any file inside
-the project it runs, so Claude Code's own permission prompt puts them to the user, the one control the model
+the project it runs, each word the project's file names quoted as a JSON string by `lib.text.quoted`, so a
+newline or a control character in one cannot read as io-guard's own line (task 88), and Claude Code's own
+permission prompt puts them to the user, the one control the model
 cannot answer. The tool writes the approval only for a fingerprint that hook recorded. A changed command changes
 the fingerprint and waits again, and `config_stamp` watches `trust.json`, so an approval applies from the next
 call. A script the command runs from inside the project can change in a pull while the command stays the same,

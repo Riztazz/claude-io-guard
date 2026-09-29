@@ -34,6 +34,13 @@ class ResultsRender(unittest.TestCase):
         self.assertEqual(render(result), f"STALE_VIEW: Line 1 reads:\n1| x\n{spec(Code.STALE_VIEW).fix}",
                          "the fix never runs on from the last quoted line")
 
+    def test_a_control_character_or_a_direction_override_shows_as_its_escape(self):
+        given = f"a\x1b[2Jb\rc{chr(0x202E)}d\te\nf"
+        result = Result.of(Code.GUARD_ERROR, given, "Edit", "win32")
+        self.assertEqual(result.message, "a\\u001b[2Jb\\u000dc\\u202ed\te\nf",
+                         "a file name or a command cannot clear, overwrite or reverse the text around it, "
+                         "and a tab and a newline stay")
+
     def test_without_a_fix_the_codes_own_advice_follows(self):
         result = Result.of(Code.GUARD_ERROR, "A check failed.", "Edit", "darwin")
         self.assertEqual(render(result), f"GUARD_ERROR: A check failed. {spec(Code.GUARD_ERROR).fix}",

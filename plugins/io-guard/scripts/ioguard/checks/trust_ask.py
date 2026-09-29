@@ -22,20 +22,22 @@ from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.platform import Platform
 from ioguard.lib.results import Code, Layer, Result, Severity, callable_name
+from ioguard.lib.text import quoted
 
 TRUST = callable_name("io.trust")
 CONFIG = callable_name("io.config")
 
 
 def listed(held: Mapping[str, Any]) -> list[str]:
-    """Each held command as one line: its key, where it applies and its words, such as "verify .py: python
-    x"."""
+    """Each held command as one line: its key, where it applies and its words, each word the project's file
+    names quoted as JSON, such as verify ".py": "python" "x"."""
     lines = []
     for key, value in sorted(held.items()):
         for name, entry in sorted(value.items()):
             pairs = entry.items() if not name.startswith(".") else [(name, entry)]
-            where = "" if name.startswith(".") else f" in {name}"
-            lines += [f"{key} {extension}{where}: {' '.join(argv)}" for extension, argv in sorted(pairs)]
+            where = "" if name.startswith(".") else f" in {quoted(name)}"
+            lines += [f"{key} {quoted(extension)}{where}: {' '.join(map(quoted, argv))}"
+                      for extension, argv in sorted(pairs)]
     return lines
 
 
@@ -105,7 +107,8 @@ class TrustAsk(Check):
             return Decision.observe(self.meta.id)
         ctx.session.keep_ask(event.tool_use_id, trust.fingerprint(ctx.held), ctx.clock.now())
         scripts = inside(ctx.held, ctx.project)
-        changes = (f" It runs {', '.join(scripts)} from inside the project, which a pull can change without "
+        names = ", ".join(map(quoted, scripts))
+        changes = (f" It runs {names} from inside the project, which a pull can change without "
                    f"asking again." if scripts else "")
         result = Result.of(Code.TRUST_ASKED, f"io.trust would let io-guard start these commands from "
                            f"{ctx.project.as_posix()}/.claude/io-guard.json: {'; '.join(listed(ctx.held))}."

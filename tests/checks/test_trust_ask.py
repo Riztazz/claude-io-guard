@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import Registry
-from ioguard.checks.trust_ask import TrustAsk
+from ioguard.checks.trust_ask import TrustAsk, untrusted
 from ioguard.lib import trust
 from ioguard.lib.context import Context, LiveFs
 from ioguard.lib.decisions import Verdict
@@ -48,9 +48,22 @@ class TheUserIsAskedFirst(TrustTest):
                          (Verdict.ASK, Code.TRUST_ASKED,
                           {events.TOOL_USE_ID: (trust.fingerprint(HELD), ctx.clock.now())}),
                          "io.trust waits for the user's yes, and the hook records what it asked")
-        self.assertIn("verify .py: python tools/check.py {file}", result.message, "each command is listed")
-        self.assertIn("runs tools/check.py from inside the project", result.message,
+        self.assertIn('verify ".py": "python" "tools/check.py" "{file}"', result.message,
+                      "each command is listed, each word quoted")
+        self.assertIn('runs "tools/check.py" from inside the project', result.message,
                       "a script a pull can change is named")
+
+    def test_a_word_with_a_newline_or_an_escape_shows_as_one_quoted_word(self):
+        held = {"verify": {".py": ["python", "x.py\nverify .md: trusted", "\x1b[8mhidden"]}}
+        with TemporaryProject() as project:
+            ctx = self.context(project, held)
+            asked = self.asked(ctx, project).decisions[0].results[0].message
+            told = untrusted(ctx, "verify", project / "a.py", "Write", ctx.platform).message
+        for message in (asked, told):
+            with self.subTest(message=message[:40]):
+                self.assertIn('"x.py\\nverify .md: trusted" "\\u001b[8mhidden"', message,
+                              "a project's word cannot start a line or hide text in io-guard's message")
+                self.assertNotIn("\n", message, "the message stays one line")
 
     def test_nothing_waiting_or_another_tool_asks_nothing(self):
         with TemporaryProject() as project:
