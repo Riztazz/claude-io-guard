@@ -226,6 +226,15 @@ class BadFilesAreDroppedWhole(ConfigFiles):
         report = self.load(self.layer(Scope.USER, "u.json", b'{"pipeline": }'))
         self.assertIn("line 1, column", report.errors[0].message, "a JSON error names its line and column")
 
+    def test_json_too_deep_or_a_number_too_long_is_a_file_error_not_a_crash(self):
+        for name, data in (("deep.json", b"[" * 100_000),
+                           ("long.json", b'{"schema": 1' + b"1" * 5000 + b"}")):
+            with self.subTest(name=name):
+                report = self.load(self.layer(Scope.PROJECT, name, data))
+                self.assertEqual((len(report.errors), report.errors[0].key if report.errors else None),
+                                 (1, "(file)"), "a file Python cannot parse is dropped whole, named, "
+                                                "like any file that is not JSON")
+
     def test_a_newer_schema_warns_about_unknown_keys_and_still_loads(self):
         report = self.load(self.layer(Scope.USER, "u.json", {"schema": 99, "future": {"key": 1},
                                                             "pipeline": {"soft_ms": 120}}))

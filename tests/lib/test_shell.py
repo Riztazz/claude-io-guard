@@ -65,6 +65,15 @@ class HeredocsAreFound(unittest.TestCase):
                 self.assertEqual((heredoc.delimiter, heredoc.terminated, heredoc.body), ("EOF", True, "x\n"),
                                  "the $ of $'...' is quoting, not part of the delimiter")
 
+    def test_command_substitution_nested_past_the_limit_is_marked_too_deep(self):
+        for depth, deep in ((shell.MAX_NESTING, False), (1000, True), (600, True)):
+            with self.subTest(depth=depth):
+                for opening in ("$(", '"$('):
+                    command = opening * depth + "true" + ")" * depth + "; ls"
+                    self.assertEqual(shell.scan(command).too_deep, deep,
+                                     "the scanner reads MAX_NESTING levels and marks a deeper command, never "
+                                     "running out of stack")
+
     def test_a_body_with_no_delimiter_line_is_unterminated(self):
         self.assertFalse(only_heredoc("cat <<'EOF'\none\n").terminated, "a missing delimiter is marked")
 

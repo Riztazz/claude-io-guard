@@ -45,6 +45,16 @@ def codes(command: str, tool: str = "Bash", **kwargs) -> tuple[Verdict, tuple[Co
     return decision.verdict, tuple(result.code for result in decision.results)
 
 
+class ACommandNestedTooDeep(unittest.TestCase):
+    def test_it_is_refused_and_no_check_fails_open(self):
+        command = "$(" * 1000 + "true" + ")" * 1000 + "; sed -i s/a/b/ README.md"
+        outcome = run(command)
+        found = {result.code for decision in outcome.decisions for result in decision.results}
+        self.assertEqual((outcome.verdict, Code.COMMAND_TOO_DEEP in found, outcome.errors),
+                         (Verdict.DENY, True, ()),
+                         "a command io-guard cannot read to its end is refused, and no check fails open")
+
+
 class BackticksInsideDoubleQuotes(unittest.TestCase):
     def test_a_backtick_inside_double_quotes_is_refused(self):
         for command in ('git commit -m "fix `parse` for empty input"', "grep -n \"^### \\|^```\" README.md"):

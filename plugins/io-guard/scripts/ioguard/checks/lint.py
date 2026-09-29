@@ -236,7 +236,7 @@ class Lint(Check):
                                             "Commands whose exit code a pipe into a filter hides, each as "
                                             "its first words, such as make or npm test. A project's list "
                                             "replaces it.")},
-        codes=frozenset({Code.BACKTICK_IN_DOUBLE_QUOTES, Code.TRAILING_BACKSLASH_QUOTE,
+        codes=frozenset({Code.COMMAND_TOO_DEEP, Code.BACKTICK_IN_DOUBLE_QUOTES, Code.TRAILING_BACKSLASH_QUOTE,
                          Code.DIALECT_MISMATCH, Code.POWERSHELL_TRAP, Code.PIPE_HIDES_EXIT,
                          Code.INLINE_SCRIPT_INVALID, Code.NOT_PORTABLE, Code.STOPS_BY_MATCH}),
         description="Refuses a shell command whose quoting, escaping or dialect would change what runs, and "
@@ -258,6 +258,10 @@ class Lint(Check):
 
     def bash(self, command: str, ctx: Context, findings: Findings) -> Rewrite | None:
         found = shell.scan(command)
+        if found.too_deep:
+            findings.add(Code.COMMAND_TOO_DEEP, f"This command nests $() more than {shell.MAX_NESTING} deep, "
+                         f"past what io-guard reads, so its checks cannot see all of it.",
+                         "Put the inner commands in a script file with the Write tool, then run the file.")
         simples = shell.commands(command, found)
         bash_dialect(command, found, simples, findings)
         if found.backticks:

@@ -119,6 +119,10 @@ CODES: tuple[CodeSpec, ...] = (
              "The Bash tool on Windows halves a pair of backslashes in this command.",
              "If the command needs both, put the text in a file with the Write tool and read it from there.",
              "0.1"),
+    CodeSpec("COMMAND_TOO_DEEP", Layer.TRANSPORT, Severity.REFUSED,
+             "The command nests command substitutions deeper than io-guard reads, so its checks cannot see "
+             "all of it.",
+             "Put the inner commands in a script file with the Write tool, then run the file.", "0.1"),
     CodeSpec("BACKTICK_IN_DOUBLE_QUOTES", Layer.TRANSPORT, Severity.REFUSED,
              "Bash runs the text between backticks inside double quotes as a command.",
              "Put that text in single quotes, or escape each backtick with a backslash.", "0.1"),

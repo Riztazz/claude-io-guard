@@ -106,11 +106,12 @@ def load(files: Sequence[Path], read: Callable[[Path], bytes | None]) -> Rules:
 
 
 def rules_in(data: bytes, source: Path, managed: bool = False) -> Rules:
-    """The Bash and PowerShell deny and ask rules of one settings file. A file that is not JSON holds none,
-    and only the managed file can make its rules the only ones."""
+    """The Bash and PowerShell deny and ask rules of one settings file. A file that is not JSON, or JSON
+    nested or numbered past what Python parses, holds none, and only the managed file can make its rules the
+    only ones."""
     try:
         raw = json.loads(data)
-    except ValueError:
+    except (ValueError, RecursionError):
         return Rules()
     permissions = raw.get("permissions") if isinstance(raw, dict) else None
     if not isinstance(permissions, dict):
@@ -275,7 +276,8 @@ def inner(found: Wrapped) -> list[list[str]] | None:
     if found.dialect == "bash":
         if any(mark in found.text for mark in UNREAD_BASH):
             return None
-        if any(not heredoc.terminated for heredoc in shell.scan(found.text).heredocs):
+        scanned = shell.scan(found.text)
+        if scanned.too_deep or any(not heredoc.terminated for heredoc in scanned.heredocs):
             return None
         parts = [list(simple.words) for simple in shell.commands(found.text)
                  if not (simple.words and ARITHMETIC.fullmatch(simple.words[0]))]

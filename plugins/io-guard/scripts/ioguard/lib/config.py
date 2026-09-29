@@ -293,6 +293,8 @@ def read_file(path: Path) -> tuple[Any, ConfigError | None]:
     except json.JSONDecodeError as error:
         return None, ConfigError(path, "(file)", f"The file is not JSON: {error.msg} at line {error.lineno}, "
                                                  f"column {error.colno}.")
+    except (ValueError, RecursionError) as error:
+        return None, ConfigError(path, "(file)", f"The file is JSON io-guard cannot read: {error}.")
 
 
 def load(layers: Sequence[ConfigLayer], check_keys: Mapping[str, Mapping[str, ConfigKey]]) -> LoadReport:

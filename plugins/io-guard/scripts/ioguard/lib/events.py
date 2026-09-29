@@ -149,7 +149,7 @@ class Event:
             if fields.get(key):
                 try:
                     raw[key] = json.loads(fields[key])
-                except ValueError as error:
+                except (ValueError, RecursionError) as error:
                     raise EventError(f"The mcp_tool hook's {key} is not JSON: {error}.") from None
         return cls.from_hook_json(raw, Surface.MCP_HOOK, platform)
 

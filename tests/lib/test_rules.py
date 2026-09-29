@@ -192,6 +192,14 @@ class DenyOutranksAsk(unittest.TestCase):
                          "the switch counts in the managed file only")
 
 
+class ASettingsFilePythonCannotParse(unittest.TestCase):
+    def test_json_too_deep_or_a_number_too_long_holds_no_rules_and_raises_nothing(self):
+        for data in (b"[" * 100_000, b'{"n": 1' + b"1" * 5000 + b"}"):
+            with self.subTest(size=len(data)):
+                self.assertEqual(rules.rules_in(data, SOURCE), rules.Rules(),
+                                 "a settings file io-guard cannot parse holds no rule, like one not JSON")
+
+
 class TheSettingsFilesAreClaudeCodes(unittest.TestCase):
     def test_the_user_project_local_and_managed_files(self):
         files = rules.settings_files({"USERPROFILE": "C:/Users/u"}, Path("C:/p"), Platform("win32", True))

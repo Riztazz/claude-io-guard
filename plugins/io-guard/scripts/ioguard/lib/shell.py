@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 NORMAL, SINGLE, DOUBLE, ANSI, COMMENT, BODY, ARITH = range(7)
+MAX_NESTING = 100                       # $( ... ) levels read, well inside Python's stack
 ESCAPED_IN_DOUBLE = "$`\"\\\n"          # a backslash escapes only these inside double quotes
 ESCAPED_IN_BODY = "$`\\\n"              # and only these in a heredoc body bash expands
 WORD_END = " \t\n;&|<>()"
@@ -51,6 +52,7 @@ class Scan:
     states: bytes                # the quoting state at each offset
     backticks: tuple[int, ...] = ()   # offsets of unescaped backticks inside double quotes
     unterminated: bool = False        # a quote runs to the end, so bash stops at unexpected EOF
+    too_deep: bool = False            # $( ... ) nests past MAX_NESTING, and the scan stopped there
 
 
 class Scanner:
@@ -62,6 +64,7 @@ class Scanner:
         self.unclosed = False
         self.heredocs: list[Heredoc] = []
         self.pending: list[tuple[int, int, str, bool, bool]] = []
+        self.depth, self.too_deep = 0, False
 
     def mark(self, start: int, end: int, state: int) -> None:
         self.states[start:end] = bytes([state]) * (end - start)
@@ -79,7 +82,7 @@ class Scanner:
     def run(self) -> Scan:
         self.normal(0, stop=None)
         return Scan(tuple(self.heredocs), inline_bodies(self.text, self.states), tuple(sorted(self.hazards)),
-                    bytes(self.states), tuple(self.backticks), self.unclosed)
+                    bytes(self.states), tuple(self.backticks), self.unclosed, self.too_deep)
 
     def normal(self, at: int, stop: str | None) -> int:
         """Scan unquoted text from at, until stop closes a command substitution. Returns the offset after."""
@@ -101,7 +104,7 @@ class Scanner:
             elif text.startswith("$'", at):
                 at = self.ansi(at + 2)
             elif text.startswith("$(", at):
-                at = self.normal(at + 2, stop=")")
+                at = self.substitution(at)
             elif char == "(" and stop:
                 depth, at = depth + 1, at + 1
             elif char == ")" and stop:
@@ -120,6 +123,18 @@ class Scanner:
             else:
                 at += 1
         return at
+
+    def substitution(self, at: int) -> int:
+        """The $( ... ) at at, one level deeper. Past MAX_NESTING levels the scan stops there, marked too
+        deep, so the scanner never runs out of stack. Returns the offset after."""
+        if self.depth >= MAX_NESTING:
+            self.too_deep = True
+            return len(self.text)
+        self.depth += 1
+        try:
+            return self.normal(at + 2, stop=")")
+        finally:
+            self.depth -= 1
 
     def single(self, at: int) -> int:
         end = self.text.find("'", at)
@@ -144,7 +159,7 @@ class Scanner:
             elif text.startswith("$((", at):
                 at = self.arithmetic(at, at + 1)
             elif text.startswith("$(", at):
-                at = self.normal(at + 2, stop=")")
+                at = self.substitution(at)
             else:
                 if char == "`":
                     self.backticks.append(at)
