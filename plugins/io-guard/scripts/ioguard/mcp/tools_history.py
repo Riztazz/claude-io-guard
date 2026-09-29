@@ -207,6 +207,7 @@ def restore(given: RestoreInput, call: ToolCall) -> RestoreOutput:
             except OSError as error:
                 raise refused(Code.PATH_NOT_FOUND, f"{tool} could not write {kept.path.as_posix()}: "
                               f"{error.strerror or error}.{done}", tool, kept.path, ctx) from None
+        ctx.session.wrote(kept.path)
         restored.append(kept.path.as_posix())
     return RestoreOutput(found.id, restored, [kept.path.as_posix() for kept in plan.same], NOTE)
 

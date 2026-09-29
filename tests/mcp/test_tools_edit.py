@@ -113,6 +113,12 @@ class AnIoToolWriteIsJournaled(EditTest):
                          ("io.edit", "pass", ((2, 2),), (journal.key("TWO"),)),
                          "an io tool's write is journaled like an Edit, from its own before and after")
 
+    def test_the_session_knows_its_own_write(self):
+        ctx = self.context({CWD / "a.txt": b"one\n"})
+        self.run_tool(edit, EditInput("a.txt", (EditPair("one", "two"),)), ctx)
+        self.assertEqual(ctx.session.written_since(0), {CWD / "a.txt"},
+                         "a shell command running at the same time is not named for the io tool's write")
+
     def test_a_call_that_changes_nothing_journals_nothing(self):
         ctx = self.context({CWD / "a.txt": b"one\n"})
         self.run_tool(edit, EditInput("a.txt", (EditPair("one", "one"),)), ctx)

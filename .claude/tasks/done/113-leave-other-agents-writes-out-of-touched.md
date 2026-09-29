@@ -3,7 +3,7 @@ title: Leave another agent's writes out of the files a command changed, and fit 
 stage: I
 area: checks
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: [GIT-2, GIT-7]
 platforms: [windows, macos]
@@ -47,3 +47,32 @@ branch, which only fits a created one.
 - The test's Write is not named, and `live-touched` still passes.
 - The `SKILL.md` case reads `This command changed plugins/io-guard/skills/io-guard/SKILL.md.` with no delete
   advice.
+
+## What changed
+
+- `lib/context.py`: `SessionState.step` counts the session's own writes and its shell starts in order.
+  `wrote(path)` records an own write, `written_since(step)` gives the paths written after a step, and
+  `shell_started` holds the step of the last shell command's start. `ShellSnapshot.step` keeps the step its
+  command started at. A step count, not a clock, so no two clocks disagree.
+- `checks/touched.py`: the check also runs on an Edit's and a Write's PostToolUse, where it records the write.
+  A path the session wrote after the command started is left out of every part of the report. When a shell
+  command started after this one, the message opens `This command, or another command that ran at the same
+  time,`. Two overlapping commands name it at least once, in the report of the one that started first. The
+  advice holds one step per kind that needs one, and none for a changed file never read or a deleted one, so
+  a result with only those has no fix. Under a command that names a move, a read file gone from disk is
+  reported deleted only when git status lists it deleted, so `git mv a.md done/ && git commit` names nothing,
+  the case task 108's own commit met.
+- `mcp/in_place.py` and `mcp/tools_history.py`: each io tool write and each restored file is recorded with
+  `wrote`.
+- Tests, each failing first: a Write inside a Bash call's window is not named; another Bash call inside the
+  window changes the message; a `git mv` then commit of a read file names nothing (`tests/checks/test_touched.py`,
+  which first passed only because it left out the read, so the read was added and it failed); a changed
+  unread file alone has no fix, and a read file with a created one gets both steps; `io.edit` and `io.restore`
+  record their writes (`tests/mcp/test_tools_edit.py`, `tests/mcp/test_tools_history.py`). The suite of
+  1,022 passes on Windows, 2 skipped.
+- `live-touched` and `live-touched-move` passed on the CLI 2.1.283.
+- Docs: `docs/design/architecture.md` (`ShellSnapshot`, `SessionState`).
+- Not built: the journal as the source. The session's own calls are recorded whether or not `journal.write`
+  is on, and task 119 changes the journal itself. A write by another Claude Code session on the machine is
+  still named, since no hook of this session sees it.
+- Checked on Windows on 2026-09-29.

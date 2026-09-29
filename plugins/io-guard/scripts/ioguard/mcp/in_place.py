@@ -184,6 +184,7 @@ def write(loaded: Loaded, data: bytes, ctx: Context, tool: str) -> Written:
                 holding = ""
             raise refused(Code.FILE_LOCKED, f"{holding or 'Another program'} holds {path.name} open, so "
                           f"{tool} could not replace it and wrote nothing.", tool, path, ctx) from None
+        ctx.session.wrote(path)
         try:
             record_write(ctx, path, tool, loaded.data, data)
         except Exception:

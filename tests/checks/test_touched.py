@@ -197,6 +197,61 @@ class TheCommandsChangesAreNamed(unittest.TestCase):
                       "a bashEditDiff names a changed file even when its size and time did not move")
 
 
+class OnlyWhatTheCommandDidIsItsOwn(unittest.TestCase):
+    def test_a_write_of_the_sessions_own_while_the_command_ran_is_left_out(self):
+        session = Session()
+        readme = CWD / "README.md"
+        session.fs.files[readme] = b"old\n"
+        session.run(events.write(readme, "new\n", CWD, tool_use_id="toolu_write"))
+        session.fs.write_atomic(readme, b"new\n")
+        session.run(events.post_tool_use("Write", {"file_path": str(readme), "content": "new\n"},
+                                         {"type": "update", "filePath": str(readme)}, CWD,
+                                         tool_use_id="toolu_write"))
+        session.git.current_status = GitStatus((entry("README.md", " M"),))
+        self.assertEqual(session.after(), [], "the session's own Write is not the command's change")
+
+    def test_another_shell_command_beside_it_is_named_as_such(self):
+        session = Session()
+        session.run(events.bash("python gen.py", CWD, tool_use_id="toolu_other"))
+        session.run(events.post_tool_use("Bash", {"command": "python gen.py"}, events.bash_result(""), CWD,
+                                         tool_use_id="toolu_other"))
+        session.git.current_status = GitStatus((entry("gen.txt", "??"),))
+        self.assertEqual(session.after()[0].message,
+                         "This command, or another command that ran at the same time, created gen.txt.",
+                         "a change during the window is not pinned on this command alone")
+
+    def test_a_move_the_command_names_and_commits_is_no_news(self):
+        command = "git mv open/a.md done/ && git commit -q -m done"
+        session = Session(before=(entry("open/a.md", " M"),))
+        session.fs.files[CWD / "open" / "a.md"] = b"task\n"
+        session.ctx.session.read_profiles[CWD / "open" / "a.md"] = profile(b"task\n")
+        session.run(events.bash(command, CWD))
+        del session.fs.files[CWD / "open" / "a.md"]
+        session.fs.files[CWD / "done" / "a.md"] = b"task\n"
+        session.git.current_status = GitStatus(())
+        self.assertEqual(session.after(command=command), [],
+                         "the commit hid the file's arrival, and the move is still the command's own")
+
+
+class TheAdviceFitsWhatTheCommandDid(unittest.TestCase):
+    def test_a_changed_file_never_read_needs_no_advice(self):
+        session = Session()
+        session.run(events.bash("python tools/skill.py", CWD))
+        session.git.current_status = GitStatus((entry("SKILL.md", " M"),))
+        found = session.after(command="python tools/skill.py")[0]
+        self.assertEqual((found.message, found.fix), ("This command changed SKILL.md.", None),
+                         "the agent's view of a file it never read is not stale, and nothing was created")
+
+    def test_each_kind_brings_its_own_step(self):
+        session = Session()
+        session.fs.write_atomic(READ, b"int b;\r\n")
+        session.git.current_status = GitStatus((entry("tmp.py", "??"),))
+        self.assertEqual(session.after()[0].fix.text,
+                         "Read Source/a.cpp again before the next Edit. Delete any new file the task does "
+                         "not need, and keep the rest on purpose.",
+                         "a read file changed and a file created each bring their step")
+
+
 class WhatTheCommandDidToTheBytes(unittest.TestCase):
     def test_a_script_that_converted_the_endings_is_reported(self):
         session = Session(b"int a;\r\nint b;\r\n")

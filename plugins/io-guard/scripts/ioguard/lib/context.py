@@ -146,6 +146,7 @@ class ShellSnapshot:
     status: frozenset[tuple[str, str]] | None          # (path from root, XY), None when git could not say
     stats: Mapping[Path, FileStat | None]
     listed: Mapping[Path, FileStat | None] = field(default_factory=dict)
+    step: int = 0                                      # SessionState.step when the command started
 
 
 SNAPSHOTS_KEPT = 16     # a call the user refuses leaves its snapshot, so the oldest one past this goes
@@ -169,6 +170,9 @@ class SessionState:
     tag: str | None = None                                        # the task the last io.snapshot named
     read_logs: dict[Path, tuple[int, int]] = field(default_factory=dict)   # io.read_log's line and byte
     dirty: tuple[Path, ...] | None = None                         # the files dirty at the first start
+    step: int = 0                                                 # counts the steps below, in order
+    own_writes: dict[Path, int] = field(default_factory=dict)     # the step of the session's last write
+    shell_started: int = 0                                        # the step the last shell command started at
     lock: threading.RLock = field(default_factory=threading.RLock)
     data_dir: Path | None = None       # with a session id, the folder whose warned file the processes share
     session_id: str | None = None
@@ -215,6 +219,21 @@ class SessionState:
                 return None
             self.dirty = tuple(Path(path) for path in raw)
             return self.dirty
+
+    def next_step(self) -> int:
+        with self.lock:
+            self.step += 1
+            return self.step
+
+    def wrote(self, path: Path) -> None:
+        """Record that the session's own Edit, Write or io tool wrote path, so a shell command running at
+        the same time is not named for it."""
+        with self.lock:
+            self.own_writes[path] = self.next_step()
+
+    def written_since(self, step: int) -> frozenset[Path]:
+        with self.lock:
+            return frozenset(path for path, at in self.own_writes.items() if at > step)
 
     def keep_snapshot(self, tool_use_id: str, snapshot: Snapshot | ShellSnapshot) -> None:
         """Keep what a call looked like before it ran, for its PostToolUse, until the PostToolUse takes it."""

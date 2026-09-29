@@ -110,6 +110,8 @@ class RestoreWritesBackOnlyWhatChangedAndOnlyWhenAsked(HistoryTest):
         self.assertEqual((ctx.fs.files[CWD / "a.txt"], done.restored, done.unchanged),
                          (b"one\r\n", ["C:/project/a.txt"], ["C:/project/b.txt"]),
                          "only the changed file is written, back to its kept bytes")
+        self.assertEqual(ctx.session.written_since(0), {CWD / "a.txt"},
+                         "the session knows the restore's write as its own")
 
     def test_a_restore_the_hook_never_asked_about_writes_nothing(self):
         ctx = self.kept_then_edited()

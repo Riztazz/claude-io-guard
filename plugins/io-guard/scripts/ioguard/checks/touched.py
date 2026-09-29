@@ -11,7 +11,11 @@ bashEditDiffEnabled, adds its files. Changes under the skip_trees globs are left
 index alone: a listed file whose status moved while its size and time did not, as git add, git commit and git
 reset leave one, and a file git removed from the index that is still on disk. A file that moved, by git
 status's rename or by a path gone and a new one with the same name and size, is named as moved, and not at all
-when the command itself names a move, such as git mv, mv or Move-Item. A tracked file that changed
+when the command itself names a move, such as git mv, mv or Move-Item, even when a commit in it hides where
+the file went. A file the session's own Edit, Write or io tool wrote while the command ran is not the
+command's, and when another shell command started while it ran, the message says either one may have made
+the change. The advice holds one step for each kind of change that needs one: read a read file again, delete
+a new file the task does not need, and use a moved file's new path. A tracked file that changed
 while an interpreter ran a script file also gets SHELL_WRITE, because that write skipped the checks an Edit
 gets, unless a git command in the same command could have changed it.
 """
@@ -146,7 +150,8 @@ class Touched(Check):
     meta = CheckMeta(
         id="shell.touched", layer=Layer.STALE,
         events=frozenset({HookEvent.PRE_TOOL_USE, HookEvent.POST_TOOL_USE, HookEvent.POST_TOOL_USE_FAILURE}),
-        tools=frozenset({Tool.BASH, Tool.POWERSHELL}), platforms=frozenset({"win32", "darwin"}),
+        tools=frozenset({Tool.BASH, Tool.POWERSHELL, Tool.EDIT, Tool.WRITE}),
+        platforms=frozenset({"win32", "darwin"}),
         severity=Severity.WARNING, cost=Cost.EXPENSIVE, reads=frozenset({"command"}), writes=frozenset(),
         after=frozenset(), config={"listed": ConfigKey(int, LISTED, "The paths each part of the report names "
                                                        "before it gives the rest as a count.")},
@@ -155,15 +160,21 @@ class Touched(Check):
         description="Tells the agent which files a shell command changed, and what it did to their bytes.")
 
     def run(self, event: Event, ctx: Context) -> Decision:
+        if event.tool in (Tool.EDIT, Tool.WRITE):
+            if event.kind is HookEvent.POST_TOOL_USE and event.file_path is not None:
+                ctx.session.wrote(event.file_path)
+            return Decision.observe(self.meta.id)
         if event.tool_use_id is None:
             return Decision.observe(self.meta.id)
         if event.kind is HookEvent.PRE_TOOL_USE:
             root = repository_root(ctx.git, event.cwd)
             with ctx.session.lock:
                 read = list(ctx.session.read_profiles)
+                step = ctx.session.shell_started = ctx.session.next_step()
             found = status(ctx, root)
             listed = {root / name: ctx.fs.stat(root / name) for name in listed_paths(found)}
-            snapshot = ShellSnapshot(root, codes(found), {path: ctx.fs.stat(path) for path in read}, listed)
+            snapshot = ShellSnapshot(root, codes(found), {path: ctx.fs.stat(path) for path in read}, listed,
+                                     step)
             ctx.session.keep_snapshot(event.tool_use_id, snapshot)
             return Decision.observe(self.meta.id)
         before = ctx.session.take_snapshot(event.tool_use_id)
@@ -176,16 +187,21 @@ class Touched(Check):
 
     def report(self, before: ShellSnapshot, event: Event, ctx: Context) -> tuple[Result, ...]:
         skipped = ctx.config.get("skip_trees")
+        own = ctx.session.written_since(before.step)
+        with ctx.session.lock:
+            beside = ctx.session.shell_started > before.step
 
         def kept(path: Path) -> bool:
             relative = paths.shown(path, before.root) if before.root is not None else path.as_posix()
-            return not any(fnmatch.fnmatch(relative, glob) for glob in skipped)
+            return path not in own and not any(fnmatch.fnmatch(relative, glob) for glob in skipped)
 
         moved = {path: ctx.fs.stat(path) for path, stat in before.stats.items() if kept(path)}
         read = sorted(path for path, stat in moved.items() if stat is not None and stat != before.stats[path])
-        read += sorted(path for path in self.diffed(event) if path in before.stats and path not in read)
+        read += sorted(path for path in self.diffed(event)
+                       if path in before.stats and path not in read and kept(path))
         deleted = sorted(path for path, stat in moved.items()
                          if stat is None and before.stats[path] is not None)
+        by_status = set()
         created, changed, added = [], [], []
         entries = status(ctx, before.root)
         after = codes(entries)
@@ -201,11 +217,15 @@ class Touched(Check):
                     continue
                 (created if code == "??" else deleted if "D" in code else
                  added if code[0] in "AR" else changed).append(path)
+                if "D" in code:
+                    by_status.add(path)
         sizes = {path: stat.size for path, stat in (*before.stats.items(), *before.listed.items()) if stat}
         named_move = names_a_move(event)
         gone = deleted + vanished(before, after, ctx)
         moved = moves(gone, created + added, renamed, sizes, named_move, ctx)
         deleted = [path for path in deleted if path not in {old for old, _ in moved}]
+        if named_move:
+            deleted = [path for path in deleted if path in by_status]
         created = [path for path in created if path not in {new for _, new in moved}]
         changed += [path for path in added if path not in {new for _, new in moved}]
         limit, cwd = self.options["listed"], event.cwd
@@ -218,12 +238,14 @@ class Touched(Check):
                 ([f"moved {in_words(shown_moves[:limit])}"] if shown_moves else [])
         if not parts:
             return ()
-        advice = (f"Read {named(read, cwd, limit)} again before the next Edit." if read else
-                  "Delete any new file the task does not need, and keep the rest on purpose."
-                  if changed or created or deleted else "Use the files' new paths from now on.")
-        found = [Result.of(Code.TOUCHED_BY_SHELL, f"This command {in_words(parts)}.", event.tool_name,
+        steps = ([f"Read {named(read, cwd, limit)} again before the next Edit."] if read else []) + \
+                (["Delete any new file the task does not need, and keep the rest on purpose."]
+                 if created else []) + \
+                (["Use the files' new paths from now on."] if shown_moves else [])
+        actor = "This command, or another command that ran at the same time," if beside else "This command"
+        found = [Result.of(Code.TOUCHED_BY_SHELL, f"{actor} {in_words(parts)}.", event.tool_name,
                            ctx.platform.os,
-                           fix=Fix("Read", {}, advice),
+                           fix=Fix("Read", {}, " ".join(steps)) if steps else None,
                            evidence={"read": [path.as_posix() for path in read],
                                      "changed": [path.as_posix() for path in changed],
                                      "created": [path.as_posix() for path in created],

@@ -305,6 +305,7 @@ class ShellSnapshot:                             # task 21, before a Bash or Pow
     stats: Mapping[Path, Optional[FileStat]]     # each read file's size and time
     listed: Mapping[Path, Optional[FileStat]]    # task 46: each file status listed, so an index-only change
                                                  # such as git add is told from a write
+    step: int                                    # task 113: SessionState.step when the command started
 
 class SessionState:
     read_profiles: MutableMapping[Path, Profile] # the bytes the agent last read, or wrote through verify.write
@@ -319,6 +320,9 @@ class SessionState:
                                                  # io.trust
     read_logs: MutableMapping[Path, tuple[int, int]]   # io.read_log's last line and byte per log, task 25
     last_failed_build: Optional[str]             # the words of the build that last failed, task 22
+    step: int                                    # task 113: counts own writes and shell starts, in order
+    own_writes: MutableMapping[Path, int]        # the step of the session's last Edit, Write or io tool write
+    shell_started: int                           # the step the last Bash or PowerShell command started at
     lock: RLock                                  # guards every field
     data_dir: Optional[Path]                     # with session_id, where the warned keys are shared, task 23
     session_id: Optional[str]
