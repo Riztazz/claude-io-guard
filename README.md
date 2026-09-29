@@ -1,434 +1,163 @@
 # io-guard
 
-A Claude Code plugin that checks what an agent sends to the file and shell tools, fixes what it safely can, and
-returns a structured error for the rest. One codebase runs on Windows and macOS.
+**Your AI agent sends a bad command. io-guard fixes it before it runs, and the agent gets the result it
+wanted.**
 
-**Status: in build.** The plugin installs, its io server runs the hooks and every io tool, and its hooks answer
-every file and shell call. Twenty-one checks run so far: the session probe, where a write lands,
-what holds a locked file, the Bash body move, the shell-write refusal, the quoting and dialect lint, the Git Bash
-path fix, the endings and BOM fix for Write, the indent fix for Edit and the refusal of one that would join two
-words, the check of each written file against the file before it, your own verify command after a write, the
-files a shell command changed, the profile line after a Read, the diagnosis of a failed file call, both after it
-fails and after Claude Code refuses it, what a shell command's result means, a warning when the io server is not
-running, your permission rules on `io.run`, your commit policy, the question before `io.restore` overwrites your
-edits, and the journal of every write. The
-build plan is in `.claude/tasks/`, and this page describes the plugin the plan builds.
+The agent keeps working on your code. It doesn't lose time, and it doesn't spend tokens trying again and again
+to fix errors that come from the shell, not from your code.
 
-## Five fixes, by example
+io-guard is a plugin for Claude Code. It works on Windows and macOS. It looks at every command and every file
+change the agent makes:
 
-**A long script on Windows.** The Bash tool cuts a command near 7.8 KB.
+- **Before it runs:** when io-guard can fix it, it fixes it, and tells the agent what it changed.
+- **When it can't be fixed:** io-guard stops it, and tells the agent what to send instead.
+- **After it runs:** io-guard tells the agent what really happened, in clear words, not just "exit code 1".
 
-```
-The call   Bash: python - <<'EOF'  ...9 KB of Python...  EOF
-Without    /usr/bin/bash: -c: line 1: unexpected EOF while looking for matching `''
-With       io-guard moved a 9.0 KB heredoc body to <scratchpad>/io-guard/body-3f9c2a7b1d4e8f60.py, and the
-           command reads it from there. The body arrives exactly as written, with no backslash halved.
-```
+You can change every rule and every limit, for all your projects or for one.
 
-**A Write over a Windows file.** The Write tool writes LF and drops a BOM.
+## It fixes the command before it runs
 
-```
-The call   Write: settings.ini, a file with CRLF endings and a BOM
-Without    The file comes back LF with no BOM. git diff marks every line changed, and git warns
-           "LF will be replaced by CRLF".
-With       The content is rewritten to CRLF with the BOM before Write runs. git diff shows only the lines that
-           changed, and the model reads EOL_CONVERTED: io-guard wrote the content with CRLF line endings, a
-           BOM, and a final newline, as settings.ini has them.
-```
+Agents make the same shell and file mistakes every developer knows. io-guard fixes them before they run:
 
-**An Edit that misses.** The text the model sends is not quite the text in the file.
-
-```
-The call   Edit: client.py, old_string "    retries = 3"
-Without    String to replace not found in file.
-With       Claude Code refuses the Edit before any hook runs, so the answer comes with the model's next call:
-           ANCHOR_NOT_FOUND: old_string of the refused Edit matches line 48 of client.py once spaces and
-           tabs are ignored. client.py uses LF line endings. The file reads:
-           48| [TAB]retries = 3
-           Call Edit again with old_string "\tretries = 3".
-```
-
-**A write through the shell.** No check sees it, and rewind can't undo it.
-
-```
-The call   Bash: sed -i 's/timeout=30/timeout=60/' src/client.py
-Without    The file changes, and nothing records how.
-With       Refused. SHELL_WRITE: This command writes C:/work/app/src/client.py, which git tracks, through
-           sed -i, so the write skips io-guard's byte checks and Claude Code's checkpoints. Use the Edit tool
-           to change it, or the Write tool to replace it whole.
-```
-
-**A search that finds nothing, inside a chain.** grep exits with 1 when no line matches, and `&&` stops there.
-
-```
-The call   Bash: grep -q "legacy_api" src/client.py && echo still used
-Without    Exit code 1, and the model reports that the command failed.
-With       EXIT_BENIGN: Exit code 1 is the answer grep gives when no line matches, not a failure. The
-           commands after it in the && chain did not run. Join them with ; instead of &&, or put || true
-           after grep, when that answer is expected.
-```
-
-<a href="https://riztazz.github.io/claude-io-guard/architecture.svg"><img src="docs/architecture.svg" alt="io-guard's architecture: Claude Code's tools on top, the plugin's io server, checks and lib in the middle, and the files on disk at the bottom, with four numbered flows" width="100%"></a>
-
-GitHub shows the drawing as a still image. **[Open the interactive drawing](https://riztazz.github.io/claude-io-guard/architecture.svg)**
-to follow each flow step by step, and hover a box to see what it does. The full design is
-[`docs/design/architecture.md`](docs/design/architecture.md).
-
-## What it fixes
-
-The numbers come from 110,379 file and shell tool calls in 738 transcripts of real agent sessions, 2026-06-20 to
-2026-09-27. Each call counts once.
-
-| What goes wrong | How often | What io-guard does |
+| The agent sends | Without io-guard | What runs instead |
 |---|---|---|
-| On Windows, a Bash command longer than about 7.8 KB fails with "unexpected EOF", and a `\\` that no double quote follows loses a backslash | 122 failed commands, about 262k tokens | Moves a heredoc or `python -c` body into a file, byte-exact, and runs the file. Warns about a halved `\\` it cannot move |
-| Write turns a CRLF file into LF and drops its BOM, and an Edit's new text comes indented with spaces in a file indented with tabs, or the other way round | 328 "LF will be replaced by CRLF" warnings | Rewrites Write content in the file's own endings, BOM and final newline, and an Edit's new text in the indent of the lines around it, before either runs. A new file takes its endings from `.editorconfig`, `.gitattributes` or the files beside it |
-| A write leaves damage no tool reports: letters a code page lost as U+FFFD, control bytes, lines changed outside the edit, a file cut short | Never reported, so the transcripts can't count it | Compares each written file with the file before it, puts back a lost BOM or line endings, and names the rest with its lines. An optional git pre-commit hook checks the staged files the same way |
-| An Edit fails with EPERM because a program holds the file, or a write hits a read-only file | 3 EPERM failures | Names the program and its process id after the failure. Refuses a read-only file before the write, with `git lfs lock` when the file is lockable |
-| A formatter or a script changes a file the model has read, or rewrites its endings, and nothing says so | 30 "modified since read" failures | After each shell command, names the files it changed, created or deleted, tells the model to read the changed ones again, and names what it did to their endings or BOM |
-| Read shows a CRLF file, an LF file and a file with a BOM the same way | Agents ran a script of their own 107 times to find out | Adds one line after each Read, such as `io-guard: CRLF, BOM, UTF-8, tabs, 1,284 lines`, and a warning for mixed endings, invalid UTF-8, NUL or private-use bytes |
-| A failed Edit says "not found" and nothing else, and a failed Read, Grep or Glob names the problem but not the fix | 67 anchor misses, 112 stale reads, 175 missing paths | With the model's next call, returns the closest match, the file's endings and a corrected call. After a failed Read, Grep or Glob, names the paths that exist, the parts of a file that fit, or a pattern ripgrep accepts |
-| `sed -i`, redirects and scripts write files around the edit tools, so no check and no rewind sees them | 2,876 shell writes | Refuses a write to a file git tracks, names the tool that does it safely, and warns about a script created inside the repository |
-| Bash reads a command differently from what was meant: a Windows path's last backslash escapes its quote, a backtick inside double quotes runs as a command, PowerShell syntax goes to the Bash tool, a Python body doesn't compile | 29 failed commands, and 11 more that ran and did the wrong thing | Rewrites the path with forward slashes, and refuses the rest with the fix |
-| A command meant to stop one server stops every `python` or `node` process whose command line matches, and other sessions' servers die with it | 4 commands. On 2026-09-28 one such command stopped io-guard's own server in every open session, 4 times in 8 minutes | Warns before it runs, and names the route by the process's id or its port |
-| On Windows, Git Bash turns an argument such as `/Name/X` or `/F` into a path before a Windows program sees it, and `2>nul` writes a file named `nul` | 17 results show a converted path, 163 commands pass such an argument, 3 redirect to `nul` | Names those arguments in `MSYS2_ARG_CONV_EXCL`, and writes `cmd //c` and `/dev/null` |
-| A long output is saved to a file the model reads again, grep's exit code 1 stops a chain, a pipe into `tail` hides a failure, and a console loses characters as U+FFFD | 147 saved outputs, 870 failures with exit code 1, 562 outputs that report an error behind exit code 0, 59 outputs with U+FFFD | Shows a saved output's first and last 20 lines and its error lines in its place, labels an exit code that is an answer, names the errors a pipe hid, and gives the encoding fix |
+| A long Python script in a heredoc, on Windows | `unexpected EOF while looking for matching ''`. The Bash tool cuts any command near 7.8 KB | The script, read from a file, exactly as written |
+| `print("C:\\work\\app")` in a heredoc, on Windows | The Bash tool halves the backslashes. Python reads `\a` as a bell character and prints `C:\work` and junk | The script, read from a file, every backslash kept |
+| `cd "C:\work\app\"` | `unexpected EOF`. In bash, `\"` is a quote inside the string, not its end | `cd "C:/work/app/"` |
+| `taskkill /F /IM app.exe` in Git Bash | Git Bash turns `/F` into the path `F:/`, and taskkill fails | The same command, with `/F` and `/IM` left alone |
+| `dir 2>nul` in Git Bash | A real file named `nul`, which Windows tools can't delete | `dir 2>/dev/null` |
+| `python -c "print('\u2192')"` on Windows | `UnicodeEncodeError: 'charmap' codec can't encode character` | The same command, with Python set to UTF-8 |
+| A Write over a file with CRLF line endings and a BOM | The file comes back LF with no BOM, and git diff marks every line changed | Your text in CRLF with the BOM. git diff shows only your change |
+| An Edit indented with spaces, in a file indented with tabs | Mixed tabs and spaces | Your new lines, indented with tabs |
+
+The agent sees each fix. For the long script:
+
+```
+The agent sends   Bash: python - <<'EOF'  ...10 KB of Python...  EOF
+What runs         python - < "~/.claude/io-guard/bodies/body-7316d4896518f5c9.txt"
+The agent reads   BODY_MOVED_TO_FILE: io-guard moved a 10.0 KB heredoc body to
+                  ~/.claude/io-guard/bodies/body-7316d4896518f5c9.txt, and the command reads it from there.
+                  The body arrives exactly as written, with no backslash halved.
+```
+
+In auto mode, io-guard gives the fixed command to the agent, and the agent sends it again. In the other modes,
+you approve it, or it runs at once. You choose this for each mode, in [the settings](docs/settings.md).
+
+## It stops what it can't fix
+
+| The agent sends | io-guard answers |
+|---|---|
+| `sed -i 's/30/60/' client.py` | Stops it. A shell edit skips io-guard's checks and Claude Code's undo. Use the Edit tool |
+| ``git commit -m "fix the `retries` default"`` | Stops it. Bash would run `retries` as a command. Use single quotes |
+| A commit with a `Co-Authored-By` line, when you've banned it | Stops it, and the agent commits again without the line |
+
+## It keeps your files clean
+
+- **ASCII where you want it.** When the agent adds a smart quote, an em dash or any other non-ASCII character to
+  a file you listed, io-guard reports it with the line number. The pre-commit hook keeps it out of your
+  commits, and the commit policy keeps it out of commit messages.
+- **No invisible characters.** A zero-width space, a stray BOM or a no-break space is reported with its line
+  number, in every file.
+- **Line endings put back.** When a write loses a file's line endings or BOM, io-guard puts them back and tells
+  the agent.
+- **Files changed by other commands.** After a formatter or a script runs, the agent learns which files it read
+  have changed, so it reads them again before its next edit.
+
+## It gives clear errors, not just exit codes
+
+A failed command often says only `Exit code 1`. The agent has to guess what went wrong, and it often guesses
+wrong. io-guard gives every problem a name, says what happened, and says what to do next:
+
+```
+Without io-guard   Exit code 1
+With io-guard      EXIT_BENIGN: Exit code 1 is the answer grep gives when no line matches, not a failure.
+                   The commands after it in the && chain did not run. Join them with ; instead of &&, or
+                   put || true after grep, when that answer is expected.
+```
+
+| The agent sees | io-guard adds |
+|---|---|
+| `pytest \| tail -5` exits 0 while tests fail | The exit code is from tail, so read the output |
+| `grep -q todo app.py && ...` exits 1 | 1 means no match, not an error |
+| An Edit fails with "String to replace not found" | The closest match, its line, and the exact text to send |
+| A long output saved to a file | Its first and last 20 lines and every error line, in the answer |
+| `Get-Process python \| Stop-Process` | A warning first: it can stop other sessions' servers too |
+
+io-guard's own tools answer the same way, as JSON: the name, the message, the file and the fix, each in its own
+field.
 
 ## How it works
 
-io-guard hooks around Claude Code's own tools, so Bash, PowerShell, Edit, Write and Read stay exactly where the
-model expects them. Before each call it checks the input, and after each call it checks the result.
+1. **Claude Code calls io-guard** before and after each Bash, PowerShell, Read, Edit and Write call.
+2. **io-guard's server runs 22 checks**, one for each kind of problem. It's one process per session, so no
+   Python starts per call.
+3. **The answer goes back:** run it as it is, run a fixed version, or stop it with the fix.
+4. **If io-guard itself fails, your call runs anyway.** A broken check is skipped and logged, and you get one
+   warning.
 
-1. **Claude Code fires a hook** before the tool runs.
-2. **The hook calls io-guard's io server**, one long-running process per session that the session's subagents
-   share. No Python starts per call.
-3. **A pipeline of checks decides.** Each check handles one concern: where a write lands, how a command travels to
-   the shell, a file's bytes, a stale view, what a read shows, what a command's output means. The pipeline orders
-   them, chains their fixes and stops at the first refusal.
-4. **The answer goes back to Claude Code:** let it run with a note, run a fixed version, or refuse with a code and
-   the corrected call.
-5. **After the call, the result is checked too:** the bytes on disk against the file before the call, with a lost
-   BOM or line endings put back, the files a shell command touched, and the errors in the output.
+<a href="https://riztazz.github.io/claude-io-guard/architecture.svg"><img src="docs/architecture.svg" alt="io-guard's architecture: Claude Code's tools on top, the plugin's io server, checks and lib in the middle, and the files on disk at the bottom, with four numbered flows" width="100%"></a>
 
-Every disk read and write goes through one library, `lib`, so the same code protects the hooks, the io tools and the
-tests.
-
-### The io tools
-
-A few jobs have no safe built-in tool, so the io server adds them:
-
-| Tool | Job |
-|---|---|
-| `io.read` | A file's lines exactly as the file holds them, after its line endings, BOM, encoding and indent |
-| `io.edit` | Several edits in one file, all or nothing, in the file's own endings, BOM and encoding |
-| `io.splice` | Replace the text between a unique start marker and the end marker after it |
-| `io.append` | Add lines to the end of a file, dated if you ask, wrapped at the file's `.editorconfig` column |
-| `io.run` | Run a program from an argument list, or a script body byte for byte, with no shell in between, under your Bash and PowerShell rules |
-| `io.status` | Whether a background `io.run` still runs, from the process itself, and how it ended |
-| `io.read_log` | The whole lines a log gained since the last read, less your noise patterns |
-| `io.format` | Run your formatter, clang-format by default, over the lines changed since the last commit and no others |
-| `io.snapshot` | Keep the bytes of files, folders or globs under a tag for seven days, before a pass over many files |
-| `io.restore` | Put back the files a snapshot kept, only those that changed, after your yes |
-| `io.compare` | Show whether a pass changed code since a snapshot, ignoring comments or include lines, and where |
-| `io.stage` | Stage the hunks of a file that meet the lines you name, or that one task wrote, and never commit |
-| `io.config` | Read one io-guard setting, or write it into your config or the project's |
-| `io.dashboard` | Open io-guard's settings page, on this machine only |
-| `io.trust` | Let io-guard run the `verify` and `format` commands a project names, after your yes |
-
-The three that change a file write it once, only when every place they name matched once, and a failed one
-writes nothing and names the lines it nearly matched. Two subagents editing one file take turns. After one of
-them changes a file, the built-in Edit tool needs a fresh Read of it, and every result says so.
-
-`io.format` hands the formatter only the lines `git diff` says changed, or the whole file when git has no
-commit of it, or the lines the call names. The file keeps its line endings and BOM whatever the formatter's
-config says, and a change the formatter makes away from those lines, such as a `// namespace` closer at the
-end of the file, stays out. When the formatter fails on one file, no file is written. With `dry_run` set, it
-writes nothing and returns each file's diff, so you see what the formatter would change first, and `lines`
-takes each file's own lines in one call.
-
-`io.run` meets your deny and ask rules for Bash and PowerShell, from every settings file Claude Code reads. A
-deny rule refuses the run, and an ask rule brings up Claude Code's own permission prompt. That holds for a
-command inside `bash -c` or `pwsh -Command` too. A script body or a `python -c` string that mentions a rule's
-program, such as `git` for `Bash(git push *)`, also brings up the prompt, since no rule can see what code does
-with it. A background run's
-handle lasts an hour past the program's end.
-
-`io.snapshot` keeps its copies in io-guard's folder, up to 5,000 files and 512 MB each, and deletes them after
-seven days. `io.restore` undoes a task file by file, where `git checkout` would throw away every other edit
-of the file too. It writes back only the files that changed since the snapshot, and Claude Code's own
-permission prompt asks you first, naming the files whose edits you'd lose.
-
-`io.stage` splits a session's work into commits without `git add -p`. Give it lines, or the tag you gave
-`io.snapshot` before a task, and it stages the hunks the journal says that task wrote. A hunk holding
-two tasks' lines is left for you, and named.
-
-## What it never does
-
-- **It never disables a built-in tool.** A tool Claude Code can't see is a tool the model routes around.
-- **It adds no escaping layer.** Content travels as a tool argument or in a file, never inside a shell string io-guard
-  builds.
-- **It never fixes silently.** Every fix is reported to the model, and a fix that could change meaning is a refusal
-  with the corrected call instead.
-- **It never blocks your work because of its own bug.** A check that crashes is skipped and logged, and you get one
-  warning per session.
-- **Nothing leaves your machine.** Its telemetry holds codes and timings, never file content, and it stays in
-  io-guard's folder, `~/.claude/io-guard`.
+**[Open the interactive drawing](https://riztazz.github.io/claude-io-guard/architecture.svg)** to follow each
+step. The full design is [`docs/design/architecture.md`](docs/design/architecture.md).
 
 ## Install it
 
-Once the first release is out:
-
 1. In claude.ai, open Customize > Plugins and add `Riztazz/claude-io-guard`. Or, in Claude Code, run
    `/plugin marketplace add Riztazz/claude-io-guard`, then `/plugin install io-guard@claude-io-guard`.
-2. You need Claude Code 2.1.281 or later and Python 3.14 or later, and on Windows, Git for Windows.
-   [`docs/compat.md`](docs/compat.md) says why 2.1.281, and what io-guard does when a Claude Code feature it
-   uses is missing.
-3. There's nothing to set. io-guard finds Python itself: `py -3`, then `python` on Windows, and `python3`, then
-   `python` on macOS. When yours is somewhere else, set `IOGUARD_PYTHON` to its full path in the `env` block of
-   `~/.claude/settings.json`. [`docs/launcher.md`](docs/launcher.md) has the details, and what you see when no
-   Python 3.14 is found.
+2. You need Claude Code 2.1.281 or later, Python 3.14 or later, and on Windows, Git for Windows.
+   [`docs/compat.md`](docs/compat.md) says why.
+3. There's nothing to set. io-guard finds Python itself. When yours is somewhere unusual, set `IOGUARD_PYTHON`
+   to its full path in the `env` block of `~/.claude/settings.json`. [`docs/launcher.md`](docs/launcher.md) has
+   the details.
 
-When the io server stops, your tool calls still run, unchecked, and io-guard says so once at the start of your
-next turn. Claude Code starts a stopped server again at the next tool call. When one fails to start, Claude Code
-skips it in every session for the next 15 minutes, and io-guard names that too. `/mcp` shows why it failed.
+## Change a setting
 
-Until 1.0, installs follow the latest commit. From 1.0 on, releases are tagged.
+Your settings live in `~/.claude/io-guard/config.json`, and a project's `.claude/io-guard.json` overrides them
+for that project. To change one, ask Claude, such as "turn off shell.lint for this project", or type
+`/io-guard:settings` to open the settings page, which also shows what io-guard fixed this week. A project's own
+commands never run until you say yes. [`docs/settings.md`](docs/settings.md) lists every setting.
 
-## Configure it
+## Its own tools
 
-Every setting has a default, and every default is a setting. Your settings live in `config.json` in io-guard's
-folder, for every project. A project can add `.claude/io-guard.json`, and anything in it overrides yours for
-that project, so a repository that ships one works as it is from the first session. It holds for the whole
-project, from any subfolder a session works in, and for the project's files only: a file outside it gets your
-settings alone. A project's list replaces yours. `checks.verify.write.ascii_only` takes whole file names, such
-as `LICENSE` or `.gitignore`, beside extensions.
+io-guard also adds 15 tools the agent can call, for jobs the built-in tools can't do safely: `io.edit` for
+several edits in one go, `io.run` to run a program with no shell in between, `io.snapshot` and `io.restore` to
+undo one task, `io.format` to format only the lines that changed, and more. [`docs/tools.md`](docs/tools.md)
+lists them.
 
-Some settings stay yours alone, because they reach every project: `telemetry.retention_days`,
-`telemetry.cmd_head_days`, `io.saved_days`, `io.server.workers`, and the variables the session probe exports, `checks.session.probe.env` and `env_windows`. The
-rewrite modes, `transport.rewrite_mode.*`, stay yours too, because `allow` approves a command in Claude Code's
-place. When a project's file changes any of your other settings, io-guard tells you once a session, naming
-each one beside your own value.
+## What it never does
 
-**A project's commands wait for your yes.** `verify` and `format` name programs io-guard starts, and any
-repository you clone can ship a `.claude/io-guard.json`. So a project's commands don't run until you approve
-them. io-guard tells Claude once a session, Claude calls `io.trust`, and Claude Code's own permission prompt
-shows you each command. Say yes and they run from the next tool call. io-guard keeps the approval in
-`trust.json` in its folder, tied to those exact commands, so a pull that changes one asks again. A command that
-runs a script from inside the repository gets a warning in the prompt, since a pull can change the script
-without changing the command.
+- **It never turns off a built-in tool.** The agent keeps Bash, PowerShell, Edit, Write and Read.
+- **It never fixes in silence.** Every fix is shown to the agent.
+- **It never sends anything anywhere.** Its stats and logs stay in io-guard's folder on your machine.
 
-To change a setting without opening the file, ask Claude, such as "turn off shell.lint for this project".
-`io.config` writes it into your file or the project's, checked the way io-guard checks the whole file, so a
-value the file couldn't load is refused and nothing is written. A change applies from the next tool call. A
-command or a variable for every project, `verify`, `format` or the session's Bash variables in your own file,
-waits for your yes in Claude Code's permission prompt, and the settings page leaves those to `io.config`.
+## What it fixes, by the numbers
 
-To see every setting at once, pick `settings` under io-guard in the plugin menu, type `/io-guard:settings`, or
-ask Claude to open io-guard's settings page. `io.dashboard` serves it on `127.0.0.1`, on this machine only and
-behind a token in its URL, and Claude opens it in the desktop app's browser pane. Once the page loads, the
-token leaves the address bar and the browser's history. Claude also gives you a link,
-Open io-guard's settings page, which opens the same page in any browser on this machine. Each setting shows a
-line of help and a tooltip with its key and default, then two columns: All projects, from your `config.json`,
-and Only this project, from the project's `.claude/io-guard.json`. The project's column shows your value,
-greyed, until you press Change for this project, and Use all projects' value undoes that. A change saves at
-once through `io.config`, and the file comes back two-space formatted. The page's server stops five minutes
-after you close the page, or after `io.dashboard.idle_minutes`, and asking again opens a new one.
+From 110,379 file and shell calls in 738 real agent sessions, 2026-06-20 to 2026-09-27:
 
-The page's Stats switch shows what io-guard fixed, warned about and refused over the last 1, 7 or 30 days, for
-this project or for all of them: a bar per day, every code with its counts, and the time each call took. Click
-a code to see what it means, how to fix it, and its last 20 lines with the command behind each. The stats come
-from the telemetry in io-guard's folder and never leave your machine.
-
-To reset the stats, press Start from now: the page counts only what happens after it, and Show everything
-brings the rest back. Nothing is deleted. Delete all... deletes every project's telemetry after two
-confirmations, and it can't be undone. io-guard also deletes a session's telemetry 90 days after its last line,
-or after `telemetry.retention_days` in your config, and 0 keeps it all. The tool results, `io.run` bodies and
-logs, and moved command bodies io-guard saves in its folder hold your projects' content, so it deletes them 7
-days after their last change, or after `io.saved_days`, and 0 keeps them. Telemetry keeps the first 200
-characters of each command for the stats page, and 7 days after a session's last line, or after
-`telemetry.cmd_head_days`, only the command's program name stays.
-
-Each session's io server runs tool calls and hooks on 4 threads, or on `io.server.workers` from your own
-config, read when a session starts. At 1, a long `io.run` holds back every hook until it ends.
-
-io-guard's folder is `~/.claude/io-guard`, or `io-guard` inside `CLAUDE_CONFIG_DIR` when you've moved `~/.claude`,
-or wherever `IOGUARD_HOME` points. It holds your `config.json`, the file locks that keep two sessions from
-writing one file at once, the telemetry, each session's heartbeat, the snapshots, and the edit journal:
-one line per write naming the file, the lines it changed, the tool and the task, with each line kept as a
-hash and never as text. Every copy of the plugin shares it: the
-desktop app, the terminal, and an install from claude.ai or from a marketplace. Uninstalling the plugin leaves
-the folder, so delete it yourself to remove everything.
-
-**What happens to a rewritten command** is yours to choose, per permission mode:
-
-| Mode | Default | What you see |
+| What goes wrong | How often | What io-guard does |
 |---|---|---|
-| `refuse` | auto, dontAsk | The call is refused, and the reason carries the fixed command. The model reruns it, and the auto-mode classifier judges it |
-| `ask` | default, acceptEdits, plan | You see the fixed command and approve it |
-| `allow` | bypassPermissions | It runs at once, and no classifier sees it |
-
-A Write or an Edit that io-guard fits to the file's endings, BOM and indent isn't a rewritten command. Claude Code
-asks about it or approves it as it would have anyway, and a prompt shows the input as it will land.
-
-**The time budget:** past 300 ms, the checks that start a subprocess are skipped. Past 2 s, every remaining check is
-skipped and the call goes ahead. Both are settings.
-
-**The Bash budget, on Windows:** a Bash command longer than 6,000 bytes, each apostrophe counted as four, gets
-its heredoc or `python -c` body moved into a file, or is refused when there is no body to move. The Bash tool
-cuts commands near 7,800 bytes. The setting is `transport.budget_bytes`, and a project file may lower it. When
-a well-formed command over 5,000 bytes still fails with "unexpected EOF", your machine's Bash tool cuts sooner,
-so io-guard holds the rest of the session's commands below that command's length, on macOS too.
-
-**On a Mac:** a Bash command that uses bash 4 syntax, such as `readarray` or `${name,,}`, gets a warning when
-your `bash` is macOS's 3.2, and one that gives a GNU-only option, such as `sed -i` with no suffix or `grep -P`,
-gets one whatever bash runs it, because the tools are BSD's. The warning names the form both read.
-
-**Shell defaults:** at session start, io-guard gives every later Bash call `PYTHONUTF8=1` and
-`PYTHONIOENCODING=utf-8`, so a Python print of a non-ASCII character works through a cp1252 console. On Windows
-it adds `DOTNET_CLI_UI_LANGUAGE=en` and `VSLANG=1033`, so build tools report in English. The lists are the settings
-`checks.session.probe.env` and `checks.session.probe.env_windows`, and only your own `config.json` can change them,
-because a variable such as `PYTHONSTARTUP` can run a program.
-
-**Your build command:** a build or test piped into `tail`, `grep` or `head` reports the filter's exit code, so
-io-guard warns before it runs. It knows common builds such as `make`, `npm test` and `pytest`. To name your own,
-list each by its first words in `checks.shell.lint.build_commands`, in your project's `.claude/io-guard.json`.
-Your list replaces the default one.
-
-**What a result means:** after each Bash and PowerShell call, io-guard labels an exit code that is an answer,
-such as grep's 1 for no match, and quotes the lines that report errors. A project can add its own. In
-`checks.shell.results.benign_exits`, map a command's first words to its answer codes, such as
-`{"lint-check": {"3": "the files need formatting"}}`. In `checks.shell.results.error_patterns`, add a group of
-regular expressions for its error lines, such as `{"log": ["^Log\\w+: Error: "]}`. A run of what a failed
-build made gets a warning. `checks.shell.results.builds` and `runs` name those commands, and by default
-`ctest` runs what `cmake --build` makes. `io.run` labels its results the same way.
-
-**Log noise:** `io.read_log` leaves out the lines a regular expression in `noise_patterns` matches, such as
-`["^LogTemp: Display:"]`. A project file's pattern in `noise_patterns` or `error_patterns` must compile, stay
-under 200 characters, and never repeat a group that repeats inside it, such as `(a+)+`, because one such pattern
-can stall on a single line of output. Your own `config.json` may set any pattern.
-
-**Runs:** `io.run.timeout_s`, 120 by default, is how long a run to its end may take when the call names no
-timeout. `io.run.handle_ttl_s` is how long a background run's handle lasts after the program ends, an hour.
-`io.read_log.max_lines` caps one read of a log at 500 lines.
-
-**After each write:** io-guard compares the file with the file before the call. A BOM or line endings the
-write lost go back on, and the model is told to read the file again. Turn that off with
-`checks.verify.write.repair`. To have non-ASCII flagged in some files, list their extensions in
-`checks.verify.write.ascii_only`, such as `[".py", ".md"]`. It's empty by default. In every file, a write that
-adds a character the Read tool shows as nothing, such as a U+FEFF where its escape was meant, a
-zero-width space or a no-break space, gets a warning naming it and its line. List the ones a project uses on
-purpose in `invisible_allowed`, such as `["U+00A0"]`.
-
-**Trees a report leaves out:** after a shell command, io-guard names the files it changed. To leave out a tree
-whose changes are noise, such as generated assets, list its glob in `skip_trees`, such as `["Content/**"]`. A
-project file may set it.
-
-**Your verify commands:** io-guard can run a command of yours on each file the model writes, and hand its output
-to the model. Name them by extension in your own `config.json`, and add a project's own under its folder:
-
-```json
-{
-  "verify": {
-    ".py": ["python", "-m", "py_compile", "{file}"],
-    "C:/work/app": {".js": ["node", "--check", "{file}"]}
-  }
-}
-```
-
-`{file}` becomes the file's path, and the command runs with no shell, stopped after 10 seconds. The program is
-a bare name io-guard finds on `PATH` or an absolute path, since a relative one would run from whatever folder
-the session is in. A project's `.claude/io-guard.json` can name commands too, and they wait for your yes, as
-the settings section says.
-
-**Your formatter:** `io.format` runs clang-format for C and C++ files by default, found on your `PATH`, with the
-project's `.clang-format` and no style at all where the project has none. To use another clang-format, or to
-format another language, name the command by extension in your own `config.json`, the same way as a verify
-command. The command reads the file on stdin and prints the formatted text, and the argument that holds
-`{first}` and `{last}` repeats once for each range of lines:
-
-```json
-{
-  "format": {
-    ".cpp": ["C:/Program Files/LLVM/bin/clang-format.exe", "--style=file", "--fallback-style=none",
-             "--assume-filename={file}", "--lines={first}:{last}"],
-    ".py": ["black", "-q", "--line-ranges={first}-{last}", "-"]
-  }
-}
-```
-
-Your entry for an extension replaces the default one. `io.format.timeout_s`, 30 by default, is how long the
-formatter may take on one file.
-
-**The pre-commit hook**, optional: it checks each staged file against its last commit, and stops a commit that
-changes a file's line endings, BOM or indent, or adds control bytes, U+FFFD, or non-ASCII where
-`ascii_only` names the file. Point your repository's `.git/hooks/pre-commit` at the script in the plugin's
-folder, or in a clone of this repository:
-
-```sh
-#!/bin/sh
-exec python "<plugin folder>/scripts/precommit.py"
-```
-
-`git commit --no-verify` skips it for one commit.
-
-**Your commit policy:** list the texts no commit message may hold in `commit_policy.forbid`, such as
-`["Co-Authored-By", "Generated with"]`, and set `commit_policy.ascii_only` to keep messages ASCII. io-guard then
-refuses a `git commit` whose message breaks either, from Bash, PowerShell or `io.run`, and the model commits
-again without it. It reads the message from `-m`, from a `-F` file or heredoc, and from a PowerShell
-here-string. Both are off by default. `forbid` is yours alone, and a project file may only turn `ascii_only`
-on.
-
-**Commits and pushes you approve:** a plugin cannot ship permission rules, so add these to your own
-`settings.json` to be asked before every commit and every push, auto mode included, and to never have
-`git reset --hard` run:
-
-```json
-{
-  "permissions": {
-    "ask": ["Bash(git commit *)", "Bash(git push *)", "PowerShell(git commit *)", "PowerShell(git push *)"],
-    "deny": ["Bash(git reset --hard *)", "PowerShell(git reset --hard *)"]
-  }
-}
-```
-
-**Recommended Claude Code settings**, proposed until the release confirms them:
-
-```json
-{
-  "bashEditDiffEnabled": true,
-  "env": { "ENABLE_TOOL_SEARCH": "auto:5" },
-  "permissions": {
-    "allow": ["mcp__plugin_io-guard_io__io_read", "mcp__plugin_io-guard_io__io_status", "mcp__plugin_io-guard_io__io_read_log"]
-  }
-}
-```
+| A long Bash command fails on Windows, or loses backslashes | 122 failed commands, about 262k tokens | Moves the script into a file and runs it from there |
+| Write turns CRLF into LF and drops the BOM | 328 "LF will be replaced by CRLF" warnings | Writes in the file's own line endings and BOM |
+| A shell command writes files the edit tools never see | 2,876 shell writes | Stops it and names the right tool |
+| Bash reads a command another way than meant | 29 failed commands, 11 more that did the wrong thing | Fixes the path, or stops it with the fix |
+| Git Bash turns `/F` into a path, and `2>nul` makes a file | 163 commands, 17 converted paths, 3 redirects to `nul` | Leaves the switch alone, and writes `/dev/null` |
+| An Edit misses, or a Read, Grep or Glob path is wrong | 67 misses, 112 stale reads, 175 missing paths | Gives the closest match and the call to make |
+| A script changes a file the agent read, and nothing says so | 30 "modified since read" failures | Names each file a command changed |
+| An exit code or a pipe hides what happened | 870 exit code 1 failures, 562 errors behind exit code 0 | Says what the exit code means, and names the hidden errors |
+| A commit message holds a line you never want | 74 of 339 commits, under one user's rules | Stops the commit |
+| A stop by name kills other sessions' servers | 4 commands, one of which killed io-guard in every session 4 times in 8 minutes | Warns, and names the process id to use |
 
 ## Work on it
 
-The repository is also the plugin's marketplace. The shipped plugin is `plugins/io-guard/`, and nothing else ships.
-
-```
-plugins/io-guard/     the plugin: manifest, hooks, the io server, the skill
-tests/                the unittest suite and the byte fixtures
-tools/                corpus, replay, report, measure and skill scripts, and the harness probes
-docs/                 the architecture drawing, the design and its review, and the harness pages
-.claude/tasks/        the build plan: one file per task, in build order
-```
+This repository is also the plugin's marketplace. Only `plugins/io-guard/` ships.
 
 - Start with [`.claude/tasks/README.md`](.claude/tasks/README.md), then `context.md` beside it, then the design.
 - Run the tests with `python -m unittest discover -s tests -t .`.
-- After adding a code or an io tool, run `python tools/skill.py` to write the skill's tables. A test fails until
-  you do.
-- See what io-guard fixed, warned about and refused this week with `python tools/report.py`. It reads the
-  telemetry in io-guard's folder, and `--data` names another folder. `--html FILE` writes the settings page's
-  stats into one file that opens in any browser.
-- Compare the failure classes before and after io-guard with `python tools/measure.py NAME=FOLDER ...`, one
-  pair per transcript folder under `~/.claude/projects/`, and `--since` the day io-guard went on.
-- After a Claude Code update, run `python tools/probes/run_probe.py run all`, then `verdicts`, to recheck every
-  harness fact io-guard relies on. [`docs/compat.md`](docs/compat.md) lists the features, and
-  [`docs/live-checks.md`](docs/live-checks.md) says when each was last confirmed.
-- The author's own working rules and skills are linked in from a private kit and are not part of this repository. A
-  release copies a snapshot of them into `docs/kit-snapshot/`.
+- Check one command offline with `python tools/ioguard.py check "<command>"`. It runs nothing.
+- After adding a code or a tool, run `python tools/skill.py`. A test fails until you do.
+- See what io-guard did this week with `python tools/report.py`.
+- After a Claude Code update, run `python tools/probes/run_probe.py run all`, then `verdicts`.
+  [`docs/live-checks.md`](docs/live-checks.md) says when each fact was last confirmed.
 
 ## License
 

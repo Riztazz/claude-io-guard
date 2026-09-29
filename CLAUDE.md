@@ -29,6 +29,8 @@ workbench/                        copies of the lead's project files to test on,
 docs/design/architecture.md       the design every task builds from, with every contract
 docs/design/review.md             Fable's review of the plan, and the lead's answers
 docs/architecture.svg             the architecture drawn, interactive on GitHub Pages or served from localhost
+docs/settings.md                  every setting, its default, and what io-guard keeps in its folder
+docs/tools.md                     every io tool and what it does
 docs/compat.md                    each Claude Code feature io-guard uses, the version, the probe, the fallback
 docs/live-checks.md               each live fact, with the platform, the version and the date last confirmed
 docs/launcher.md                  how io-guard starts Python on each platform, and what each hook path costs

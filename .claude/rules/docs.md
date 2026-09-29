@@ -8,7 +8,9 @@
 |---|---|
 | `docs/architecture.svg` | adds, removes or renames a component, changes how a call flows, or changes a default the drawing states: the rewrite modes, the 300 ms and 2 s budget, fail-open, the server-down warning |
 | `docs/design/architecture.md` | changes a signature, a type, a code, a config key, a thread, a file in the plugin data folder, or the package layout |
-| `README.md` | changes what the plugin fixes, an io tool, a requirement, an install step, a default or a setting |
+| `README.md` | changes what the plugin fixes, a requirement or an install step |
+| `docs/settings.md` | changes a setting, a default, or a file in io-guard's folder |
+| `docs/tools.md` | adds, removes or changes an io tool |
 | `docs/compat.md`, `docs/live-checks.md` | runs a live check, or starts relying on a harness feature |
 | `.claude/tasks/context.md` | makes a decision or verifies a fact |
 | `CLAUDE.md` | changes the repository's layout or how to run something |
