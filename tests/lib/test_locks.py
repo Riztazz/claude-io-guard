@@ -6,7 +6,7 @@ import time
 import unittest
 
 from ioguard.lib.context import first_in_file
-from ioguard.lib.locks import Process, file_lock, holders, parse_lsof
+from ioguard.lib.locks import Process, file_lock, holders, parse_lsof, waited
 from ioguard.lib.platform import detect
 from tests import PLUGIN_SCRIPTS
 from tests.support.project import TemporaryProject
@@ -59,6 +59,27 @@ class ALiveHolderIsNamed(unittest.TestCase):
                 child.communicate(b"", timeout=30)
         self.assertIn(child.pid, [process.pid for process in found],
                       "the process holding the file open is named, by the platform's own API")
+
+
+class AWaitLastsTheTimeItWasGiven(unittest.TestCase):
+    def test_a_wait_that_ends_early_is_repeated_for_what_is_left(self):
+        now, asked = [0.0], []
+
+        def early(seconds: float) -> bool:
+            asked.append(round(seconds, 4))
+            now[0] += seconds - 0.0005 if seconds > 0.001 else seconds + 0.0005
+            return False
+
+        found = waited(0.2, early, lambda: now[0])
+        self.assertEqual((found, asked[0], now[0] >= 0.2), (False, 0.2, True),
+                         "a kernel wait that ends 0.5 ms early, as Windows' timer can, is waited out")
+        self.assertEqual(len(asked), 2, "and the rest is one more wait, not a spin")
+
+    def test_a_wait_that_comes_true_ends_at_once(self):
+        asked = []
+        self.assertTrue(waited(5.0, lambda seconds: asked.append(seconds) or True, lambda: 0.0),
+                        "a lock that lands ends the wait")
+        self.assertEqual(asked, [5.0], "after one wait")
 
 
 class OneHolderOfAFileLockAtATime(unittest.TestCase):

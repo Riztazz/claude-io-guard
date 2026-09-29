@@ -3,7 +3,7 @@ title: Stop the lock wait test failing by half a millisecond on Windows CI
 stage: I
 area: lib
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: []
 platforms: [windows]
@@ -41,3 +41,20 @@ on the lead's machine and fails now and then on CI.
 ## Done when
 
 - The test's bound holds on the Windows runner across several CI runs, with no tolerance added to it.
+
+## What changed
+
+- `lib/locks.py`: `waited(wait_s, wait_once, clock)` calls a wait with the time left until the deadline by
+  `time.monotonic()`, again when it ends early, and answers whether it came true. `windows_lock` waits through
+  it, rounding each wait up to whole milliseconds with `math.ceil`, and raises on a wait result that is
+  neither signalled nor timed out, so a failed wait never spins. `posix_lock` waits on its helper thread's
+  event through it too.
+- Tests, failing first on the missing helper: a fake clock whose wait ends 0.5 ms early gets one more wait,
+  for what is left, and ends past 0.2 s; a wait that comes true ends after one call (`tests/lib/test_locks.py`).
+  The CI test `test_a_second_holder_waits_and_then_times_out` passed 10 runs of 10 on Windows, with its bound
+  unchanged. The suite of 1,052 passes on Windows, 2 skipped.
+- `live-edit-parallel` passed on the CLI 2.1.283: three subagents' `io.edit` calls on one file, through the
+  lock.
+- Not checked: the GitHub Windows runner, whose timer showed the failure. It needs a push, and CI runs then.
+- Docs: `docs/design/architecture.md` (how `file_lock` waits).
+- Checked on Windows on 2026-09-29.

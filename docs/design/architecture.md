@@ -1491,7 +1491,9 @@ io.append(path, text, wrap_column = None, date_prefix = False, expect_hash = "")
    `FILE_LOCKED` (section 8). `file_lock` waits in the kernel, never by polling (task 96): `LockFileEx` on an
    overlapped handle with a timed wait and `CancelIoEx` on Windows, whose lock manager grants a released
    range to its waiters in order, and a blocking `flock` in a helper thread on macOS, which wakes its waiters
-   in the kernel but keeps no queue. A holder that dies loses the lock with its handle. The empty `.lock`
+   in the kernel but keeps no queue. Both waits go through `waited`, which repeats a wait that ends before
+   its time for what is left by `time.monotonic()`, since a Windows wait counts in timer ticks (task 125). A
+   holder that dies loses the lock with its handle. The empty `.lock`
    files stay, one per path, since deleting one another process has open would split the lock in two.
 2. **Load it.** A missing file is `PATH_NOT_FOUND`, one past `io.edit.max_bytes` `READ_TOO_LARGE`, a read-only
    one `READ_ONLY`, and one whose SHA-256 is not `expect_hash` `STALE_VIEW`. A binary file, or one whose bytes

@@ -13,10 +13,12 @@ loses the lock with its handle.
 """
 import functools
 import hashlib
+import math
 import os
 import sys
 import tempfile
 import threading
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -35,6 +37,7 @@ FILE_FLAG_OVERLAPPED = 0x40000000
 LOCKFILE_EXCLUSIVE_LOCK = 0x2
 ERROR_IO_PENDING = 997
 WAIT_OBJECT_0 = 0
+WAIT_TIMEOUT = 0x102
 INVALID_HANDLE = 2 ** (64 if sys.maxsize > 2 ** 32 else 32) - 1
 
 
@@ -169,6 +172,19 @@ def overlapped_type() -> type:
     return Structure
 
 
+def waited(wait_s: float, wait_once: Callable[[float], bool],
+           clock: Callable[[], float] = time.monotonic) -> bool:
+    """Whether wait_once came true within wait_s seconds by clock. A wait that ends before its time, as a
+    Windows kernel wait counted in timer ticks can by a fraction of a tick, is repeated for what is left, so
+    a caller given wait_s waits at least that long."""
+    deadline = clock() + wait_s
+    while True:
+        if wait_once(max(0.0, deadline - clock())):
+            return True
+        if clock() >= deadline:
+            return False
+
+
 def windows_lock(lock_file: Path, wait_s: float) -> Callable[[], None]:
     """Take the lock file's first byte, waiting in the kernel up to wait_s. Windows grants a released byte
     range to its waiters in the order they asked. The function that lets it go."""
@@ -189,12 +205,18 @@ def windows_lock(lock_file: Path, wait_s: float) -> Callable[[], None]:
     def release() -> None:
         kernel.UnlockFileEx(handle, 0, 1, 0, ctypes.byref(overlapped_type()()))
         close()
+
+    def signalled(seconds: float) -> bool:
+        found = kernel.WaitForSingleObject(event, math.ceil(seconds * 1000))
+        if found not in (WAIT_OBJECT_0, WAIT_TIMEOUT):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return found == WAIT_OBJECT_0
     try:
         if kernel.LockFileEx(handle, LOCKFILE_EXCLUSIVE_LOCK, 0, 1, 0, ctypes.byref(request)):
             return release
         if ctypes.get_last_error() != ERROR_IO_PENDING:
             raise ctypes.WinError(ctypes.get_last_error())
-        if kernel.WaitForSingleObject(event, max(0, round(wait_s * 1000))) != WAIT_OBJECT_0:
+        if not waited(wait_s, signalled):
             kernel.CancelIoEx(handle, ctypes.byref(request))
             if kernel.GetOverlappedResult(handle, ctypes.byref(request), ctypes.byref(done), True):
                 kernel.UnlockFileEx(handle, 0, 1, 0, ctypes.byref(overlapped_type()()))
@@ -258,6 +280,6 @@ def posix_lock(lock_file: Path, wait_s: float) -> Callable[[], None]:
         raise
     waiter = PosixWait(fd)
     threading.Thread(target=waiter.wait, name="io-guard lock wait", daemon=True).start()
-    if waiter.got.wait(wait_s) or not waiter.give_up():
+    if waited(wait_s, waiter.got.wait) or not waiter.give_up():
         return release
     raise TimeoutError
