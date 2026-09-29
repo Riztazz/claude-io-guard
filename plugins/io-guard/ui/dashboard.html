@@ -81,6 +81,10 @@
   .s-warning { fill: var(--muted); background: var(--muted); }
   .s-refused { fill: var(--fg); background: var(--fg); }
   svg text { fill: var(--muted); font-size: 11px; }
+  .reset { display: flex; gap: 8px; margin-left: auto; }
+  .danger { color: var(--bad); border-color: var(--bad); }
+  .confirm { border-color: var(--bad); }
+  .confirm .row { justify-content: flex-end; margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -115,6 +119,12 @@ applies from the next tool call. Greyed means the project can't set it, and the 
     <div class="seg" role="group" aria-label="Projects" id="scope">
       <button type="button" data-scope="project" aria-pressed="true">This project</button>
       <button type="button" data-scope="all">All projects</button>
+    </div>
+    <div class="reset" id="reset">
+      <button type="button" id="start-now" title="Count only what happens from now on. Nothing is deleted.">Start
+        from now</button>
+      <button type="button" class="danger" id="delete-all"
+              title="Delete every telemetry file, of every project, after two confirmations.">Delete all...</button>
     </div>
   </div>
   <div id="stats"></div>
@@ -361,6 +371,8 @@ const WORDS = {fixed: "Fixed", warning: "Warned", refused: "Refused", info: "Inf
 const query = {days: 7, scope: "project"};
 let stats = null;
 let opened = null;
+let confirming = 0;
+let note = "";
 
 function pressed(group, name, value) {
   for (const button of document.querySelectorAll("#" + group + " button")) {
@@ -393,6 +405,61 @@ async function loadStats() {
 
 const total = counts => Object.values(counts || {}).reduce((sum, count) => sum + count, 0);
 const number = count => count.toLocaleString("en-US");
+const size = bytes => bytes < 1024 * 1024 ? Math.ceil(bytes / 1024) + " KB" : (bytes / 1024 / 1024).toFixed(1) + " MB";
+
+async function post(path, body) {
+  const answer = await fetch(path, {method: "POST", headers: {"Content-Type": "application/json",
+    "X-IOGuard-Token": token}, body: JSON.stringify(body)});
+  const result = await answer.json();
+  if (!answer.ok) throw new Error(result.message || "io-guard refused it.");
+  return result;
+}
+
+async function countFrom(from) {
+  note = "";
+  try {
+    await post("/api/stats/from", {from: from});
+  } catch (failure) {
+    note = "The count did not change: " + failure.message;
+  }
+  await loadStats();
+}
+
+async function deleteAll() {
+  confirming = 0;
+  try {
+    const result = await post("/api/stats/delete", {confirm: true});
+    note = "Deleted " + number(result.deleted) + " telemetry files." + (result.left ? " " + number(result.left) +
+      " stayed, since a running session held them open." : "");
+  } catch (failure) {
+    note = "Nothing was deleted: " + failure.message;
+  }
+  await loadStats();
+}
+
+function resetParts() {
+  const parts = [];
+  if (stats.counted_from) {
+    parts.push(make("div", {class: "row card"},
+      make("span", {text: "Counting from " + new Date(stats.counted_from).toLocaleString() +
+        ". Older lines are hidden, not deleted."}),
+      make("button", {type: "button", text: "Show everything", onclick: () => countFrom(null)})));
+  }
+  const files = number(stats.stored.files) + " files, " + size(stats.stored.bytes);
+  const asks = ["Delete every telemetry file, of every project: " + files + "? The stats, tools/report.py and " +
+    "tools/measure.py all read them, and this cannot be undone.",
+    "Are you sure? Every project's telemetry goes for good."];
+  if (confirming) {
+    const cancel = () => { confirming = 0; renderStats(); };
+    const next = confirming === 1 ? () => { confirming = 2; renderStats(); } : deleteAll;
+    parts.push(make("div", {class: "card confirm"}, make("div", {text: asks[confirming - 1]}),
+      make("div", {class: "row"}, make("button", {type: "button", text: "Cancel", onclick: cancel}),
+        make("button", {type: "button", class: "danger", text: confirming === 1 ? "Delete..." : "Delete for good",
+          onclick: next}))));
+  }
+  if (note) parts.push(make("p", {class: "muted", text: note}));
+  return parts;
+}
 
 function table(heads, rows) {
   const head = make("tr", {}, ...heads.map((text, at) => make("th", {class: at ? "n" : "", text: text})));
@@ -461,8 +528,8 @@ function renderStats() {
     for (const severity of SEVERITIES) sums[severity] += counts[severity] || 0;
   }
   const where = stats.scope === "all" || STATIC ? "every project" : "this project";
-  const parts = [make("p", {class: "muted", text: "The last " + stats.days_asked + " days, " + where + ". " +
-    number(stats.sessions) + " sessions, " + number(stats.lines) + " lines."})];
+  const parts = [...(STATIC ? [] : resetParts()), make("p", {class: "muted", text: "The last " + stats.days_asked +
+    " days, " + where + ". " + number(stats.sessions) + " sessions, " + number(stats.lines) + " lines."})];
   parts.push(make("div", {class: "metrics"},
     ...[["Hook and io calls", total(stats.events)], ["Fixed", sums.fixed], ["Warned", sums.warning],
         ["Refused", sums.refused]].map(([name, count]) =>
@@ -528,12 +595,15 @@ for (const button of document.querySelectorAll("[data-scope]")) {
     loadStats();
   });
 }
+document.getElementById("start-now").addEventListener("click", () => countFrom("now"));
+document.getElementById("delete-all").addEventListener("click", () => { confirming = 1; note = ""; renderStats(); });
 document.getElementById("search").addEventListener("input", filter);
 theme();
 if (STATIC) {
   document.getElementById("views").hidden = true;
   document.getElementById("days").hidden = true;
   document.getElementById("scope").hidden = true;
+  document.getElementById("reset").hidden = true;
   document.getElementById("project").textContent = "Written by tools/report.py --html. Every project.";
   show("stats");
 } else {

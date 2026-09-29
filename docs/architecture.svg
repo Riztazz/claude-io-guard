@@ -256,7 +256,7 @@
     D: { name: 'D. Telemetry and the dashboard', steps: [
       'Every code a check gives is one telemetry line, with no file content.',
       'Every io tool call is one telemetry line.',
-      'lib appends them to one file per session.',
+      'lib appends them to one file per session. Each server start deletes the files past telemetry.retention_days, 90 by default.',
       'The dashboard and report.py show the counts by day and code, the percentiles, and each code\'s last lines.'
     ] }
   };

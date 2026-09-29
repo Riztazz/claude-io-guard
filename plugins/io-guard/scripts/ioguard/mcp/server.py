@@ -20,8 +20,8 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 from ioguard import PLUGIN_VERSION
-from ioguard.lib import bytesio
-from ioguard.lib.context import home_folder, session_file
+from ioguard.lib import bytesio, telemetry
+from ioguard.lib.context import Context, home_folder, session_file
 from ioguard.lib.heartbeat import Heartbeat
 from ioguard.mcp import (tools_dashboard, tools_edit, tools_format, tools_history, tools_hook, tools_read,
                          tools_run)
@@ -153,6 +153,18 @@ class Server:
         self.workers.shutdown(wait=False, cancel_futures=True)
 
 
+def expire_telemetry(data: Path, context: Callable[[], Context], now: datetime) -> list[Path]:
+    """Delete the telemetry files past telemetry.retention_days, from the user's config. The files deleted."""
+    try:
+        gone = telemetry.expire(data, context().config.get("telemetry.retention_days"), now)
+    except OSError as failure:
+        log.warning("io-guard could not delete its old telemetry in %s: %s", data, failure)
+        return []
+    if gone:
+        log.info("io-guard deleted %d telemetry files past their retention", len(gone))
+    return gone
+
+
 def main() -> int:
     out = sys.stdout.buffer
     sys.stdout = sys.stderr
@@ -161,9 +173,14 @@ def main() -> int:
     cwd = Path(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
     spill = data / "results"
     named = session or "io-server"
-    protocol = Protocol(registry(), SERVER_INFO,
-                        lambda cancel: ToolCall(lambda: tools_hook.context_for(named, cwd), cancel, cwd,
-                                                spill, session=named))
+
+    def context() -> Context:
+        return tools_hook.context_for(named, cwd)
+
+    protocol = Protocol(registry(), SERVER_INFO, lambda cancel: ToolCall(context, cancel, cwd, spill,
+                                                                         session=named))
+    threading.Thread(target=expire_telemetry, args=(data, context, datetime.now(timezone.utc)),
+                     name="io-guard retention", daemon=True).start()
     watchdog = None
     if session:
         watchdog = Watchdog(session_file(data, session, "alive"), session, protocol.era)

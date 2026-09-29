@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ioguard.lib.results import meanings
+from ioguard.lib.telemetry import session_files
 
 SEVERITIES = ("fixed", "warning", "refused", "info")
 TOOL_CALL = "tools/call"
@@ -54,8 +55,7 @@ class Summary:
 def files(folders: Iterable[Path], since: datetime) -> list[Path]:
     """Every session file in the folders from the month of since on."""
     month = since.astimezone(timezone.utc).strftime("%Y-%m")
-    return sorted(path for folder in folders for path in (folder / "events").glob("*/*.jsonl")
-                  if path.parent.name >= month)
+    return sorted(path for folder in folders for path in session_files(folder) if path.parent.name >= month)
 
 
 def stamp(text: str) -> datetime | None:
@@ -170,9 +170,13 @@ def page_data(summary: Summary, since: datetime, until: datetime) -> dict:
             "recent": {code: list(lines)[::-1] for code, lines in summary.recent.items()}}
 
 
-def page(folders: Iterable[Path], days: int, now: datetime, project: str | None = None) -> dict:
-    """The last days of telemetry as the dashboard page draws it, of one project when project names one, with
-    each code's meaning."""
-    since = now - timedelta(days=days)
-    return {**page_data(summarise(files(folders, since), since, project), since, now), "days_asked": days,
-            "meanings": meanings()}
+def page(folders: Sequence[Path], days: int, now: datetime, project: str | None = None,
+         start: datetime | None = None) -> dict:
+    """The last days of telemetry as the dashboard page draws it, of one project when project names one, and
+    from start on when it falls inside them, with each code's meaning and what the folders hold on disk."""
+    window = now - timedelta(days=days)
+    since = window if start is None else max(window, start)
+    stored = [path.stat().st_size for folder in folders for path in session_files(folder)]
+    return {**page_data(summarise(files(folders, since), since, project), window, now), "days_asked": days,
+            "counted_from": None if start is None else start.isoformat(), "meanings": meanings(),
+            "stored": {"files": len(stored), "bytes": sum(stored)}}

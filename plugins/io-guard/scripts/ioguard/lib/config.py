@@ -129,7 +129,9 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
                                 "^LogTemp: Display:. A line counts when one matches anywhere in it. A "
                                 "project's list replaces it.",
                                 shape=patterns.list_problem, project_regex=True),
-    "telemetry.retention_days": ConfigKey(int, 90, "Days a telemetry file is kept."),
+    "telemetry.retention_days": ConfigKey(int, 90, "Days a session's telemetry file is kept after its last "
+                                          "line, checked when the io server starts. 0 keeps every file.",
+                                          project_may_set=False),
     "telemetry.debug": ConfigKey(bool, False, "Write tracebacks to the debug log."),
     "skip_trees": ConfigKey(list, [], "Globs, from the repository root, such as Content/**, whose changes a "
                             "shell command's report leaves out. A project's list replaces it."),

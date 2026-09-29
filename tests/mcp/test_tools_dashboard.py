@@ -167,10 +167,11 @@ class ThePageServerAnswersOnlyItsOwnPage(ConfigTest):
 
     def test_the_page_is_ascii_loads_nothing_from_outside_and_calls_only_the_api(self):
         page = PAGE.read_bytes()
-        calls = sorted(set(re.findall(rb'fetch\("([^"]+)"', page)))
+        calls = sorted(set(re.findall(rb'(?:fetch|post)\("([^"]+)"', page)))
         outside = re.findall(rb"https?://(?!www\.w3\.org/2000/svg\")", page)
         self.assertEqual((page.isascii(), outside, calls),
-                         (True, [], [b"/api/ping", b"/api/setting", b"/api/settings", b"/api/stats?days="]),
+                         (True, [], [b"/api/ping", b"/api/setting", b"/api/settings", b"/api/stats/delete",
+                                     b"/api/stats/from", b"/api/stats?days="]),
                          "one self-contained file, which calls only the paths the server answers, and names "
                          "the SVG namespace alone")
 
@@ -196,6 +197,40 @@ class ThePageServerAnswersOnlyItsOwnPage(ConfigTest):
                          "this project's lines alone, or every project's, with the lines behind each code")
         self.assertIn("fix", own["meanings"]["SHELL_WRITE"], "each code comes with its meaning and fix")
 
+    def test_start_from_now_hides_the_lines_before_it_and_show_everything_brings_them_back(self):
+        self.record(self.root.name, "SHELL_WRITE")
+        self.ctx.clock.advance(1000)
+        before = self.counts()
+        self.post("/api/stats/from", {"from": "now"})
+        hidden = self.counts()
+        self.post("/api/stats/from", {"from": None})
+        again = self.counts()
+        self.assertEqual((before["lines"], hidden["lines"], again["lines"], hidden["stored"]["files"]),
+                         (1, 0, 1, 1),
+                         "the mark hides the older line and keeps its file, and clearing it shows it again")
+        self.assertEqual((hidden["counted_from"] is not None, again["counted_from"]), (True, None),
+                         "the page is told where it counts from")
+
+    def test_delete_all_needs_the_confirmation_and_then_deletes_every_projects_file(self):
+        self.record(self.root.name, "SHELL_WRITE")
+        self.record("other", "PIPE_HIDES_EXIT", session="s2")
+        unconfirmed, _ = self.post("/api/stats/delete", {})
+        status, body = self.post("/api/stats/delete", {"confirm": True})
+        self.assertEqual((unconfirmed, status, json.loads(body), list((self.home / "events").glob("*/*"))),
+                         (400, 200, {"deleted": 2, "left": 0}, []),
+                         "nothing goes without confirm, and then both projects' files go")
+
+    def post(self, path: str, body: dict) -> tuple[int, bytes]:
+        return self.request("POST", path, json.dumps(body).encode(), token=self.token)
+
+    def counts(self) -> dict:
+        return json.loads(self.request("GET", "/api/stats?days=7", token=self.token)[1])
+
+    def record(self, project: str, code: str, session: str = "s1") -> None:
+        Telemetry(self.home).record(TelemetryEvent(
+            ts=self.ctx.clock.now(), session=session, event="PreToolUse", surface="mcp_hook",
+            platform="win32", project=project, check="shell.writes", code=code, severity="refused"))
+
     def test_the_answer_names_the_checks_turned_off(self):
         self.request("POST", "/api/setting", json.dumps({"key": "checks.shell.lint.enabled", "value": False,
                                                         "scope": "project"}).encode(), token=self.token)
@@ -205,16 +240,16 @@ class ThePageServerAnswersOnlyItsOwnPage(ConfigTest):
 
 class AnUnusedPageServerStops(unittest.TestCase):
     def test_the_idle_time_counts_from_the_last_request(self):
-        board = Dashboard(dict, dict, idle_s=300)
+        board = Dashboard({}, {}, idle_s=300)
         board.last = 1000.0
-        forever = Dashboard(dict, dict, idle_s=0)
+        forever = Dashboard({}, {}, idle_s=0)
         forever.last = 0.0
         self.assertEqual((board.expired(1299.0), board.expired(1300.0), forever.expired(10.0 ** 9)),
                          (False, True, False), "five minutes unasked stops it, and 0 never does")
 
     def test_a_server_nobody_asks_stops_and_says_so(self):
         stopped = []
-        board = Dashboard(dict, dict, idle_s=0.05, on_stop=lambda: stopped.append(True))
+        board = Dashboard({}, {}, idle_s=0.05, on_stop=lambda: stopped.append(True))
         self.addCleanup(board.stop)
         board.start()
         deadline = time.monotonic() + 5

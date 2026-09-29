@@ -6,11 +6,13 @@ and a Host header naming 127.0.0.1 and the port. A web page from anywhere else k
 neither read the settings nor change one, and a name that only resolves to this machine cannot reach it
 either. A change is a POST of JSON, which a form on another page cannot send.
 
-    GET  /                 the page, ui/dashboard.html
-    GET  /api/settings     every setting, what each file sets and what applies
-    GET  /api/ping         nothing, from an open page, so the server knows it is still used
-    GET  /api/stats        ?days=7&scope=project|all: what io-guard fixed, warned about and refused
-    POST /api/setting      {"key", "scope", "value", "remove"}: the same write as io.config
+    GET  /                   the page, ui/dashboard.html
+    GET  /api/settings       every setting, what each file sets and what applies
+    GET  /api/ping           nothing, from an open page, so the server knows it is still used
+    GET  /api/stats          ?days=7&scope=project|all: what io-guard fixed, warned about and refused
+    POST /api/setting        {"key", "scope", "value", "remove"}: the same write as io.config
+    POST /api/stats/from     {"from": "now"} counts the stats from now on, and {"from": null} from the start
+    POST /api/stats/delete   {"confirm": true}: every telemetry file deleted, of every project
 
 The server stops once no request came for io.dashboard.idle_minutes, and the next io.dashboard starts another.
 """
@@ -19,7 +21,7 @@ import json
 import secrets
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -32,8 +34,11 @@ HEADERS = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Re
                                       "script-src 'unsafe-inline'; frame-ancestors 'none'"}
 
 
+Route = Callable[[dict], Any]
+
+
 class Rejected(Exception):
-    """A setting the write refused, with the JSON the page shows."""
+    """A request its route refused, with the JSON the page shows."""
 
     def __init__(self, answer: dict) -> None:
         super().__init__(answer.get("message", ""))
@@ -41,15 +46,15 @@ class Rejected(Exception):
 
 
 class Dashboard:
-    """One running page server: its URL, the two calls its API makes, and how long it waits unasked.
+    """One running page server: its URL, the routes its API answers, and how long it waits unasked.
 
-    With idle_s above 0, a watcher stops the server once no request has come for idle_s seconds, and calls
-    on_stop, so the next io.dashboard starts a new one. The open page asks every 30 seconds."""
+    A GET route takes the query and a POST route the JSON body, each as a dict, and answers JSON. With idle_s
+    above 0, a watcher stops the server once no request has come for idle_s seconds, and calls on_stop, so the
+    next io.dashboard starts a new one. The open page asks every 30 seconds."""
 
-    def __init__(self, settings: Callable[[], dict], write: Callable[[dict], dict], page: Path = PAGE,
-                 idle_s: float = 0.0, on_stop: Callable[[], None] | None = None,
-                 stats: Callable[[dict], dict] | None = None) -> None:
-        self.settings, self.write, self.page, self.stats = settings, write, page, stats
+    def __init__(self, gets: Mapping[str, Route], posts: Mapping[str, Route], page: Path = PAGE,
+                 idle_s: float = 0.0, on_stop: Callable[[], None] | None = None) -> None:
+        self.gets, self.posts, self.page = gets, posts, page
         self.idle_s, self.on_stop = idle_s, on_stop
         self.token = secrets.token_urlsafe(24)
         self.server: ThreadingHTTPServer | None = None
@@ -136,13 +141,11 @@ def handler_for(board: Dashboard) -> type[BaseHTTPRequestHandler]:
             path = self.permitted()
             if path == "/":
                 self.answer(200, board.page.read_bytes(), "text/html; charset=utf-8")
-            elif path == "/api/settings":
-                self.json(200, board.settings())
             elif path == "/api/ping":
                 self.json(200, {"idle_s": board.idle_s})
-            elif path == "/api/stats" and board.stats is not None:
+            elif path in board.gets:
                 query = {name: values[0] for name, values in parse_qs(urlsplit(self.path).query).items()}
-                self.json(200, board.stats(query))
+                self.json(200, board.gets[path](query))
             elif path is not None:
                 self.json(404, {"message": f"The dashboard has no {path}."})
 
@@ -150,19 +153,19 @@ def handler_for(board: Dashboard) -> type[BaseHTTPRequestHandler]:
             path = self.permitted()
             if path is None:
                 return
-            if path != "/api/setting":
+            if path not in board.posts:
                 self.json(404, {"message": f"The dashboard has no {path}."})
                 return
             length = int(self.headers.get("Content-Length") or 0)
             if not self.headers.get("Content-Type", "").startswith("application/json") or length > BODY_LIMIT:
-                self.json(415, {"message": "A setting arrives as JSON, at most 64 KB."})
+                self.json(415, {"message": "A change arrives as JSON, at most 64 KB."})
                 return
             try:
                 given = json.loads(self.rfile.read(length) or b"{}")
-                self.json(200, board.write(given))
+                self.json(200, board.posts[path](given))
             except Rejected as rejected:
                 self.json(400, rejected.answer)
             except (ValueError, TypeError) as error:
-                self.json(400, {"message": f"The setting could not be read: {error}."})
+                self.json(400, {"message": f"The request could not be read: {error}."})
 
     return Handler

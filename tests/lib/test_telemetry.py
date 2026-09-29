@@ -1,15 +1,17 @@
 """Telemetry writes one line per event into its session's monthly file, and never file content."""
 import json
+import os
 import shutil
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ioguard import TELEMETRY_SCHEMA
-from ioguard.lib.telemetry import Telemetry, TelemetryEvent, trace_from
+from ioguard.lib.telemetry import Telemetry, TelemetryEvent, erase, expire, session_files, trace_from
 
 WHEN = datetime(2026, 9, 27, 14, 3, 11, 412000, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 5, 12, tzinfo=timezone.utc)
 
 
 def event(**fields) -> TelemetryEvent:
@@ -45,6 +47,47 @@ class TelemetryLines(unittest.TestCase):
         sink = Telemetry.memory()
         sink.record(event(check="demo"))
         self.assertEqual([item.check for item in sink.events], ["demo"], "a memory sink keeps each event")
+
+
+class OldTelemetryIsDeleted(unittest.TestCase):
+    def setUp(self):
+        self.data = Path(tempfile.mkdtemp(prefix="ioguard-retention-"))
+        self.addCleanup(shutil.rmtree, self.data, True)
+
+    def written(self, name: str, days_ago: float) -> Path:
+        """A session file whose last line is days_ago days before NOW."""
+        path = self.data / "events" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"{}\n")
+        stamp = (NOW - timedelta(days=days_ago)).timestamp()
+        os.utime(path, (stamp, stamp))
+        return path
+
+    def left(self) -> list[str]:
+        return [path.relative_to(self.data / "events").as_posix() for path in session_files(self.data)]
+
+    def test_a_file_past_the_retention_goes_and_one_inside_it_stays(self):
+        self.written("2026-06/old.jsonl", 91)
+        self.written("2026-07/edge.jsonl", 89)
+        self.written("2026-10/new.jsonl", 1)
+        gone = expire(self.data, 90, NOW)
+        month = (self.data / "events" / "2026-06").exists()
+        self.assertEqual(([path.name for path in gone], self.left(), month),
+                         (["old.jsonl"], ["2026-07/edge.jsonl", "2026-10/new.jsonl"], False),
+                         "91 days goes with its emptied month, and 89 stays")
+
+    def test_zero_days_keeps_every_file(self):
+        self.written("2026-01/ancient.jsonl", 400)
+        self.assertEqual((expire(self.data, 0, NOW), self.left()), ([], ["2026-01/ancient.jsonl"]),
+                         "a retention of 0 deletes nothing")
+
+    def test_erase_deletes_every_file_and_keeps_this_months_folder(self):
+        self.written("2026-09/a.jsonl", 20)
+        self.written("2026-10/b.jsonl", 0)
+        gone = erase(self.data, NOW)
+        folders = sorted(path.name for path in (self.data / "events").iterdir())
+        self.assertEqual((len(gone), self.left(), folders), (2, [], ["2026-10"]),
+                         "every file goes, and a session writing this month still has its folder")
 
 
 class TraceContexts(unittest.TestCase):

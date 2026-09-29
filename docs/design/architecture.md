@@ -52,7 +52,7 @@ plugins/io-guard/
         events.py                  HookEvent, Tool, PermissionMode, Surface, Event
         context.py                 Context, the ports, SessionState, Probe
         decisions.py               Verdict, Rewrite, Decision, compose
-        telemetry.py               Telemetry, TraceContext
+        telemetry.py               Telemetry, TraceContext, session_files, expire, erase
         telemetry_summary.py       Summary, files, summarise, page: every session's telemetry summed
         platform.py                Platform, detect
         probing.py                 tool_version, find, claude_version, console_encoding, case_insensitive
@@ -1574,6 +1574,8 @@ from it. A background run keeps running when its call is cancelled, because its 
   `{key, scope, value, remove}` and runs the same `setting` call as `io.config`, so a refusal is
   `CONFIG_REFUSED` with its message. `GET /api/stats?days=7&scope=project` is `telemetry_summary.page` over
   io-guard's folder, for 1 to 90 days, of this project or with `scope=all` of every project (task 66).
+  `POST /api/stats/from` takes `{"from": "now"}` or `{"from": null}` and writes `stats-from.json` in io-guard's
+  folder. `POST /api/stats/delete` takes `{"confirm": true}` and deletes every telemetry file (task 72).
 - **Where it opens.** The tool's note tells the model to open the URL in the desktop app's browser pane, or any
   browser on this machine.
 - **When it stops.** The open page asks `GET /api/ping` every 30 seconds. A watcher stops the server once no
@@ -1591,6 +1593,11 @@ from it. A background run keeps running when its call is cancelled, because its 
   counts. A code opens to its meaning, its fix and its last 20 lines, with the command head of each. Then the
   checks, the time of a hook call, an io tool call and one tool use, and the projects when all are shown. The
   command heads reach only the page, never a tool result, since a tool result lands in the model's context.
+- **Resetting the stats.** Start from now saves the time, and the page counts only the lines after it, until
+  Show everything clears it. It deletes nothing, and `tools/report.py` and `tools/measure.py` never read the
+  mark, since task 31 needs every line. Delete all asks twice on the page, naming the files and bytes, then
+  deletes every project's telemetry files, since one session's file holds lines of more than one project. A
+  file a running session holds open stays, and the answer counts it.
 - **The page as a file.** `tools/report.py --html FILE` writes the same page with every project's stats inlined
   as `window.IOGUARD_STATIC`, in place of `<!-- io-guard static data -->`. It opens in any browser and shows
   only the stats, since a file has no server to write a setting through.
@@ -1615,6 +1622,7 @@ another server is safe across processes.
 | workers, 4 | run hook tools and io tools | block on another worker |
 | a waiter per run, task 25 | waits on the run's process, whose stdout and stderr go straight to its log, and settles its handle when it ends | parse output |
 | watchdog | writes the heartbeat file every 5 seconds, and marks it stopped at the end | anything on the request path |
+| retention, once | deletes the telemetry files past `telemetry.retention_days` when the server starts, then ends | delay the first request |
 
 Telemetry has no thread of its own. One lock in `Telemetry` serialises the appends, and each line is on disk
 before `record` returns, so a crash loses none. `sys.stdout` points at stderr inside the server, so a stray
@@ -1632,7 +1640,7 @@ Across processes, three rules keep two servers from corrupting each other's work
 | Shared thing | Rule |
 |---|---|
 | A file an io tool edits | Inside the thread lock, the tool takes `lib.locks.file_lock(path)`: an exclusive lock on `locks/<sha1 of the resolved path>.lock` in io-guard's folder, or under the system temporary folder's `io-guard` with no data folder, through `msvcrt.locking` on Windows and `fcntl.flock` on macOS, held from the read to the atomic replace, with an `io.edit.wait_ms` wait of 5 seconds and then `FILE_LOCKED`. The write itself is a temp file in the same folder and `os.replace`, so a reader never sees half a file |
-| Telemetry | One file per session, `events/<YYYY-MM>/<session>.jsonl`, so two servers never interleave lines. `tools/report.py` merges them |
+| Telemetry | One file per session, `events/<YYYY-MM>/<session>.jsonl`, so two servers never interleave lines. `tools/report.py` merges them. Each server, once at its start and in a thread of its own, deletes each file whose last line is older than `telemetry.retention_days`, 90 by default and the user's alone, and each emptied month folder before the current one (task 72) |
 | Config | Read-only once loaded. Each hook call compares the config files' times and sizes with those it loaded, and loads them again when one changed, keeping the session's state. `io.config` writes a file atomically under the file lock, so the change applies from the next call |
 
 Snapshots and handles are keyed by id and written atomically, so two servers never write the same file.

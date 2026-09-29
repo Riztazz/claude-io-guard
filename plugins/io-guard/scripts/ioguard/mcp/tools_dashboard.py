@@ -9,22 +9,27 @@ a project and runs as long as this io server does.
 """
 import difflib
 import json
+import logging
 import threading
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from ioguard import CONFIG_SCHEMA
 from ioguard.checks.registry import default_registry
-from ioguard.lib import config_edit, locks, telemetry_summary
+from ioguard.lib import config_edit, locks, telemetry, telemetry_summary
 from ioguard.lib.config import ConfigKey, Scope, all_keys, flatten, load, validate, widened
 from ioguard.lib.context import Context, config_layers, project_root
 from ioguard.lib.results import Code, Fix, Result, callable_name
 from ioguard.mcp.dashboard_http import Dashboard, Rejected
 from ioguard.mcp.toolspec import ToolCall, ToolFailure, ToolSpec, doc, structured
 
+log = logging.getLogger("ioguard.mcp")
+
 NAME = "io.config"
 SCOPES = {"user": Scope.USER, "project": Scope.PROJECT}
+FROM_FILE = "stats-from.json"             # in io-guard's folder: the time the page's stats count from
 
 
 @dataclass(frozen=True)
@@ -195,9 +200,21 @@ def written(ctx: Context, cwd: Path, given: dict) -> dict:
         raise Rejected({"code": failure.result.code.value, "message": failure.result.message}) from None
 
 
+def counted_from(ctx: Context) -> datetime | None:
+    """The time the stats count from, which the page's Start from now button set, or None for every line."""
+    if ctx.data_dir is None or not ctx.fs.exists(ctx.data_dir / FROM_FILE):
+        return None
+    try:
+        return datetime.fromisoformat(json.loads(ctx.fs.read_bytes(ctx.data_dir / FROM_FILE))["from"])
+    except (OSError, ValueError, KeyError, TypeError) as failure:
+        log.warning("io-guard ignores %s: %s", ctx.data_dir / FROM_FILE, failure)
+        return None
+
+
 def stats(ctx: Context, root: Path, query: dict) -> dict:
     """The telemetry of the last days, 1 to 90, of this project or of every project, as the page draws it,
-    with each code's meaning. Command heads stay on this machine: the page is the only reader."""
+    from the time the page counts from, with each code's meaning. Command heads stay on this machine: the page
+    is the only reader."""
     try:
         days = min(90, max(1, int(query.get("days", 7))))
     except ValueError:
@@ -205,8 +222,33 @@ def stats(ctx: Context, root: Path, query: dict) -> dict:
     whole = query.get("scope") == "all"
     folders = [] if ctx.data_dir is None else [ctx.data_dir]
     project = None if whole else ctx.project_name(root)
-    return {**telemetry_summary.page(folders, days, ctx.clock.now(), project),
+    return {**telemetry_summary.page(folders, days, ctx.clock.now(), project, counted_from(ctx)),
             "scope": "all" if whole else "project"}
+
+
+def count_from(ctx: Context, given: dict) -> dict:
+    """Count the stats from now on when given from is "now", or from the first line again when it is null.
+    Nothing is deleted, and tools/report.py and tools/measure.py never read the mark."""
+    if ctx.data_dir is None:
+        raise Rejected({"message": "io-guard has no folder of its own here, so it keeps no stats."})
+    if given.get("from") not in ("now", None):
+        raise Rejected({"message": 'from is "now" or null.'})
+    start = ctx.clock.now().isoformat() if given.get("from") == "now" else None
+    ctx.fs.make_folders(ctx.data_dir)
+    ctx.fs.write_atomic(ctx.data_dir / FROM_FILE, json.dumps({"from": start}).encode("ascii") + b"\n")
+    return {"from": start}
+
+
+def delete_all(ctx: Context, given: dict) -> dict:
+    """Delete every telemetry file, of every project, when given confirm is true, and count from the start
+    again. A file another session holds open stays."""
+    if given.get("confirm") is not True:
+        raise Rejected({"message": "Deleting the telemetry needs confirm set to true."})
+    if ctx.data_dir is None:
+        return {"deleted": 0, "left": 0}
+    gone = telemetry.erase(ctx.data_dir, ctx.clock.now())
+    count_from(ctx, {"from": None})
+    return {"deleted": len(gone), "left": len(telemetry.session_files(ctx.data_dir))}
 
 
 def forget(root: Path, board: Dashboard) -> None:
@@ -221,9 +263,12 @@ def dashboard(given: DashboardInput, call: ToolCall) -> DashboardOutput:
     with BOARD_LOCK:
         if root not in BOARDS:
             idle_s = ctx.config.get("io.dashboard.idle_minutes") * 60
-            board = Dashboard(lambda: settings(ctx, root), lambda sent: written(ctx, root, sent),
-                              idle_s=idle_s, on_stop=lambda: forget(root, board),
-                              stats=lambda query: stats(ctx, root, query))
+            gets = {"/api/settings": lambda query: settings(ctx, root),
+                    "/api/stats": lambda query: stats(ctx, root, query)}
+            posts = {"/api/setting": lambda sent: written(ctx, root, sent),
+                     "/api/stats/from": lambda sent: count_from(ctx, sent),
+                     "/api/stats/delete": lambda sent: delete_all(ctx, sent)}
+            board = Dashboard(gets, posts, idle_s=idle_s, on_stop=lambda: forget(root, board))
             BOARDS[root] = board
         url = BOARDS[root].start()
         minutes = BOARDS[root].idle_s / 60

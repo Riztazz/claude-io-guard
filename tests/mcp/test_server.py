@@ -10,13 +10,16 @@ import tempfile
 import threading
 import unittest
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from ioguard.lib.config import Config, defaults
+from ioguard.lib.context import Context
 from ioguard.lib.heartbeat import parse
 from ioguard.lib.results import Code
 from ioguard.mcp.progress import CancelToken
 from ioguard.mcp.protocol import Protocol
-from ioguard.mcp.server import SERVER_INFO, Server
+from ioguard.mcp.server import SERVER_INFO, Server, expire_telemetry
 from ioguard.mcp.toolspec import ToolCall, ToolRegistry, ToolSpec
 from tests import PLUGIN_SCRIPTS, REPO
 from tests.support import injected
@@ -123,6 +126,23 @@ class TheServerKeepsAHeartbeat(ServerTest):
         beat = parse((self.data / "sessions" / f"{SESSION}.alive").read_bytes())
         self.assertEqual((beat.session, beat.era, beat.stopped is not None), (SESSION, "legacy", True),
                          "a server that stopped at the end of stdin says so, so no hook warns about it")
+
+
+class TheServerDeletesOldTelemetry(unittest.TestCase):
+    def test_the_users_retention_decides_which_files_go(self):
+        data = Path(tempfile.mkdtemp(prefix="ioguard-retention-"))
+        self.addCleanup(shutil.rmtree, data, True)
+        now = datetime.now(timezone.utc)
+        for name, days in (("old", 31), ("new", 29)):
+            path = data / "events" / "2026-01" / f"{name}.jsonl"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"{}\n")
+            stamp = (now - timedelta(days=days)).timestamp()
+            os.utime(path, (stamp, stamp))
+        config = Config({**defaults().values, "telemetry.retention_days": 30})
+        gone = expire_telemetry(data, lambda: Context.fake(config=config, data_dir=data), now)
+        self.assertEqual(([path.stem for path in gone], (data / "events" / "2026-01" / "new.jsonl").exists()),
+                         (["old"], True), "a file past the user's 30 days goes, and a newer one stays")
 
 
 @dataclass(frozen=True)

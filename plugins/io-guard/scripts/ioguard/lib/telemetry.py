@@ -14,7 +14,7 @@ import re
 import secrets
 import threading
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ioguard import TELEMETRY_SCHEMA
@@ -117,6 +117,42 @@ class Telemetry:
 
     def flush(self) -> None:
         """Each record is written and closed at once, so nothing waits here."""
+
+
+def session_files(data_dir: Path) -> list[Path]:
+    """Every session's telemetry file in io-guard's folder, oldest month first."""
+    return sorted((data_dir / "events").glob("*/*.jsonl"))
+
+
+def expire(data_dir: Path, days: int, now: datetime) -> list[Path]:
+    """Delete each session file whose last line is more than days old. 0 keeps every file. The files
+    deleted."""
+    if days <= 0:
+        return []
+    cutoff = (now - timedelta(days=days)).timestamp()
+    return removed(data_dir, [path for path in session_files(data_dir) if path.stat().st_mtime < cutoff], now)
+
+
+def erase(data_dir: Path, now: datetime) -> list[Path]:
+    """Delete every session file, of every project. The files deleted."""
+    return removed(data_dir, session_files(data_dir), now)
+
+
+def removed(data_dir: Path, paths: list[Path], now: datetime) -> list[Path]:
+    """Delete paths, then each month folder left empty before now's month, which a session may still be
+    about to write into. A file another process holds open stays, and the log names it."""
+    gone = []
+    for path in paths:
+        try:
+            path.unlink()
+            gone.append(path)
+        except OSError as failure:
+            logging.getLogger("ioguard").warning("io-guard could not delete %s: %s", path, failure)
+    month = now.astimezone(timezone.utc).strftime("%Y-%m")
+    for folder in {path.parent for path in gone}:
+        if folder.name < month and not any(folder.iterdir()):
+            folder.rmdir()
+    return gone
 
 
 def debug_log(path: Path) -> None:

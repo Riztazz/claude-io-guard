@@ -217,6 +217,11 @@ this project or for all of them: a bar per day, every code with its counts, and 
 a code to see what it means, how to fix it, and its last 20 lines with the command behind each. The stats come
 from the telemetry in io-guard's folder and never leave your machine.
 
+To reset the stats, press Start from now: the page counts only what happens after it, and Show everything
+brings the rest back. Nothing is deleted. Delete all... deletes every project's telemetry after two
+confirmations, and it can't be undone. io-guard also deletes a session's telemetry 90 days after its last line,
+or after `telemetry.retention_days` in your config, and 0 keeps it all.
+
 io-guard's folder is `~/.claude/io-guard`, or `io-guard` inside `CLAUDE_CONFIG_DIR` when you've moved `~/.claude`,
 or wherever `IOGUARD_HOME` points. It holds your `config.json`, the file locks that keep two sessions from
 writing one file at once, the telemetry, each session's heartbeat, the snapshots, and the edit journal:
