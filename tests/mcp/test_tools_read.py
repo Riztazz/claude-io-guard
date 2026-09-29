@@ -1,5 +1,7 @@
 """io.read returns a file's lines exactly as the file holds them, after its profile, a part at a time."""
 import hashlib
+import shutil
+import tempfile
 import unittest
 from pathlib import Path
 from types import MappingProxyType
@@ -10,8 +12,8 @@ from ioguard.lib.fakes import FakeFs
 from ioguard.lib.platform import Platform
 from ioguard.lib.results import Code
 from ioguard.mcp.progress import CancelToken
-from ioguard.mcp.tools_read import ReadInput, read
-from ioguard.mcp.toolspec import ToolCall, ToolFailure
+from ioguard.mcp.tools_read import SPECS, ReadInput, read
+from ioguard.mcp.toolspec import ToolCall, ToolFailure, ToolRegistry
 
 CWD = Path("C:/project")
 WINDOWS = Platform("win32", True)
@@ -52,6 +54,40 @@ class TheBytesComeBackAsTheyAre(unittest.TestCase):
         found = reading({CWD / "a.txt": b"aaaa\nbbbb\ncccc\n"}, max_chars=11)
         self.assertEqual((found.last_line, found.next.endswith("with offset 3 for the rest.")), (2, True),
                          "a part stops before the line that would pass max_chars")
+
+
+class ALongFileComesBackUpToItsOwnLimit(unittest.TestCase):
+    """io.read through the registry, as the server answers it, with a folder for a result that spills."""
+
+    def answer(self, lines: int, **config) -> dict:
+        folder = Path(tempfile.mkdtemp(prefix="ioguard-read-"))
+        self.addCleanup(shutil.rmtree, folder, True)
+        data = b"".join(b"line %05d of a file read whole\n" % number for number in range(1, lines + 1))
+        values = {**defaults().values, **config}
+        ctx = Context.fake(config=Config(MappingProxyType(values)), platform=WINDOWS,
+                           fs=FakeFs({CWD / "a.txt": data}))
+        tools = ToolRegistry()
+        for each in SPECS:
+            tools.register(each)
+        return tools.call("io.read", {"path": "a.txt"}, ToolCall(lambda: ctx, CancelToken(), CWD, folder))
+
+    def test_a_50_kb_file_reads_whole(self):
+        found = self.answer(1600)["structuredContent"]
+        self.assertEqual((found.get("saved"), found.get("last_line"), found.get("next")), (None, 1600, ""),
+                         "51,200 bytes are under io.read.max_chars, so the whole file comes back")
+
+    def test_a_300_kb_file_pages_with_next(self):
+        found = self.answer(9600)["structuredContent"]
+        self.assertEqual((found.get("saved"), found.get("first_line")), (None, 1),
+                         "the first part comes back in the answer, not in a file")
+        self.assertTrue(found.get("next", "").endswith("for the rest."), "and it names the call for the rest")
+
+    def test_a_result_that_spills_keeps_its_paging_fields(self):
+        found = self.answer(9600, **{"io.read.max_chars": 500_000})["structuredContent"]
+        self.assertTrue(found.get("saved"), "past the answer's own limit the text goes to a file")
+        self.assertEqual((found.get("first_line"), found.get("total_lines")), (1, 9600),
+                         "the fields that are not the long text stay in the answer")
+        self.assertIn("next", found, "including the call for the rest")
 
 
 class WhatCannotBeReadIsNamed(unittest.TestCase):

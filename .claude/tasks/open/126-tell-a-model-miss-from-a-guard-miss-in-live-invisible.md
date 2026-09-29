@@ -13,7 +13,7 @@ commit: "fix: live-invisible says when the model wrote no invisible character"
 ## Why
 
 Found in task 115 on 2026-09-29, CLI 2.1.283. `live-invisible` ran three times. Haiku's Write held
-`raw.lstrip('')` in two runs, with no invisible character at all, and `raw.lstrip('​')` in one. The one
+`raw.lstrip('')` in two runs, with no invisible character at all, and a U+200B inside the quotes in one. The one
 with U+200B passed, and `INVISIBLE_ADDED` named it on line 2. The other two answered `FAIL`, though io-guard
 had nothing to name. `invisible_named` in `tools/probes/run_probe.py` returns false both when the file holds
 no invisible character and when io-guard stayed quiet about one, so a model that drops the character reads

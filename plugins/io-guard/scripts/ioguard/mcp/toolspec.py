@@ -285,19 +285,23 @@ def recorded(spec: ToolSpec, given: Any, call: ToolCall, latency_ms: float, outp
 
 
 def bounded(spec: ToolSpec, output: Any, call: ToolCall) -> dict:
-    """The result for an output, with a text too long for one answer saved to a file and named instead."""
+    """The result for an output, with a text too long for one answer saved to a file and named instead. The
+    model sees the text or the JSON, never both, so the longer of the two is held to the limit. A saved
+    result keeps each field short enough to show, such as a read's next call."""
     content = structured(output)
     text = output.render() if hasattr(output, "render") else json.dumps(content, ensure_ascii=False)
-    if len(text) + len(json.dumps(content)) <= spec.max_result_chars:
+    if max(len(text), len(json.dumps(content, ensure_ascii=False))) <= spec.max_result_chars:
         return {"content": [{"type": "text", "text": text}], "structuredContent": content}
     head = text[:SAVED_HEAD]
+    kept = {key: value for key, value in content.items()
+            if len(json.dumps(value, ensure_ascii=False)) <= SAVED_HEAD} if isinstance(content, dict) else {}
     if call.spill is None:
         note = f"[io-guard left out {len(text) - len(head):,} characters of this result]"
         return {"content": [{"type": "text", "text": f"{head}\n{note}"}],
-                "structuredContent": {"head": head, "chars": len(text)}}
+                "structuredContent": {**kept, "head": head, "chars": len(text)}}
     path = call.spill / f"{spec.name}-{hashlib.sha256(text.encode('utf-8')).hexdigest()[:16]}.txt"
     call.spill.mkdir(parents=True, exist_ok=True)
     bytesio.write_atomic(path, text.encode("utf-8"))
     note = f"[io-guard: the whole result, {len(text):,} characters, is in {path.as_posix()}]"
     return {"content": [{"type": "text", "text": f"{head}\n{note}"}],
-            "structuredContent": {"saved": path.as_posix(), "chars": len(text), "head": head}}
+            "structuredContent": {**kept, "saved": path.as_posix(), "chars": len(text), "head": head}}

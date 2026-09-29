@@ -1370,7 +1370,9 @@ class ToolSpec:
     idempotent: bool
     handler: Callable[[Any, ToolCall], Any]
     open_world: bool = False          # io.run's openWorldHint
-    max_result_chars: int = 80_000    # past it, the whole result goes to a file the answer names
+    max_result_chars: int = 80_000    # past it, by the longer of the text and the JSON, the whole result
+                                      # goes to a file the answer names, and the answer keeps each field
+                                      # of 4,000 characters or fewer, such as io.read's next (task 116)
     # ui: "ui://io-guard/dashboard" arrives with task 33, and handle_lifetime with task 25
 
 class ToolCall:                                           # the context, built on first use, and the cancel token
