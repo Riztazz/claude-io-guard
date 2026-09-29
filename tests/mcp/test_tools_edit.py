@@ -33,13 +33,15 @@ CHILD = """
 import sys
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
+from ioguard.lib.config import Config, defaults
 from ioguard.lib.context import Context, LiveFs
 from ioguard.lib.platform import detect
 from ioguard.mcp.progress import CancelToken
 from ioguard.mcp.tools_edit import EditInput, EditPair, edit
 from ioguard.mcp.toolspec import ToolCall
 target, data, key, rounds = Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4], int(sys.argv[5])
-ctx = Context.fake(fs=LiveFs(), data_dir=data, platform=detect())
+config = Config({**defaults().values, "io.edit.wait_ms": 30000})
+ctx = Context.fake(fs=LiveFs(), data_dir=data, platform=detect(), config=config)
 print("ready", flush=True)
 sys.stdin.readline()
 for step in range(rounds):

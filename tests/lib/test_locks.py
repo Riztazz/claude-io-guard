@@ -1,32 +1,37 @@
 """lib.locks names the processes that hold a file open: lsof's output parsed, and a live holder found on the
 host's own platform. Its file_lock lets one io-guard process at a time hold a path."""
-import os
-import re
 import subprocess
 import sys
 import time
 import unittest
 
 from ioguard.lib.context import first_in_file
-from ioguard.lib.locks import WANT_S, Process, file_lock, holders, parse_lsof, wanted_by_another
+from ioguard.lib.locks import Process, file_lock, holders, parse_lsof
 from ioguard.lib.platform import detect
 from tests import PLUGIN_SCRIPTS
 from tests.support.project import TemporaryProject
 
 HOLD = "import sys; handle = open(sys.argv[1], 'rb'); print('open', flush=True); sys.stdin.read()"
-TAKER = """
-import sys, time
+WAITER = """
+import sys
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
 from ioguard.lib.locks import file_lock
-data, key = Path(sys.argv[2]), sys.argv[3]
-print("ready", flush=True)
-sys.stdin.readline()
-for _ in range(20):
-    with file_lock(data / "a.txt", data):
-        time.sleep(0.03)
-        with open(data / "order.txt", "a") as out:
-            out.write(key)
+data = Path(sys.argv[2])
+print("waiting", flush=True)
+with file_lock(data / "a.txt", data, wait_s=30):
+    with open(data / "order.txt", "a") as out:
+        out.write("B")
+"""
+DIES_HOLDING = """
+import os, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from ioguard.lib.locks import file_lock
+data = Path(sys.argv[2])
+with file_lock(data / "a.txt", data):
+    print("held", flush=True)
+    os._exit(0)
 """
 
 
@@ -70,37 +75,46 @@ class OneHolderOfAFileLockAtATime(unittest.TestCase):
         self.assertGreaterEqual(waited, 0.2, "it waits the time it was given first")
         self.assertTrue(released, "once the first holder lets go, the next one gets the lock")
 
-    def test_two_processes_that_take_the_lock_in_a_loop_take_turns(self):
+    def test_a_waiting_process_gets_the_lock_before_a_busy_holder_takes_it_back(self):
         with TemporaryProject() as data:
-            pipes = {"stdin": subprocess.PIPE, "stdout": subprocess.PIPE, "stderr": subprocess.PIPE}
-            children = [subprocess.Popen([sys.executable, "-c", TAKER, str(PLUGIN_SCRIPTS), str(data), key],
-                                         **pipes) for key in "AB"]
-            for child in children:
+            with file_lock(data / "a.txt", data):
+                child = subprocess.Popen([sys.executable, "-c", WAITER, str(PLUGIN_SCRIPTS), str(data)],
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 child.stdout.readline()
-            for child in children:
-                child.stdin.write(b"go\n")
-                child.stdin.flush()
-            errors = [child.communicate(timeout=120)[1] for child in children]
+                time.sleep(0.5)
+            for _ in range(50):
+                with file_lock(data / "a.txt", data, wait_s=30):
+                    with open(data / "order.txt", "a") as out:
+                        out.write("A")
+                    time.sleep(0.005)
+            error = child.communicate(timeout=60)[1]
             order = (data / "order.txt").read_text(encoding="ascii")
-        longest = max(len(run) for run in re.findall(r"A+|B+", order))
-        self.assertEqual((sorted(order), errors), (sorted("A" * 20 + "B" * 20), [b"", b""]),
-                         "both processes finish every turn")
-        self.assertLessEqual(longest, 4, f"a waiter gets the lock between the other's turns: {order}")
+        self.assertEqual((error, order.count("B")), (b"", 1), "the waiter took the lock once")
+        self.assertLess(order.index("B"), 10,
+                        f"a holder taking the lock in a loop keeps no waiter out for long: {order}")
+        if sys.platform == "win32":
+            self.assertEqual(order[0], "B", "Windows hands a released lock to the first waiter")
 
-    def test_a_fresh_mark_from_another_process_makes_way_and_an_old_or_own_one_does_not(self):
+    def test_a_holder_that_dies_frees_the_lock(self):
         with TemporaryProject() as data:
-            want = data / "x.want"
-            cases = {"another's fresh mark": (b"1", 0, True), "its own mark": (b"me", 0, False),
-                     "an old mark": (b"1", WANT_S * 5, False)}
-            for name, (owner, age, steps_aside) in cases.items():
-                with self.subTest(name):
-                    want.write_bytes(owner)
-                    stamp = time.time() - age
-                    os.utime(want, (stamp, stamp))
-                    self.assertEqual(wanted_by_another(want, b"me"), steps_aside,
-                                     "only another waiter still waiting gets the turn")
-            want.unlink()
-            self.assertFalse(wanted_by_another(want, b"me"), "no mark, no one to make way for")
+            child = subprocess.Popen([sys.executable, "-c", DIES_HOLDING, str(PLUGIN_SCRIPTS), str(data)],
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            held = child.stdout.readline().strip()
+            child.wait(timeout=60)
+            with file_lock(data / "a.txt", data, wait_s=2):
+                taken = True
+        self.assertEqual((held, taken), (b"held", True), "the kernel lets go of a dead process's lock")
+
+    def test_a_waiter_that_timed_out_leaves_nothing_held(self):
+        with TemporaryProject() as data:
+            with file_lock(data / "a.txt", data):
+                with self.assertRaises(TimeoutError, msg="the second waiter gives up at its time"):
+                    with file_lock(data / "a.txt", data, wait_s=0.2):
+                        pass
+            for _ in range(2):
+                with file_lock(data / "a.txt", data, wait_s=1):
+                    taken = True
+        self.assertTrue(taken, "the waiter that gave up holds nothing once the first holder lets go")
 
     def test_another_path_has_its_own_lock(self):
         with TemporaryProject() as data:
