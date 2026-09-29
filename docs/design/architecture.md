@@ -180,6 +180,7 @@ class PermissionMode(Enum):
     AUTO = "auto"
     DONT_ASK = "dontAsk"
     BYPASS = "bypassPermissions"
+    UNKNOWN = "unknown"          # task 111: a mode a later release adds, its text kept in raw
 
 class Surface(Enum):
     COMMAND_HOOK = "command_hook"
@@ -223,7 +224,9 @@ class Event:
 ```
 
 An event the harness sends that io-guard cannot read, such as an unknown `hook_event_name` or no `cwd`, raises
-`EventError`, and the entry point fails open around it. `tool_input` is read-only, and `with_tool_input` gives
+`EventError`, and the entry point fails open around it. A `permission_mode` it does not know reads as
+`PermissionMode.UNKNOWN`: the checks run, under default's rewrite mode, which asks, and the entry point tells
+the user once a session which mode it met (task 111). `tool_input` is read-only, and `with_tool_input` gives
 the pipeline a new event with the derived fields worked out again. `platform` defaults to `platform.detect()`,
 and a test passes another to read an event as the other platform would.
 

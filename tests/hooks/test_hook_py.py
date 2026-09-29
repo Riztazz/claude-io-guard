@@ -103,7 +103,7 @@ class EveryEventGetsItsAnswer(HookPyTest):
                         "the user hears of the broken check")
 
     def test_an_event_io_guard_cannot_read_answers_an_empty_object(self):
-        event = {**recorded("PreToolUse"), "permission_mode": "no-such-mode"}
+        event = {**recorded("PreToolUse"), "hook_event_name": "NoSuchEvent"}
         self.assertEqual(self.hook(event, checks="note"), {},
                          "an event io-guard cannot read answers {}, and the call goes on")
 

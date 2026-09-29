@@ -15,7 +15,7 @@ from ioguard.checks.pipeline import Outcome, Pipeline
 from ioguard.checks.registry import Registry, default_registry
 from ioguard.hooks.answer import answer
 from ioguard.lib.context import Context, SessionState, config_stamp, home_folder, project_root
-from ioguard.lib.events import Event, Surface
+from ioguard.lib.events import Event, PermissionMode, Surface
 from ioguard.lib.results import Code, Result, render
 from ioguard.lib.telemetry import debug_log
 
@@ -86,7 +86,11 @@ def run_event(raw: Mapping[str, Any], surface: Surface, ctx: Context | None = No
         registry = registry or default_registry()
         ctx = (ctx or CONTEXTS.get(event.session_id, event.cwd, registry)).for_file(event.file_path)
         outcome = with_config_message(Pipeline(registry).run(event, ctx), ctx, ctx.project or event.cwd)
-        mode = ctx.config.get(f"transport.rewrite_mode.{event.permission_mode.value}")
+        outcome = with_mode_message(outcome, event, ctx)
+        known = event.permission_mode
+        if known is PermissionMode.UNKNOWN:
+            known = PermissionMode.DEFAULT
+        mode = ctx.config.get(f"transport.rewrite_mode.{known.value}")
         return answer(event, outcome, mode)
     except Exception:
         log.exception("GUARD_ERROR: io-guard failed on a %s event and let the call go on.", event.kind.value)
@@ -103,3 +107,15 @@ def with_config_message(outcome: Outcome, ctx: Context, project: Path) -> Outcom
     if message is None or not ctx.session.first_time(f"config:{project}"):
         return outcome
     return replace(outcome, user_message="\n".join(filter(None, (message, outcome.user_message))))
+
+
+def with_mode_message(outcome: Outcome, event: Event, ctx: Context) -> Outcome:
+    """The outcome with a message naming a permission mode io-guard does not know, once a session per mode."""
+    if event.permission_mode is not PermissionMode.UNKNOWN:
+        return outcome
+    name = event.raw.get("permission_mode")
+    if not ctx.session.first_time(f"mode:{name}"):
+        return outcome
+    message = (f"io-guard does not know the permission mode {name}, so it checks each call as in default "
+               f"mode and asks before it changes a command.")
+    return replace(outcome, user_message="\n".join(filter(None, (outcome.user_message, message))))

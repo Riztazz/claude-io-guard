@@ -80,6 +80,9 @@ stays.
 | `ask` | default, acceptEdits, plan | You see the fixed command and approve it |
 | `allow` | bypassPermissions | It runs at once, and no classifier sees it |
 
+A permission mode io-guard doesn't know yet, from a newer Claude Code, gets default mode's setting, and io-guard
+tells you once a session.
+
 A Write or an Edit that io-guard fits to the file's endings, BOM and indent isn't a fixed command. Claude Code
 asks about it or approves it as it would have anyway, and a prompt shows the input as it will land.
 

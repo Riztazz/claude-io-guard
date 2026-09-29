@@ -48,6 +48,11 @@ class PermissionMode(Enum):
     AUTO = "auto"
     DONT_ASK = "dontAsk"
     BYPASS = "bypassPermissions"
+    UNKNOWN = "unknown"          # a mode a later Claude Code adds, whose text stays in Event.raw
+
+    @classmethod
+    def named(cls, name: str) -> "PermissionMode":
+        return next((mode for mode in cls if mode.value == name and mode is not cls.UNKNOWN), cls.UNKNOWN)
 
 
 class Surface(Enum):
@@ -129,7 +134,7 @@ class Event:
             cwd=cwd,
             scratchpad=Path(raw["scratchpad_dir"]) if text(raw.get("scratchpad_dir")) else None,
             transcript=Path(raw["transcript_path"]) if text(raw.get("transcript_path")) else None,
-            permission_mode=member(PermissionMode, raw.get("permission_mode", "default"), "permission mode"),
+            permission_mode=PermissionMode.named(text(raw.get("permission_mode")) or "default"),
             agent_id=text(raw.get("agent_id")),
             surface=surface,
             raw=MappingProxyType(dict(raw)),

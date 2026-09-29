@@ -63,6 +63,16 @@ class RunEventAnswersAndNeverRaises(unittest.TestCase):
                 self.assertEqual(reply["hookSpecificOutput"]["permissionDecision"], decision,
                                  f"the default rewrite mode for {mode} answers {decision}")
 
+    def test_a_mode_io_guard_does_not_know_gets_defaults_checks_and_one_message(self):
+        ctx = Context.fake()
+        raw = fresh_session(events.bash(f"echo {injected.ORIGINAL}", CWD, permission_mode="turbo"))
+        first = entry.run_event(raw, Surface.COMMAND_HOOK, ctx, registry_of("rewrite"))
+        second = entry.run_event(raw, Surface.COMMAND_HOOK, ctx, registry_of("rewrite"))
+        self.assertEqual([reply["hookSpecificOutput"]["permissionDecision"] for reply in (first, second)],
+                         ["ask", "ask"], "the checks run, under default's rewrite mode, the one that asks")
+        self.assertIn("turbo", first.get("systemMessage", ""), "the user hears which mode io-guard met")
+        self.assertNotIn("systemMessage", second, "and hears it once a session")
+
     def test_a_config_error_is_named_once_per_session(self):
         error = ConfigError(Path("io-guard.json"), "chekcs", "io-guard has no such key.", "checks")
         report = LoadReport(defaults(), (error,), (), (Path("io-guard.json"),))
