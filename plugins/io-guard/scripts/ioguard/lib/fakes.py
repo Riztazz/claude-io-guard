@@ -113,6 +113,9 @@ class FakeGit:
         self.ranges = dict(ranges or {})
         self.attrs = dict(attributes or {})
 
+    def within(self, seconds: float) -> "FakeGit":
+        return self
+
     def root(self, path: Path) -> Path | None:
         return next((root for root in self.other_roots if root == path or root in path.parents),
                     self.repo_root)

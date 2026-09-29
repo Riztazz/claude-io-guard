@@ -21,6 +21,7 @@ from ioguard.lib.results import Code, Result, render
 from ioguard.lib.telemetry import TelemetryEvent, trace_from
 
 log = logging.getLogger("ioguard.pipeline")
+SKIPS_TOLD = 3           # the budget skips of one check in a session that make io-guard tell the user
 
 
 @dataclass(frozen=True)
@@ -94,8 +95,17 @@ class Run:
         return Result.of(code, message, self.event.tool_name, self.ctx.platform.os)
 
     def skip(self, check: Check) -> None:
-        self.skipped.append(check.meta.id)
-        self.record(check=check.meta.id, code=Code.BUDGET_EXCEEDED.value, severity="warning")
+        """Skip a check past the budget, and tell the user once per session when it happened SKIPS_TOLD
+        times, since a repository can make a hook slow on purpose."""
+        check_id = check.meta.id
+        self.skipped.append(check_id)
+        self.record(check=check_id, code=Code.BUDGET_EXCEEDED.value, severity="warning")
+        times = self.ctx.session.count(f"skipped:{check_id}")
+        if times >= SKIPS_TOLD and self.ctx.session.first_time(f"skipped:{check_id}"):
+            message = (f"io-guard ran out of time and skipped its {check_id} check on {times} calls this "
+                       f"session, so those calls went ahead without it. If it keeps happening, raise "
+                       f"pipeline.hard_ms or turn the check off for this project.")
+            self.messages.append(render(self.result(Code.BUDGET_EXCEEDED, message)))
 
     def fail(self, check: Check, error: BaseException) -> None:
         """Log a check that raised, and name it to the user once per session."""
@@ -191,6 +201,7 @@ class Pipeline:
 
     def run(self, event: Event, ctx: Context) -> Outcome:
         budget = self.budget or Budget.from_config(ctx.config)
+        ctx = replace(ctx, git=ctx.git.within(budget.hard_ms / 1000))
         run = Run(event, ctx)
         started = ctx.clock.monotonic()
         for check in self.order(self.registry.select(event, ctx)):

@@ -1,5 +1,6 @@
 """Git's output parses into typed values, and the live Git port answers from a real repository."""
 import unittest
+from pathlib import Path
 
 from ioguard.lib.git import (Git, GitError, LineRange, StatusEntry, parse_attributes, parse_ranges,
                              parse_status)
@@ -21,6 +22,22 @@ class GitOutputParses(unittest.TestCase):
         raw = b"@@ -3,2 +3,4 @@ ctx\n-a\n+b\n@@ -10 +12 @@\n@@ -20,3 +21,0 @@\n"
         self.assertEqual(parse_ranges(raw), (LineRange(3, 4), LineRange(12, 1), LineRange(21, 0)),
                          "a hunk with no count is one line, and a deletion has a count of 0")
+
+    def test_a_path_that_is_not_utf8_keeps_its_bytes(self):
+        raw = b" M caf\xe9.txt\0?? ok.txt\0"
+        entries = parse_status(raw).entries
+        self.assertEqual((len(entries), entries[0].path.encode("utf-8", "surrogateescape")),
+                         (2, b"caf\xe9.txt"),
+                         "a Latin-1 file name parses, with its bytes kept for the file system")
+
+    def test_a_call_past_the_deadline_does_not_start_git(self):
+        late = Git().within(-1.0)
+        with self.assertRaises(GitError) as refused:
+            late.run(Path("."), "status")
+        self.assertIn("time budget had run out", str(refused.exception),
+                      "a check's git call past the hook's budget raises and names why")
+        self.assertLessEqual(Git().within(0.5).time_left(("status",)), 0.5,
+                             "a call within the budget gets at most what is left of it")
 
     def test_attributes_read_as_name_to_value(self):
         raw = b"a.txt\0text\0auto\0a.txt\0eol\0lf\0"

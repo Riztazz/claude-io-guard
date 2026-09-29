@@ -43,6 +43,7 @@ class ToolVersion:
 
 
 class GitPort(Protocol):
+    def within(self, seconds: float) -> "GitPort": ...          # every call ends by seconds from now
     def root(self, path: Path) -> Path | None: ...
     def is_tracked(self, path: Path) -> bool: ...
     def status(self, root: Path) -> GitStatus: ...
@@ -156,6 +157,7 @@ class SessionState:
     read_profiles: dict[Path, Profile] = field(default_factory=dict)   # the bytes last read or written
     snapshots: dict[str, Snapshot | ShellSnapshot] = field(default_factory=dict)   # by tool_use_id
     warned: set[str] = field(default_factory=set)                 # one user warning per key per session
+    counts: dict[str, int] = field(default_factory=dict)          # how often each key happened
     budget_override: int | None = None                            # learned from an EOF failure
     tracked: dict[Path, bool] = field(default_factory=dict)       # git's answer per path, asked once
     last_failed_build: str | None = None                          # the words of the build that last failed
@@ -189,6 +191,12 @@ class SessionState:
                 log.debug("io-guard could not share the warning %s with the session's other processes: %s",
                           key, error)
                 return True
+
+    def count(self, key: str) -> int:
+        """How many times key has been counted this session in this process, this time included."""
+        with self.lock:
+            self.counts[key] = self.counts.get(key, 0) + 1
+            return self.counts[key]
 
     def dirty_at_start(self) -> tuple[Path, ...] | None:
         """The files that had changes when the session first started, from sessions/<session>.dirty, which

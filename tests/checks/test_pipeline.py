@@ -4,11 +4,12 @@ import unittest
 from pathlib import Path
 
 from ioguard.checks.base import Cost
-from ioguard.checks.pipeline import Budget, Pipeline
+from ioguard.checks.pipeline import SKIPS_TOLD, Budget, Pipeline
 from ioguard.checks.registry import Registry
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Rewrite, Verdict
 from ioguard.lib.events import Event, Surface
+from ioguard.lib.fakes import FakeGit
 from ioguard.lib.results import Code, Layer, Result
 from tests.support import events
 from tests.support.checks import make_check
@@ -130,6 +131,26 @@ class PipelineHoldsTheBudget(unittest.TestCase):
         outcome = pipeline_of(slow, cheap).run(bash_event(), Context.fake())
         self.assertEqual((outcome.skipped, outcome.verdict), (("b.cheap",), Verdict.ALLOW),
                          "past 2,000 ms every remaining check is skipped and the call goes ahead")
+
+    def test_a_check_skipped_again_and_again_is_named_to_the_user_once(self):
+        ctx = Context.fake()
+        pipeline = pipeline_of(waiting("a.slow", 2100), waiting("b.cheap", 0))
+        told = [pipeline.run(bash_event(), ctx).user_message for _ in range(SKIPS_TOLD + 2)]
+        said = [message for message in told if message]
+        self.assertEqual((len(said), told.index(said[0])), (1, SKIPS_TOLD - 1),
+                         "the user hears once, on the skip that reaches the count, and not on each call")
+        self.assertIn(f"skipped its b.cheap check on {SKIPS_TOLD} calls", said[0],
+                      "the message names the check and how often it was skipped")
+
+    def test_the_checks_git_calls_share_the_hard_budget(self):
+        seen = []
+
+        class Timed(FakeGit):
+            def within(self, seconds):
+                seen.append(seconds)
+                return self
+        pipeline_of(waiting("a.x", 0)).run(bash_event(), Context.fake(git=Timed()))
+        self.assertEqual(seen, [2.0], "every git call a check makes ends within the 2,000 ms hard budget")
 
     def test_the_budget_comes_from_the_config(self):
         from ioguard.lib import config

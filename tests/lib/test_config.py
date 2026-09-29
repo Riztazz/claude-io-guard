@@ -80,6 +80,21 @@ class LayersMerge(ConfigFiles):
         self.assertEqual(merged["verify"], {".py": ["a"], ".js": ["b"]}, "dictionaries deep-merge")
 
 
+class AFileTooBigIsDroppedWhole(ConfigFiles):
+    def test_a_config_file_over_the_limit_is_an_error_that_names_it(self):
+        big = b'{"telemetry": {"debug": true}, "pad": "' + b"x" * config.FILE_LIMIT + b'"}'
+        report = self.load(self.layer(Scope.PROJECT, "io-guard.json", big))
+        self.assertEqual((report.dropped, report.errors[0].key, "256 KB" in report.errors[0].message),
+                         ((self.folder / "io-guard.json",), "(file)", True),
+                         "a huge file is not read into memory, and the message names the limit")
+
+    def test_a_file_at_the_limit_loads(self):
+        body = json.dumps({"telemetry": {"debug": True}}).encode("ascii")
+        padded = body + b" " * (config.FILE_LIMIT - len(body))
+        report = self.load(self.layer(Scope.USER, "config.json", padded))
+        self.assertEqual(report.dropped, (), "a file of exactly FILE_LIMIT bytes is read")
+
+
 class AProjectFileOverridesTheUsers(ConfigFiles):
     def test_a_project_may_set_allow_as_a_rewrite_mode(self):
         report = self.load(self.layer(Scope.USER, "u.json", {"transport": {"rewrite_mode": {"auto": "ask"}}}),

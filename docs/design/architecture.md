@@ -718,7 +718,10 @@ class Pipeline:
    the checks that ran before it render as extra lines.
 6. **Hold the budget.** Before each check, the pipeline compares elapsed time with the budget. Past `soft_ms`
    it skips `EXPENSIVE` checks. Past `hard_ms` it skips everything left. Each skip is `BUDGET_EXCEEDED` in
-   telemetry, and the call proceeds with what was decided.
+   telemetry, and the call proceeds with what was decided. A check skipped `SKIPS_TOLD` (3) times in a
+   session is named once in a `user_message`, since a repository can make a hook slow on purpose (task 87).
+   The run's context carries `ctx.git.within(hard_ms)`, so every git call a check makes ends inside the hard
+   budget, and one past it raises `GitError` without starting git.
 7. **Fail open.** A check that raises is skipped, logged as `GUARD_ERROR` with the traceback in the debug log,
    and named once per session in a `user_message`. The run continues with the next check.
 8. **Merge.** The verdict is the maximum of the decisions. Context lines join in order: each decision's
@@ -849,6 +852,8 @@ class LockTable: lock(path) -> threading.Lock               # task 24: one per r
 
 # git.py
 class Git(GitPort): ...                                     # every call: -c core.quotepath=false, -z, timeout
+    def within(self, seconds: float) -> Git                 # task 87: every call ends by then
+                                                            # paths decode with surrogateescape, never raise
 def parse_status(raw: bytes) -> GitStatus
 def parse_ranges(raw: bytes) -> tuple[LineRange, ...]
 def parse_attributes(raw: bytes) -> dict[str, str]
@@ -1053,7 +1058,8 @@ without a folder starts only from where PATH holds it (task 79).
 
 Loading happens once per process and fails loudly. `validate` reports an unknown key with the file, the key
 and the nearest known key, a type mismatch with the expected type, and a scope violation with the layer that
-may set it. A file with errors is dropped whole, the guard runs with the layers that loaded, and one
+may set it. A file over `FILE_LIMIT`, 256 KB, is an error without being read (task 87). A file with errors is
+dropped whole, the guard runs with the layers that loaded, and one
 `user_message` names the file and the first error. Dictionaries deep-merge, lists replace, and a list key that
 ends in `extra` appends.
 

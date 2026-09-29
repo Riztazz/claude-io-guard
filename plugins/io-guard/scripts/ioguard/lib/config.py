@@ -159,6 +159,7 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
 }
 ENABLED = ConfigKey(bool, True, "Run this check.")
 USER_FILE = "Set it in your own config.json in io-guard's folder, ~/.claude/io-guard."
+FILE_LIMIT = 256 * 1024          # bytes: a bigger config file is dropped whole rather than read
 
 
 def all_keys(check_keys: Mapping[str, Mapping[str, ConfigKey]]) -> dict[str, ConfigKey]:
@@ -239,8 +240,13 @@ def merge(base: Mapping[str, Any], over: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def read_file(path: Path) -> tuple[Any, ConfigError | None]:
+    """The file's JSON, or the error that drops it: over FILE_LIMIT, not UTF-8, or not JSON."""
+    data = bytesio.read_bytes(path, FILE_LIMIT + 1)
+    if len(data) > FILE_LIMIT:
+        return None, ConfigError(path, "(file)", f"The file is over {FILE_LIMIT // 1024} KB, the most "
+                                                 f"io-guard reads of a config file.")
     try:
-        text = bytesio.read_bytes(path).decode("utf-8")
+        text = data.decode("utf-8")
     except UnicodeDecodeError as error:
         return None, ConfigError(path, "(file)",
                                  f"The file is not UTF-8: {error.reason} at byte {error.start}.")

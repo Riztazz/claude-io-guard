@@ -3,14 +3,18 @@ stored bytes and one file's unstaged diff, all read-only, and one write, a patch
 
 Every call passes -c core.quotepath=false, so a non-ASCII path comes back as UTF-8, uses -z wherever it
 parses paths, and has a timeout. A call that fails raises GitError, so a caller never mistakes a failure for
-an answer.
+an answer. A path that is not UTF-8 decodes with its bytes kept as surrogates, which the file system takes
+back on macOS, so one odd file name never stops a check.
 """
 import re
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 from ioguard.lib import proc
+
+PATHS = "surrogateescape"
 
 
 class GitError(Exception):
@@ -42,7 +46,7 @@ class LineRange:
 
 def parse_status(raw: bytes) -> GitStatus:
     """Parse git status --porcelain=v1 -z, where a rename carries its old path as the next field."""
-    fields = raw.decode("utf-8").split("\0")
+    fields = raw.decode("utf-8", PATHS).split("\0")
     entries, at = [], 0
     while at < len(fields) and fields[at]:
         field = fields[at]
@@ -67,7 +71,7 @@ def parse_ranges(raw: bytes) -> tuple[LineRange, ...]:
 
 def parse_attributes(raw: bytes) -> dict[str, str]:
     """Parse git check-attr -a -z: path, attribute and value, each ended by NUL."""
-    fields = raw.decode("utf-8").split("\0")
+    fields = raw.decode("utf-8", PATHS).split("\0")
     return {fields[at + 1]: fields[at + 2] for at in range(0, len(fields) - 2, 3)}
 
 
@@ -80,11 +84,25 @@ def reason(result: proc.RunResult) -> str:
 class Git:
     """The GitPort io-guard uses in a live session."""
 
-    def __init__(self, timeout_s: float = 10.0) -> None:
+    def __init__(self, timeout_s: float = 10.0, deadline: float | None = None) -> None:
         self.timeout_s = timeout_s
+        self.deadline = deadline         # a time.monotonic() no call runs past, None for none
+
+    def within(self, seconds: float) -> "Git":
+        """This git with every call ending by seconds from now, so a hook's git calls share its budget."""
+        return Git(self.timeout_s, time.monotonic() + seconds)
+
+    def time_left(self, args: tuple[str, ...]) -> float:
+        """The seconds a call may take, GitError when the deadline has passed."""
+        if self.deadline is None:
+            return self.timeout_s
+        left = self.deadline - time.monotonic()
+        if left <= 0:
+            raise GitError(f"git {' '.join(args)} did not run, because the hook's time budget had run out.")
+        return min(self.timeout_s, left)
 
     def run(self, cwd: Path, *args: str) -> proc.RunResult:
-        return proc.run(["git", "-c", "core.quotepath=false", *args], cwd=cwd, timeout_s=self.timeout_s)
+        return proc.run(["git", "-c", "core.quotepath=false", *args], cwd=cwd, timeout_s=self.time_left(args))
 
     def checked(self, cwd: Path, *args: str) -> bytes:
         result = self.run(cwd, *args)
@@ -100,7 +118,7 @@ class Git:
         """The repository root holding path, or None when path is outside every repository."""
         result = self.run(self.folder(path), "rev-parse", "--show-toplevel")
         if result.ok:
-            return Path(result.stdout.decode("utf-8").strip())
+            return Path(result.stdout.decode("utf-8", PATHS).strip())
         if b"not a git repository" in result.stderr:
             return None
         raise GitError(f"git rev-parse in {path} failed: {reason(result)}")
@@ -115,7 +133,7 @@ class Git:
         return parse_status(self.checked(root, "status", "--porcelain=v1", "-z", "--untracked-files=all"))
 
     def ls_files(self, root: Path) -> tuple[Path, ...]:
-        names = self.checked(root, "ls-files", "-z").decode("utf-8").split("\0")
+        names = self.checked(root, "ls-files", "-z").decode("utf-8", PATHS).split("\0")
         return tuple(root / name for name in names if name)
 
     def changed_ranges(self, path: Path) -> tuple[LineRange, ...] | None:
@@ -138,7 +156,7 @@ class Git:
     def staged(self, root: Path) -> tuple[str, ...]:
         """The paths the next commit adds, changes or renames to, from root, with forward slashes."""
         raw = self.checked(root, "diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR")
-        return tuple(name for name in raw.decode("utf-8").split("\0") if name)
+        return tuple(name for name in raw.decode("utf-8", PATHS).split("\0") if name)
 
     def unstaged(self, path: Path) -> bytes:
         """path's changes the index does not hold yet, as git diff -U0 bytes, with no textconv, no external
@@ -150,7 +168,7 @@ class Git:
         """Apply patch to the index only, as git apply --cached, which a -U0 patch needs --unidiff-zero for.
         GitError carries git's own reason when it refuses."""
         result = proc.run(["git", "-c", "core.quotepath=false", "apply", "--cached", "--unidiff-zero",
-                           "--recount", "-"], cwd=root, timeout_s=self.timeout_s, stdin=patch)
+                           "--recount", "-"], cwd=root, timeout_s=self.time_left(("apply",)), stdin=patch)
         if not result.ok:
             raise GitError(f"git apply --cached in {root} failed: {reason(result)}")
 

@@ -48,6 +48,9 @@ class SnapshotGit:
         self.roots: dict[Path, Path | None] = {}
         self.files: dict[Path, frozenset[str]] = {}
 
+    def within(self, seconds: float) -> "SnapshotGit":
+        return self
+
     @staticmethod
     def key(path: Path) -> str:
         return path.as_posix().lower()

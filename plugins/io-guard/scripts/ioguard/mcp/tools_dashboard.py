@@ -22,7 +22,7 @@ from ioguard import CONFIG_SCHEMA
 from ioguard.checks.registry import default_registry
 from ioguard.checks.trust_ask import config_write, needs_yes
 from ioguard.lib import config_edit, locks, telemetry, telemetry_summary
-from ioguard.lib.config import ConfigKey, Scope, all_keys, load, validate
+from ioguard.lib.config import FILE_LIMIT, ConfigKey, Scope, all_keys, load, validate
 from ioguard.lib.context import Context, config_layers, project_root, trusted
 from ioguard.lib.results import Code, Fix, Result, callable_name
 from ioguard.mcp.dashboard_http import Dashboard, Rejected
@@ -84,8 +84,12 @@ def read_raw(file: Path, ctx: Context) -> dict:
     """The file's JSON object, or a new one naming the schema when there is no file yet."""
     if not ctx.fs.exists(file):
         return {"schema": CONFIG_SCHEMA}
+    data = ctx.fs.read_bytes(file, FILE_LIMIT + 1)
+    if len(data) > FILE_LIMIT:
+        raise refused(f"{file.as_posix()} is over {FILE_LIMIT // 1024} KB, the most io-guard reads of a "
+                      f"config file.", ctx, file, "Make the file smaller by hand first.")
     try:
-        raw = json.loads(ctx.fs.read_bytes(file).decode("utf-8"))
+        raw = json.loads(data.decode("utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise refused(f"{file.as_posix()} cannot be read as JSON: {error}.", ctx, file,
                       "Fix the file by hand first, since io-guard ignores it until it loads.") from None
