@@ -38,6 +38,8 @@ The reviewers also name `xargs sed -i`, `sed -i ... *.md`, `env X=1 sed -i`, `se
   read with `rules.inner`. `cd` in a subshell and `pushd` and `popd` keep their scope.
 - A replay over the corpus before shipping: the false refusal rate of `shell.writes` stays under 0.1%, and each
   refusal of a call that succeeded is read.
+- Folded in from task 122 on 2026-09-29: `shell_writes.py` calls `script_files` twice for each Bash command,
+  once in the refusal and once for `shell.touched.scripted`, so each script is read twice. Read it once.
 
 ## Where
 

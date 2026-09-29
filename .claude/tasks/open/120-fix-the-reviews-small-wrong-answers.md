@@ -31,6 +31,12 @@ The code review of 2026-09-29 found these, each small and each on its own:
    `ls open; ls done | tail -5; cat done/$(ls done | grep '^96') | head -60` got `PIPE_HIDES_EXIT` quoting an
    `AssertionError` line from the task file it printed, on 2026-09-29. `cat` and `head` read, and the grep
    sits in a command substitution.
+7. **A generator's own write is told to use io.edit next time.** `python tools/skill.py`, which this
+   repository's CLAUDE.md names as the way to write the skill's tables, got `SHELL_WRITE: tools/skill.py
+   changed plugins/io-guard/skills/io-guard/SKILL.md, which git tracks, so those writes skipped io-guard's
+   byte checks and Claude Code's checkpoints. Make the next change to them with
+   mcp__plugin_io-guard_io__io_edit or the Edit tool.` on 2026-09-29. A file a script regenerates is changed
+   by running the script again, never by hand.
 
 ## What to build
 
@@ -40,6 +46,7 @@ The code review of 2026-09-29 found these, each small and each on its own:
 4. Count lines by streaming the file in blocks.
 5. Append io-guard's lines to the env file, and write none it already holds.
 6. A command substitution's commands count as readers when they are, so a pipe of readers stays quiet.
+7. The scripted-write warning names the script as the way to change the file again, not an edit tool.
 
 ## Where
 
