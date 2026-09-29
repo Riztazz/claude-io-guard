@@ -7,9 +7,12 @@ gives a process id line and a command line per holder.
 
 file_lock serialises io-guard's processes, two sessions' servers or a server and a command hook, on one path.
 It locks a file named for the path in io-guard's folder, never the path itself, so no editor or build
-ever waits on it.
+ever waits on it. The lock is polled, so a process that takes it again the moment it lets go would starve a
+waiter. A waiter therefore marks the lock as wanted, in a .want file beside it, and a process about to take
+the lock steps aside for one turn while another process's mark is fresh.
 """
 import hashlib
+import os
 import sys
 import time
 from collections.abc import Iterator
@@ -18,12 +21,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
-from ioguard.lib import paths, proc
+from ioguard.lib import bytesio, paths, proc
 from ioguard.lib.platform import Platform
 
 MORE_DATA = 234          # ERROR_MORE_DATA: the list grew between the two RmGetList calls
 ATTEMPTS = 3
 RETRY_S = 0.02
+WANT_S = RETRY_S * 10    # a waiter's mark older than this belongs to a process that stopped waiting
 
 
 @dataclass(frozen=True)
@@ -101,16 +105,38 @@ def file_lock(path: Path, data_dir: Path, wait_s: float = 5.0) -> Iterator[None]
     folder = data_dir / "locks"
     folder.mkdir(parents=True, exist_ok=True)
     name = hashlib.sha1(paths.resolved(path).encode("utf-8")).hexdigest()
+    want, me = folder / f"{name}.want", str(os.getpid()).encode("ascii")
     deadline = time.monotonic() + wait_s
     with open(folder / f"{name}.lock", "a+b") as handle:
+        if wanted_by_another(want, me):
+            time.sleep(RETRY_S * 2)
         while not locked(handle):
             if time.monotonic() >= deadline:
                 raise TimeoutError(f"Another io-guard process has held {path} for {wait_s:g} seconds.")
+            bytesio.write_atomic(want, me)
             time.sleep(RETRY_S)
         try:
+            if read_or_none(want) == me:
+                want.unlink(missing_ok=True)
             yield
         finally:
             unlocked(handle)
+
+
+def wanted_by_another(want: Path, me: bytes) -> bool:
+    """Whether another process marked the lock as wanted within WANT_S, so this one steps aside for it."""
+    try:
+        fresh = time.time() - want.stat().st_mtime < WANT_S
+    except OSError:
+        return False
+    return fresh and read_or_none(want) not in (None, me)
+
+
+def read_or_none(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except OSError:
+        return None
 
 
 def locked(handle: BinaryIO) -> bool:

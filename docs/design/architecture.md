@@ -1420,7 +1420,9 @@ io.append(path, text, wrap_column = None, date_prefix = False, expect_hash = "")
 
 1. **Hold the file.** `paths.LockTable` holds it against the server's other workers, then `lib.locks.file_lock`
    against every other io-guard process, each for up to `io.edit.wait_ms`, past which the call answers
-   `FILE_LOCKED` (section 8).
+   `FILE_LOCKED` (section 8). `file_lock` polls, so a waiter marks the lock as wanted in a `.want` file beside
+   it, and a process about to take the lock steps aside for one turn while another process's mark is under
+   `WANT_S` old. Two processes editing in a loop then take turns rather than one starving the other (task 95).
 2. **Load it.** A missing file is `PATH_NOT_FOUND`, one past `io.edit.max_bytes` `READ_TOO_LARGE`, a read-only
    one `READ_ONLY`, and one whose SHA-256 is not `expect_hash` `STALE_VIEW`. A binary file, or one whose bytes
    do not decode and encode back the same in `Profile.codec`, is `ENCODING_INVALID`.
