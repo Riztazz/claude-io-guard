@@ -308,6 +308,7 @@ class SessionState:
     snapshots: MutableMapping[str, Snapshot | ShellSnapshot]   # by tool_use_id, until PostToolUse, 16 at most
     warned: MutableSet[str]                      # one user warning per key per session
     budget_override: Optional[int]               # learned from an EOF failure
+    first_cut: Optional[int]                     # task 109: the shortest cut command where no cut is known
     tracked: MutableMapping[Path, bool]          # whether git tracks a path, asked once by shell.writes
     asked: MutableMapping[str, tuple[str, datetime]]   # task 85: by tool_use_id, the content key a PreToolUse
                                                  # check put to the user and when, for io.run, io.restore and
@@ -378,9 +379,11 @@ parallel, and a `ToolVersion` carries a `stamp`, the file's size and mtime, so a
 version without running again. The Claude Code version comes from the hook's `AI_AGENT`, then from
 `CLAUDE_CODE_EXECPATH`. On Windows `transport_budget` is the Bash tool's cut, 7,807 bytes with each apostrophe
 counted as four, and `halving` is true, until `FIXED_IN` names the release that fixes #92543. The policy margin
-below the cut, `transport.budget_bytes`, is task 11's key. A well-formed command over 5 KB that bash still reads
-as ending inside a quote sets the session's `budget_override` below its length (task 22), and a budget learned
-that way applies on a platform whose probe found no cut. The halving takes half the backslashes of a run
+below the cut, `transport.budget_bytes`, is task 11's key. A well-formed command over 5 KB that the Bash tool's
+own bash reads as ending inside a quote, `bash: -c: line N: unexpected EOF`, sets the session's
+`budget_override` below its length (task 22). A script's `<file>: line N:` or an `eval:` line sets nothing.
+On macOS, where no cut is known, the first such command only warns, and the second sets the budget (task 109).
+A budget learned that way applies on a platform whose probe found no cut. The halving takes half the backslashes of a run
 that a double quote does not follow: 4 become 2 and 3 become 2, while a run before `"` arrives whole
 (`context.md`, row 25). `shell.scan` flags a pair as a hazard only where that changes what bash reads, and
 `transport_body` moves a quoted heredoc or `python -c` body byte-exact when the command is over the budget or the

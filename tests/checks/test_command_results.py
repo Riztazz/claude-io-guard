@@ -17,23 +17,25 @@ from tests.support import events
 
 CWD = Path("C:/project")
 WINDOWS = Platform("win32", True)
+MACOS = Platform("darwin", True)
 CLAUDE = "C:/Users/u/.claude"
 SAVED = Path(f"{CLAUDE}/projects/p/{events.SESSION_ID}/tool-results/b1.txt")
 REGISTRY = Registry()
 REGISTRY.register(CommandResults)
-EOF = "Exit code 2\n/usr/bin/bash: eval: line 1: unexpected EOF while looking for matching `''"
+EOF = "Exit code 2\n/usr/bin/bash: -c: line 1: unexpected EOF while looking for matching `''"
 COMPILER = "a.cpp(3): error C2065: 'x': undeclared identifier"
 
 
-def context(files: dict | None = None, **options) -> Context:
+def context(files: dict | None = None, platform: Platform = WINDOWS, **options) -> Context:
     values = {**defaults(REGISTRY.keys()).values,
               **{f"checks.shell.results.{name}": value for name, value in options.items()}}
-    return Context.fake(files or {}, config=Config(MappingProxyType(values)), platform=WINDOWS,
+    return Context.fake(files or {}, config=Config(MappingProxyType(values)), platform=platform,
                         env={"CLAUDE_CONFIG_DIR": CLAUDE})
 
 
 def run(raw: dict, ctx: Context | None = None):
-    return Pipeline(REGISTRY).run(Event.from_hook_json(raw, Surface.MCP_HOOK, WINDOWS), ctx or context())
+    ctx = ctx or context()
+    return Pipeline(REGISTRY).run(Event.from_hook_json(raw, Surface.MCP_HOOK, ctx.platform), ctx)
 
 
 def found(raw: dict, ctx: Context | None = None) -> list[Result]:
@@ -289,6 +291,33 @@ class TheBudgetLearnsFromACutCommand(unittest.TestCase):
         ctx.session.budget_override = 6500
         found(failed("echo " + "x" * 7995, EOF), ctx)
         self.assertEqual(ctx.session.budget_override, 6500, "the budget only ever drops")
+
+    def test_an_eof_that_is_not_the_bash_tools_own_teaches_nothing(self):
+        command = "cat > f <<'EOF'\n" + "echo 'x\n" * 700 + "EOF\nbash f"
+        for platform in (WINDOWS, MACOS):
+            for error in ("Exit code 2\nf: line 3: unexpected EOF while looking for matching `''",
+                          "Exit code 2\n/usr/bin/bash: eval: line 1: unexpected EOF while looking for "
+                          "matching `''", "Exit code 2\nbash: line 1: unexpected EOF while looking for "
+                          "matching `''"):
+                with self.subTest(platform=platform.os, error=error.splitlines()[1][:20]):
+                    ctx = context(platform=platform)
+                    self.assertEqual(codes(failed(command, error), ctx), [],
+                                     "a script's own syntax error says nothing about the Bash tool")
+                    self.assertIsNone(ctx.session.budget_override, "and the budget stays")
+
+    def test_on_macos_the_budget_drops_after_the_second_cut(self):
+        ctx = context(platform=MACOS)
+        first = found(failed("echo " + "x" * 7995, EOF), ctx)
+        self.assertIsNone(ctx.session.budget_override,
+                          "no cut is known on macOS, so one failure is not enough")
+        self.assertEqual((first[0].code, first[0].severity, first[0].message),
+                         (Code.TRANSPORT_BUDGET, Severity.WARNING,
+                          "Bash read this well-formed 8,000-byte command as ending inside a quote. No cut is "
+                          "known on macOS, so io-guard lowers this session's budget only after a second "
+                          "one."),
+                         "the model hears what one more such failure does")
+        found(failed("echo " + "x" * 6995, EOF), ctx)
+        self.assertEqual(ctx.session.budget_override, 6999, "the second cut lowers it below the shorter one")
 
 
 if __name__ == "__main__":

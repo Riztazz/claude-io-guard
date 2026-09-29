@@ -162,6 +162,7 @@ class SessionState:
     warned: set[str] = field(default_factory=set)                 # one user warning per key per session
     counts: dict[str, int] = field(default_factory=dict)          # how often each key happened
     budget_override: int | None = None                            # learned from an EOF failure
+    first_cut: int | None = None                  # the shortest cut command's bytes, where no cut is known
     tracked: dict[Path, bool] = field(default_factory=dict)       # git's answer per path, asked once
     last_failed_build: str | None = None                          # the words of the build that last failed
     asked: dict[str, tuple[str, datetime]] = field(default_factory=dict)   # by tool_use_id: what, when

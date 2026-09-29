@@ -8,9 +8,9 @@ lines count only when a pattern matches from the line's start, and never in the 
 reads a file or a log, because that output quotes errors rather than raising them (OUT-7). A pipe that ends
 in a filter hides the failure before it (OUT-1). An output Claude Code saved to a file is replaced by its
 first and last lines and its error lines, so the model need not read the file again (OUT-10). A build that
-failed marks the programs a later run uses as stale (VFY-7). A well-formed Bash command over 5 KB that bash
-read as ending inside a quote was cut by this machine's Bash tool, so the session's transport budget drops
-below its length.
+failed marks the programs a later run uses as stale (VFY-7). A well-formed Bash command over 5 KB that the
+Bash tool's own bash, bash -c, read as ending inside a quote was cut by this machine's Bash tool, so the
+session's transport budget drops below its length. On macOS, where no cut is known, it drops at the second.
 """
 import logging
 import re
@@ -58,7 +58,8 @@ BUILDS = ["make", "cmake --build", "ninja", "msbuild", "dotnet build", "cargo bu
           "gradlew", "mvn", "tsc"]
 RUNS = ["ctest", "dotnet test --no-build", "dotnet run --no-build"]
 SHELL_ERROR = re.compile(r"^(?:/usr/bin/)?bash(?:\.exe)?: ", re.M)
-EOF = "unexpected EOF while looking for matching"
+# The Bash tool's own bash reports its -c text, while a script names its file and eval names eval.
+CUT = re.compile(r"^(?:\S*/)?bash(?:\.exe)?: -c: line \d+: unexpected EOF while looking for matching", re.M)
 READ_AS_UTF8 = ("Read the input as UTF-8, such as open(path, encoding=\"utf-8\") in Python or Get-Content "
                 "-Encoding utf8 in PowerShell.")
 WRITE_AS_UTF8 = ("Run the program with UTF-8 output, such as PYTHONUTF8=1 for Python or chcp.com 65001 "
@@ -164,9 +165,10 @@ class Reading:
         return "\n".join(f"{error.number:>{numbers},}| {error.text[:width]}" for error in errors[:limit])
 
     def budget(self) -> Result | None:
-        """A well-formed command over learn_from_bytes that bash read as ending inside a quote: the Bash tool
-        cut it, so the session's budget drops below its length."""
-        if not (self.bash and self.failed and EOF in self.text):
+        """A well-formed command over learn_from_bytes that the Bash tool's bash read as ending inside a
+        quote: the tool cut it, so the session's budget drops below its length. Where no cut is known, on
+        macOS, the budget drops at the second such command."""
+        if not (self.bash and self.failed and CUT.search(self.text)):
             return None
         length = shell.budget_length(self.command)
         whole = not self.found.unterminated and all(heredoc.terminated for heredoc in self.found.heredocs)
@@ -174,8 +176,16 @@ class Reading:
             return None
         session = self.ctx.session
         with session.lock:
-            learned = length - 1 if session.budget_override is None else min(session.budget_override,
-                                                                               length - 1)
+            if self.ctx.platform.macos and session.first_cut is None:
+                session.first_cut = length
+                return self.result(Code.TRANSPORT_BUDGET,
+                                   f"Bash read this well-formed {length:,}-byte command as ending inside a "
+                                   f"quote. No cut is known on macOS, so io-guard lowers this session's "
+                                   f"budget only after a second one.", severity=Severity.WARNING,
+                                   evidence={"bytes": length})
+            cuts = [length - 1, session.budget_override, None if session.first_cut is None
+                    else session.first_cut - 1]
+            learned = min(cut for cut in cuts if cut is not None)
             session.budget_override = learned
         return self.result(Code.TRANSPORT_BUDGET,
                            f"The Bash tool on this machine cut this well-formed {length:,}-byte command, so "
