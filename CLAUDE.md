@@ -44,8 +44,8 @@ The lead's shared kit, UNREAL-SHARED, links its generic group in here with `inst
 
 - `.claude/rules/shared/`: the always-on rules for every project
 - `.claude/skills/engineering`, `testing`, `verification` and `prose`: the skills for every project
-- `.claude/tools/shared/`: the kit's scripts, for the two hooks in `.claude/settings.local.json` that print the
-  steps after a compaction and refuse shell writes
+- `.claude/tools/shared/`: the kit's scripts, for the hook in `.claude/settings.local.json` that prints the
+  steps after a compaction
 
 Claude Code loads a rule only when its real path is inside the project, and a linked rule's real path is the kit. The
 installer therefore approves imports from outside the project for this folder, in the lead's `~/.claude.json`. With
