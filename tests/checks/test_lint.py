@@ -98,6 +98,17 @@ class PowerShellSentToBash(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertEqual(codes(command), (Verdict.OBSERVE, ()), "each of these is bash")
 
+    def test_a_program_or_a_variable_that_only_looks_like_powershell_passes(self):
+        for command in ("wait-on http://localhost:3000", "start-server", "npx format-patch x",
+                        "git format-patch -1", "test-runner --all", 'echo "${ENV:-dev}"', 'echo "$ENV:8080"'):
+            with self.subTest(command=command):
+                self.assertEqual(codes(command), (Verdict.OBSERVE, ()), "each of these is bash")
+        for command in ("get-childitem .", "Test-Path x", "Stop-Process -Id 4", 'echo "$Env:PATH"'):
+            with self.subTest(command=command):
+                self.assertEqual(codes(command)[1][:1], (Code.DIALECT_MISMATCH,),
+                                 "a known cmdlet in any case, one written as a cmdlet, and $Env:NAME are "
+                                 "still refused")
+
     def test_a_powershell_variable_bash_expands_is_refused(self):
         for command in ('powershell -Command "Get-Process | ForEach-Object { $_.Id }"',
                         'cat "$env:USERPROFILE/notes.txt"', "Get-ChildItem .", "$m = @'\nline\n'@\necho $m"):
@@ -124,6 +135,17 @@ class PythonBodies(unittest.TestCase):
                                  (Verdict.DENY, Code.INLINE_SCRIPT_INVALID),
                                  "Python would stop before it ran")
                 self.assertIn("line", decision.results[0].message, "the refusal names the line")
+
+    def test_a_body_behind_flags_is_checked_and_a_python2_body_is_not(self):
+        for command in ("python -X utf8 -c \"print('hello'\"", "python -W ignore -c \"print('hello'\"",
+                        "python -Bc \"print('hello'\""):
+            with self.subTest(command=command):
+                self.assertEqual(codes(command), (Verdict.DENY, (Code.INLINE_SCRIPT_INVALID,)),
+                                 "a python -c body behind its flags is found and compiled")
+        for command in ("python2 -c \"print 'x'\"", "py -2 -c \"print 'x'\""):
+            with self.subTest(command=command):
+                self.assertEqual(codes(command), (Verdict.OBSERVE, ()),
+                                 "a Python 2 body is Python 2's to judge, not 3.14's")
 
     def test_a_body_that_compiles_with_a_warning_runs_with_it(self):
         decision = lint(run("python - <<'PY'\nimport re\nprint(re.findall(\"\\d\", \"a1\"))\nPY\n"))

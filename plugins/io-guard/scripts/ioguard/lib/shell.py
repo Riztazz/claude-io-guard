@@ -21,8 +21,8 @@ COMMAND_START = r"(?:^|[;&|(\n])[ \t]*(?:[A-Za-z_]\w*=\S*[ \t]+)*"
 PYTHON_NAME = r"py(?:thon[\d.]*)?(?:\.exe)?"
 PROGRAM = (rf"(?P<program>\"(?:[^\"]*[\\/])?{PYTHON_NAME}\"|'(?:[^']*[\\/])?{PYTHON_NAME}'"
            rf"|(?:[^\s;&|()<>'\"]*[\\/])?{PYTHON_NAME})")
-PYTHON_C = re.compile(COMMAND_START + PROGRAM + r"(?:[ \t]+-[A-Za-z0-9]+)*[ \t]+-c[ \t]+(?P<quote>['\"])",
-                      re.I)
+PYTHON_C = re.compile(COMMAND_START + PROGRAM + r"(?:[ \t]+(?:-[XW][ \t]+[^\s'\"-]\S*|-[A-Za-z0-9]+))*?"
+                      r"[ \t]+-[A-Za-z]*c[ \t]+(?P<quote>['\"])", re.I)
 
 
 @dataclass(frozen=True)

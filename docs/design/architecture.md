@@ -85,8 +85,9 @@ plugins/io-guard/
         transport_body.py          BODY_MOVED_TO_FILE, TRANSPORT_BUDGET, BACKSLASH_TRANSPORT
         shell_writes.py            SHELL_WRITE, scratch script warning, a script file's writes read first, the
                                    in-place editors under find -exec and xargs, bash -c strings
-        lint.py                    shell.lint: quoting, escapes, dialect, Python bodies, PIPE_HIDES_EXIT once,
-                                   STOPS_BY_MATCH
+        lint.py                    shell.lint: quoting, escapes, dialect, Python 3 bodies, PIPE_HIDES_EXIT once,
+                                   STOPS_BY_MATCH. A cmdlet is Verb-Noun as PowerShell writes it, or a
+                                   common one in any case, and a Python 2 body is never compiled (task 108)
         win_paths.py               win.paths: MSYS_PATH for slash arguments and cmd /c, RESERVED_NAME for nul
         conform_write.py           conform.write: EOL_CONVERTED, BOM_RESTORED, EOL_MISMATCH for a mixed file
         conform_edit.py            conform.edit: INDENT_MISMATCH, SPACE_DROPPED, LINES_JOINED
@@ -817,7 +818,8 @@ def fitted(new: str, near: str, width: Optional[int]) -> Optional[str]   # None 
 
 # shell.py, task 11
 def scan(command: str) -> Scan              # heredocs, python -c bodies, halving hazards, quoting states,
-                                            # and too_deep past MAX_NESTING levels of $(), task 100
+                                            # and too_deep past MAX_NESTING levels of $(), task 100. A -c
+                                            # body is found behind -X and -W values and in -Bc, task 108
 def budget_length(command: str) -> int      # UTF-8 bytes, apostrophes count four
 def moved(command: str, heredocs: Mapping[Heredoc, str], bodies: Mapping[InlineBody, str]) -> str
 def shell_path(path: str) -> str            # a path as a double-quoted bash word

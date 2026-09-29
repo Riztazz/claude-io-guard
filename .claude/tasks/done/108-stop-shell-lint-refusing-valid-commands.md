@@ -3,7 +3,7 @@ title: Stop shell.lint refusing valid commands, and check python -c behind its f
 stage: I
 area: checks
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: [SHL-1, SHW-6]
 platforms: [windows, macos]
@@ -40,3 +40,25 @@ on Windows on 2026-09-29:
 ## Done when
 
 - Every row gives the right answer, and the replay shows no new false refusal.
+
+## What changed
+
+- `checks/lint.py`: `CMDLET` matches an approved verb and a noun that starts upper case, as PowerShell
+  writes a cmdlet, and `COMMON_CMDLETS` names 39 cmdlets matched in any case, so `get-childitem .` is still
+  refused while `wait-on`, `start-server` and `test-runner` run. `BASH_EXPANDS` and `POWERSHELL_ONLY` need a
+  letter or `_` after `env:`, so `${ENV:-dev}` and `$ENV:8080` pass and `$Env:PATH` is still refused. The
+  build kept case-insensitive `$Env:` over the task's `$env:` only, since PowerShell reads both.
+  `python3()` leaves out `python2` and `py -2`, for heredoc, `-c` and named bodies alike.
+- `lib/shell.py`: `PYTHON_C` takes `-X <option>` and `-W <option>` and a `-c` closing a group such as
+  `-Bc`. `transport.body` and the compile check both read it through `inline_bodies`.
+- Tests, each failing first: the task's rows as bash and their real cmdlets as refused, a body behind
+  `-X`, `-W` and `-Bc` refused for not compiling, and a Python 2 body passing (`tests/checks/test_lint.py`).
+  `inline_bodies` finds the body behind `-X dev -W error::DeprecationWarning -Ic` (`tests/lib/test_shell.py`),
+  4 errors on HEAD's code. The suite of 1,008 passes on Windows, 2 skipped.
+- Replay: `shell.lint` and `transport.body` over every recorded Bash and PowerShell call, HEAD against the
+  change, per record: 1,035 results each and none changed. The corpus holds none of the task's forms, and
+  `tools/ioguard.py check` gave the right answer for all six rows on the change and the wrong one on HEAD.
+- `live-skill` passed on the CLI 2.1.283: `Get-ChildItem` sent to Bash still met `DIALECT_MISMATCH`, beside
+  `SHELL_WRITE`, `MSYS_PATH`, `POWERSHELL_TRAP` and `TRAILING_BACKSLASH_QUOTE`.
+- Docs: `docs/design/architecture.md` (the package tree, `shell.scan`).
+- Checked on Windows on 2026-09-29.

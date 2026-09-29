@@ -24,12 +24,22 @@ from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity
 
 POWERSHELLS = frozenset({"powershell", "pwsh"})
-CMDLET = re.compile(r"^(?:get|set|new|remove|select|where|foreach|write|test|start|stop|invoke|out"
-                    r"|format|measure|sort|copy|move|rename|import|add|clear|convertto|convertfrom|join"
-                    r"|split|resolve|wait)-[a-z]+$")
-BASH_EXPANDS = re.compile(r"\$(?:\{?env:|PSItem\b|LASTEXITCODE\b|PSScriptRoot\b|PSVersionTable\b"
+# A cmdlet as PowerShell writes it, Verb-Noun with capitals, or one of the common ones in any case. A lower
+# case verb-noun is also how programs such as wait-on or start-server are named.
+CMDLET = re.compile(r"^(?:Get|Set|New|Remove|Select|Where|ForEach|Write|Test|Start|Stop|Invoke|Out|Format"
+                    r"|Measure|Sort|Copy|Move|Rename|Import|Add|Clear|ConvertTo|ConvertFrom|Join|Split"
+                    r"|Resolve|Wait)-[A-Z][A-Za-z]+$")
+COMMON_CMDLETS = frozenset({
+    "get-childitem", "get-content", "set-content", "add-content", "clear-content", "select-string",
+    "select-object", "where-object", "foreach-object", "sort-object", "measure-object", "remove-item",
+    "copy-item", "move-item", "new-item", "rename-item", "get-item", "test-path", "resolve-path", "join-path",
+    "split-path", "write-host", "write-output", "get-process", "stop-process", "start-process", "get-date",
+    "start-sleep", "set-location", "get-location", "invoke-webrequest", "invoke-restmethod", "out-file",
+    "convertto-json", "convertfrom-json", "format-table", "format-list", "get-command", "import-module"})
+BASH_EXPANDS = re.compile(r"\$(?:\{?env:(?=[A-Za-z_])|PSItem\b|LASTEXITCODE\b|PSScriptRoot\b|PSVersionTable\b"
                           r"|ErrorActionPreference\b)", re.I)
-POWERSHELL_ONLY = re.compile(r"\$(?:_(?!\w)|\{?env:|PSItem\b|true\b|false\b|null\b|LASTEXITCODE\b)", re.I)
+POWERSHELL_ONLY = re.compile(r"\$(?:_(?!\w)|\{?env:(?=[A-Za-z_])|PSItem\b|true\b|false\b|null\b"
+                             r"|LASTEXITCODE\b)", re.I)
 HERE_STRING = re.compile(r"@['\"][ \t]*\n")
 READ_ONLY = ("pid|home|host|pshome|shellid|true|false|executioncontext|psversiontable|error|psculture"
              "|psuiculture|psedition")
@@ -88,7 +98,8 @@ def bash_dialect(command: str, found: shell.Scan, simples: tuple[shell.SimpleCom
             findings.add(Code.DIALECT_MISMATCH, f"This command uses {match[0]}, PowerShell syntax that bash "
                          f"expands to something else: {shown(command, at)}", TO_POWERSHELL, offset=at)
             break
-    cmdlet = next((simple for simple in simples if CMDLET.match(simple.name)), None)
+    cmdlet = next((simple for simple in simples if simple.words and (
+        CMDLET.match(re.split(r"[\\/]", simple.words[0])[-1]) or simple.name in COMMON_CMDLETS)), None)
     if cmdlet is not None:
         findings.add(Code.DIALECT_MISMATCH, f"{cmdlet.words[0]} is a PowerShell cmdlet, and bash has no such "
                      f"command.", TO_POWERSHELL, offset=cmdlet.span[0])
@@ -126,17 +137,20 @@ def python_bodies(command: str, found: shell.Scan, simples: tuple[shell.SimpleCo
     def halved(span: tuple[int, int]) -> bool:
         return halving and any(span[0] <= at < span[1] for at in found.hazards)
 
+    def owner(offset: int) -> shell.SimpleCommand | None:
+        return next((simple for simple in simples if simple.span[0] <= offset < simple.span[1]), None)
+
     bodies = []
     for heredoc in found.heredocs:
-        owner = next((simple for simple in simples
-                      if simple.span[0] <= heredoc.operator[0] < simple.span[1]), None)
+        runs = owner(heredoc.operator[0])
         unchanged = heredoc.quoted or not re.search(r"[$`\\]", heredoc.body)
-        if owner is not None and shell.python_reads_stdin(owner) and heredoc.terminated and unchanged \
-                and not halved(heredoc.span):
+        if runs is not None and shell.python_reads_stdin(runs) and python3(runs) and heredoc.terminated \
+                and unchanged and not halved(heredoc.span):
             bodies.append(heredoc.body)
-    bodies += [body.body for body in found.bodies if not body.expands and not halved(body.argument)]
+    bodies += [body.body for body in found.bodies if not body.expands and not halved(body.argument)
+               and ((runs := owner(body.argument[0])) is None or python3(runs))]
     for simple in simples:
-        if not shell.PYTHON.match(simple.name):
+        if not shell.PYTHON.match(simple.name) or not python3(simple):
             continue
         named = shell.body_files(" ".join(simple.words))
         if shell.python_reads_stdin(simple):
@@ -147,6 +161,13 @@ def python_bodies(command: str, found: shell.Scan, simples: tuple[shell.SimpleCo
             except (OSError, UnicodeDecodeError):
                 continue
     return bodies
+
+
+def python3(simple: shell.SimpleCommand) -> bool:
+    """Whether the command runs a Python 3, whose compiler io-guard's own is: not python2, and not py -2."""
+    if simple.name.startswith("python2"):
+        return False
+    return not (simple.name == "py" and any(re.match(r"^-2(?:\.\d+)?$", word) for word in simple.words[1:2]))
 
 
 def python(bodies: list[str], findings: Findings) -> None:

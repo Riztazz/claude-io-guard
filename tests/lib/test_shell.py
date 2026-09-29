@@ -127,6 +127,13 @@ class InlineBodiesAreFound(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertIsNotNone(self.body(command), "the program is found where a command starts")
 
+    def test_a_body_behind_option_values_and_grouped_flags(self):
+        for command in ("python -X utf8 -c 'x'", "python -W ignore -u -c 'x'", "python -Bc 'x'",
+                        "python3 -X dev -W error::DeprecationWarning -Ic 'x'"):
+            with self.subTest(command=command):
+                self.assertEqual(self.body(command).body, "x",
+                                 "-X and -W take a value, and -c may close a group of flags")
+
     def test_what_is_not_one_whole_quoted_body(self):
         for command in ("python -c 'a'\"b\"", "echo \"python -c 'x'\"", "python -c code", "mypython -c 'x'"):
             with self.subTest(command=command):
