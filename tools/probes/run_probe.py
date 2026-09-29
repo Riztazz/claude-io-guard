@@ -157,6 +157,12 @@ TOUCHED = ("Do these in order, one tool call each, and never retry. 1. Read a.cp
 TOUCHED_FILES = {"a.cpp": b"int   main( ){return 0;}\n", "conv.txt": b"one\r\ntwo\r\n",
                  "conv.py": b"import pathlib\npath = pathlib.Path('conv.txt')\n"
                             b"path.write_bytes(path.read_bytes().replace(b'\\r\\n', b'\\n'))\n"}
+TOUCHED_MOVE = ("Do these in order, one tool call each, and never retry. 1. Read task.md. 2. Read notes.md. "
+                "3. Run the Bash command: mkdir -p done && git add task.md && git mv task.md done/ 4. Run "
+                "the Bash command: python mover.py Then reply DONE.")
+MOVER = (b"import os\nos.makedirs('archive', exist_ok=True)\n"
+         b"os.replace('notes.md', 'archive/notes.md')\n")
+TOUCHED_MOVE_FILES = {"task.md": b"task\n", "notes.md": b"notes\n", "mover.py": MOVER}
 OUTPUT = ("Do these in order, one tool call each, and never retry a failed step. 1. Run the Bash command: "
           "seq 1 8000 2. Run the Bash command: echo IOPROBE_OUT; echo IOPROBE_ERR >&2; exit 1 3. Run the "
           "Bash command: grep -c nomatch s.txt && echo IOPROBE_AFTER 4. Run the Bash command: grep nomatch "
@@ -511,6 +517,8 @@ PROBES = {
                                                       for n in range(9000))}),
     "live-touched": Probe(0, "", guard="", allowed=("Read", "Bash"), git=True, prompt=TOUCHED,
                           check=("a.cpp", "conv.txt"), setup=TOUCHED_FILES),
+    "live-touched-move": Probe(0, "", guard="", allowed=("Read", "Bash"), git=True, prompt=TOUCHED_MOVE,
+                               setup=TOUCHED_MOVE_FILES),
     "live-pipe-once": Probe(0, "", guard="", allowed=("Bash",), prompt=PIPE_TWICE, max_turns=6),
     "live-read-width": Probe(0, "", guard="", allowed=("Read",), prompt="Read p.py with the Read tool. Then "
                              "reply DONE.", setup={"p.py": ALIGNED_PY}),
@@ -1357,6 +1365,8 @@ VERDICTS = {
     "live-touched": lambda s, n: all(context_reached(n, needle) for needle in (
         "TOUCHED_BY_SHELL: This command changed a.cpp, read before it",
         "EOL_MISMATCH: This command changed conv.txt from CRLF to LF line endings.")),
+    "live-touched-move": lambda s, n: (not context_reached(n, "deleted task.md")
+                                       and context_reached(n, "moved notes.md to archive/notes.md")),
     "live-results": results_shown,
     "live-pipe-once": piped_twice_warned_once,
     "live-ascii-replaced": lambda s, n: context_reached(n, "NON_ASCII_ADDED: This Write added 1 non-ASCII"),

@@ -9,7 +9,9 @@ endings, BOM, encoding or indent. New untracked files are named (GIT-2), and so 
 changed or deleted. A bashEditDiff in the tool's response, which Claude Code sends only with
 bashEditDiffEnabled, adds its files. Changes under the skip_trees globs are left out. So is a change to git's
 index alone: a listed file whose status moved while its size and time did not, as git add, git commit and git
-reset leave one, and a file git removed from the index that is still on disk. A tracked file that changed
+reset leave one, and a file git removed from the index that is still on disk. A file that moved, by git
+status's rename or by a path gone and a new one with the same name and size, is named as moved, and not at all
+when the command itself names a move, such as git mv, mv or Move-Item. A tracked file that changed
 while an interpreter ran a script file also gets SHELL_WRITE, because that write skipped the checks an Edit
 gets, unless a git command in the same command could have changed it.
 """
@@ -19,7 +21,7 @@ from pathlib import Path
 from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.checks.shell_writes import located, resolve, tracked
 from ioguard.checks.verify_write import Written, compare
-from ioguard.lib import commit_message, paths, shell
+from ioguard.lib import commit_message, paths, pwsh, shell
 from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context, ShellSnapshot, repository_root
 from ioguard.lib.decisions import Decision, Verdict
@@ -32,6 +34,7 @@ LISTED = 8                   # paths each part of the report names before it giv
 TREE_WRITERS = frozenset({"am", "apply", "cherry-pick", "merge", "pull", "rebase", "revert", "switch"})
 RESET_TREE = frozenset({"--hard", "--merge", "--keep"})
 STASH_READS = frozenset({"list", "show"})
+MOVERS = frozenset({"mv", "move", "move-item", "mi", "ren", "rename", "rename-item", "rni"})
 
 
 def git_changes(simple: shell.SimpleCommand, cwd: Path | None, ctx: Context) -> frozenset[Path] | None:
@@ -56,6 +59,38 @@ def git_changes(simple: shell.SimpleCommand, cwd: Path | None, ctx: Context) -> 
             return None if name in TREE_WRITERS else frozenset()
     found = [resolve(word, cwd, ctx) for word in given]
     return None if None in found else frozenset(found)
+
+
+def names_a_move(event: Event) -> bool:
+    """Whether the command runs mv, git mv, Move-Item or another command whose job is to move a file."""
+    command = event.command or ""
+    simples = pwsh.commands(command) if event.tool is Tool.POWERSHELL else shell.commands(command)
+    for simple in simples:
+        at = commit_message.subcommand(simple.words)
+        if simple.name.lower() in MOVERS or (at is not None and simple.words[at] == "mv"):
+            return True
+    return False
+
+
+def moves(gone: list[Path], arrived: list[Path], renamed: dict[Path, Path], sizes: dict[Path, int | None],
+          named_move: bool, ctx: Context) -> list[tuple[Path, Path]]:
+    """Each file that left one path and arrived at another: a rename git status names, or a path gone and a
+    path new with the same file name, and the same size where the size before is known, or a command that
+    names a move where it is not."""
+    def same_file(old: Path, new: Path) -> bool:
+        before, now = sizes.get(old), ctx.fs.stat(new)
+        if old.name != new.name:
+            return False
+        return before == now.size if before is not None and now is not None else named_move
+
+    pairs = [(renamed[path], path) for path in arrived if path in renamed]
+    left = [path for path in gone if path not in {old for old, _ in pairs}]
+    for path in (path for path in arrived if path not in renamed):
+        match = next((old for old in left if same_file(old, path)), None)
+        if match is not None:
+            pairs.append((match, path))
+            left.remove(match)
+    return pairs
 
 
 def under(path: Path, folders: frozenset[Path]) -> bool:
@@ -140,8 +175,11 @@ class Touched(Check):
         read += sorted(path for path in self.diffed(event) if path in before.stats and path not in read)
         deleted = sorted(path for path, stat in moved.items()
                          if stat is None and before.stats[path] is not None)
-        created, changed = [], []
-        after = codes(status(ctx, before.root))
+        created, changed, added = [], [], []
+        entries = status(ctx, before.root)
+        after = codes(entries)
+        renamed = {before.root / entry.path: before.root / entry.original for entry in entries or ()
+                   if entry.original and before.root is not None}
         if before.status is not None and after is not None:
             unindexed = {name for name, code in after if code[0] == "D" and ctx.fs.exists(before.root / name)}
             for name, code in sorted(after - before.status):
@@ -150,23 +188,35 @@ class Touched(Check):
                     continue
                 if path in before.listed and ctx.fs.stat(path) == before.listed[path]:
                     continue
-                (created if code == "??" else deleted if "D" in code else changed).append(path)
+                (created if code == "??" else deleted if "D" in code else
+                 added if code[0] in "AR" else changed).append(path)
+        sizes = {path: stat.size for path, stat in (*before.stats.items(), *before.listed.items()) if stat}
+        named_move = names_a_move(event)
+        moved = moves(deleted, created + added, renamed, sizes, named_move, ctx)
+        deleted = [path for path in deleted if path not in {old for old, _ in moved}]
+        created = [path for path in created if path not in {new for _, new in moved}]
+        changed += [path for path in added if path not in {new for _, new in moved}]
         limit, cwd = self.options["listed"], event.cwd
+        shown_moves = [] if named_move else [f"{paths.shown(old, cwd)} to {paths.shown(new, cwd)}"
+                                             for old, new in moved]
         parts = ([f"changed {named(read, cwd, limit)}, read before it"] if read else []) + \
                 ([f"changed {named(changed, cwd, limit)}"] if changed else []) + \
                 ([f"created {named(created, cwd, limit)}"] if created else []) + \
-                ([f"deleted {named(deleted, cwd, limit)}"] if deleted else [])
+                ([f"deleted {named(deleted, cwd, limit)}"] if deleted else []) + \
+                ([f"moved {in_words(shown_moves[:limit])}"] if shown_moves else [])
         if not parts:
             return ()
         advice = (f"Read {named(read, cwd, limit)} again before the next Edit." if read else
-                  "Delete any new file the task does not need, and keep the rest on purpose.")
+                  "Delete any new file the task does not need, and keep the rest on purpose."
+                  if changed or created or deleted else "Use the files' new paths from now on.")
         found = [Result.of(Code.TOUCHED_BY_SHELL, f"This command {in_words(parts)}.", event.tool_name,
                            ctx.platform.os,
                            fix=Fix("Read", {}, advice),
                            evidence={"read": [path.as_posix() for path in read],
                                      "changed": [path.as_posix() for path in changed],
                                      "created": [path.as_posix() for path in created],
-                                     "deleted": [path.as_posix() for path in deleted]})]
+                                     "deleted": [path.as_posix() for path in deleted],
+                                     "moved": [[old.as_posix(), new.as_posix()] for old, new in moved]})]
         for path in read:
             found.extend(self.drift(path, event, ctx))
         return tuple(found) + self.scripted([*read, *changed], event, ctx)

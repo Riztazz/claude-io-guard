@@ -89,7 +89,8 @@ plugins/io-guard/
         journal_write.py           journal.write: each Edit and Write into the journal, before verify.write
         verify_write.py            verify.write: the file after an Edit or Write against its snapshot, repairs
         verify_command.py          verify.command: the user's verify command on the written file
-        touched.py                 shell.touched: TOUCHED_BY_SHELL, the files a shell command changed or made
+        touched.py                 shell.touched: TOUCHED_BY_SHELL, the files a shell command changed, made or
+                                   moved, and nothing for a move the command names (task 91)
         read_profile.py            read.profile: the profile line after Read, and the profile in read_profiles
         diagnose.py                diagnose.failure after a failed call, diagnose.refused at the next hook
         command_results.py         shell.results: EXIT_BENIGN, ERRORS_IN_OUTPUT, OUTPUT_SAVED, MOJIBAKE,

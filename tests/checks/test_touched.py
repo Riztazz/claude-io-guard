@@ -91,6 +91,40 @@ class TheCommandsChangesAreNamed(unittest.TestCase):
         self.assertEqual(session.after(command="git add done/a.md"), [],
                          "open/a.md was gone before the command, so the command deleted nothing")
 
+    def test_a_move_the_command_names_is_no_news(self):
+        cases = {"git add then git mv of a new file": (
+                     "git add open/a.md && git mv open/a.md done/", (entry("open/a.md", "??"),),
+                     (entry("done/a.md", "A "),)),
+                 "git mv of a tracked file": (
+                     "git mv open/a.md done/a.md", (), (StatusEntry("done/a.md", "R", " ", "open/a.md"),)),
+                 "mv of a tracked file": ("mv open/a.md done/a.md", (),
+                                          (entry("open/a.md", " D"), entry("done/a.md", "??")))}
+        for name, (command, before, after) in cases.items():
+            with self.subTest(name):
+                session = Session(before=before)
+                session.fs.files[CWD / "open" / "a.md"] = b"task\n"
+                session.ctx.session.read_profiles[CWD / "open" / "a.md"] = profile(b"task\n")
+                session.run(events.bash(command, CWD))
+                del session.fs.files[CWD / "open" / "a.md"]
+                session.fs.files[CWD / "done" / "a.md"] = b"task\n"
+                session.git.current_status = GitStatus(after)
+                self.assertEqual(session.after(command=command), [],
+                                 "a file the command moved on purpose is neither deleted nor created")
+
+    def test_a_move_the_command_does_not_name_is_named_as_a_move(self):
+        session = Session()
+        session.fs.files[CWD / "open" / "a.md"] = b"task\n"
+        session.ctx.session.read_profiles[CWD / "open" / "a.md"] = profile(b"task\n")
+        session.run(events.bash("python tidy.py", CWD))
+        del session.fs.files[CWD / "open" / "a.md"]
+        session.fs.files[CWD / "done" / "a.md"] = b"task\n"
+        session.git.current_status = GitStatus((entry("done/a.md", "??"),))
+        found = session.after(command="python tidy.py")[0]
+        self.assertEqual((found.message, found.fix.text),
+                         ("This command moved open/a.md to done/a.md.",
+                          "Use the files' new paths from now on."),
+                         "a script's move is one move, not a deletion and a new file")
+
     def test_a_listed_file_whose_bytes_moved_is_still_named(self):
         session = Session(before=(entry("a.txt", " M"),))
         session.fs.files[CWD / "a.txt"] = b"x\n"
