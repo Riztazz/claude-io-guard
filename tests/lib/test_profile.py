@@ -167,8 +167,11 @@ class ANewFilesProfile(unittest.TestCase):
 
 class ConvertingText(unittest.TestCase):
     def test_endings_bom_and_final_newline(self):
-        self.assertEqual(convert_eol("a\r\nb\nc\rd", Eol.CRLF), "a\r\nb\r\nc\r\nd",
-                         "every ending becomes CRLF")
+        self.assertEqual(convert_eol("a\r\nb\nc\rd", Eol.CRLF), "a\r\nb\r\nc\rd",
+                         "every ending becomes CRLF, and a lone CR, which ends no line, stays as it is")
+        self.assertEqual(convert_eol("a\rb\r\nc\nd", Eol.LF), "a\rb\nc\nd",
+                         "in an LF file too the lone CR stays")
+        self.assertEqual(convert_eol("a\r\nb\nc\rd", Eol.CR), "a\rb\rc\rd", "in a CR file every ending is CR")
         self.assertEqual(convert_eol("a\nb", Eol.MIXED), "a\nb", "a mixed target changes nothing")
         bom = chr(0xFEFF)
         self.assertEqual((with_bom("x", Bom.UTF8), with_bom(bom + "x", Bom.NONE)), (bom + "x", "x"),

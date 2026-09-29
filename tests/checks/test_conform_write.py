@@ -51,6 +51,19 @@ class AnExistingFileKeepsItsConvention(unittest.TestCase):
         self.assertEqual((endings, bom_only), (Code.EOL_CONVERTED, Code.BOM_RESTORED),
                          "a changed ending is EOL_CONVERTED, and a BOM alone is BOM_RESTORED")
 
+    def test_a_lone_cr_is_kept_and_named(self):
+        for content, expected in (("a\rb\r\nc\nd\n", "a\rb\nc\nd\n"), ("x\ny\rz\n", "x\ny\rz\n")):
+            with self.subTest(content=ascii(content)):
+                outcome = write(content, {"a.txt": fixture("lf.txt")})
+                own = next(decision for decision in outcome.decisions if decision.check_id == "conform.write")
+                line = content.replace("\r\n", "\n").split("\r")[0].count("\n") + 1
+                self.assertEqual(outcome.tool_input["content"], expected,
+                                 "the real endings take the file's style, and the lone CR stays as written")
+                self.assertEqual((own.results[0].code, f"lone CR, which ends no line, on line {line}"
+                                  in own.results[0].message), (Code.EOL_MISMATCH, True),
+                                 "the agent hears of it, rewritten or not, since the Read tool shows it as "
+                                 "nothing")
+
     def test_a_mixed_file_keeps_the_content_with_a_warning(self):
         outcome = write("x\ny\n", {"a.txt": fixture("mixed.txt")})
         own = next(decision for decision in outcome.decisions if decision.check_id == "conform.write")

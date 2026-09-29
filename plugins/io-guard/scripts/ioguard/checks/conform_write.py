@@ -5,7 +5,9 @@ changed. For a file that exists, the content takes that file's line ending, BOM 
 A file that mixes endings keeps the content's endings, with a warning, because no one ending is its own. A new
 file takes the convention target_profile gives: the .editorconfig properties that apply to it, then its
 .gitattributes, then most of its siblings with the same extension. With none of those, the content stays as
-written. A binary or UTF-16 file is left alone, because the Write tool writes UTF-8 text. hooks.answer leaves
+written. A lone CR in the content ends no line, so it stays as written, and the agent hears which line holds
+it, since the Read tool shows it as nothing. A binary or UTF-16 file is left alone, because the Write tool
+writes UTF-8 text. hooks.answer leaves
 the permission decision to the harness, which asks or approves as it would have for the original call.
 """
 from pathlib import Path
@@ -16,8 +18,8 @@ from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Rewrite, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.git import GitError
-from ioguard.lib.profile import (Bom, Eol, Profile, convert_eol, profile, target_profile, with_bom,
-                                 with_final_newline)
+from ioguard.lib.profile import (Bom, Eol, Profile, convert_eol, lone_cr_lines, profile, target_profile,
+                                 with_bom, with_final_newline)
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity
 
 SIBLINGS = 20                  # the most same-extension files profiled for a new file's convention
@@ -94,8 +96,11 @@ class ConformWrite(Check):
         if target is None:
             return Decision.observe(self.meta.id)
         text = conformed(content, target, existing)
-        if text == content:
+        kept = self.lone_crs(content, target, path, event, ctx)
+        if text == content and not kept:
             return Decision.observe(self.meta.id)
+        if text == content:
+            return Decision(self.meta.id, Verdict.ALLOW, results=kept)
         endings_changed = text.removeprefix(chr(0xFEFF)) != content.removeprefix(chr(0xFEFF))
         code = Code.EOL_CONVERTED if endings_changed else Code.BOM_RESTORED
         whose = f"{path.name} has them" if existing else f"a new {path.suffix or 'file'} here takes them"
@@ -103,6 +108,22 @@ class ConformWrite(Check):
                 + (", a BOM" if target.bom is Bom.UTF8 else "")
                 + (", and a final newline" if target.final_newline and target.eol is not Eol.NONE else "")
                 + f", as {whose}.")
-        return Decision(self.meta.id, Verdict.ALLOW,
+        return Decision(self.meta.id, Verdict.ALLOW, results=kept,
                         rewrite=Rewrite(self.meta.id, frozenset({"content"}),
                                         lambda given: {**given, "content": text}, note, code))
+
+    @staticmethod
+    def lone_crs(content: str, target: Profile, path: Path, event: Event, ctx: Context) -> tuple[Result, ...]:
+        """EOL_MISMATCH naming each line of the content that holds a lone CR, which the Read tool shows as
+        nothing. In a CR file a CR is the file's own ending, so nothing is named."""
+        lines = [] if target.eol is Eol.CR else lone_cr_lines(content)
+        if not lines:
+            return ()
+        where = ", ".join(f"{line:,}" for line in lines[:5]) + (f" and {len(lines) - 5:,} more"
+                                                                   if len(lines) > 5 else "")
+        message = (f"The content holds a lone CR, which ends no line, on line {where}, and io-guard kept it "
+                   f"as written.")
+        fix = Fix("Write", {}, "Take it out if the line was meant to end or to run on, since the Read tool "
+                               "shows it as nothing.")
+        return (Result.of(Code.EOL_MISMATCH, message, event.tool_name, ctx.platform.os, file=path,
+                          severity=Severity.WARNING, fix=fix, evidence={"lines": lines}),)

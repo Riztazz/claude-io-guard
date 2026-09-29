@@ -248,13 +248,21 @@ def profile(data: bytes) -> Profile:
 
 ENDINGS = {Eol.CRLF: "\r\n", Eol.LF: "\n", Eol.CR: "\r"}
 LINE_BREAK = re.compile("\r\n|\r|\n")
+ENDING = re.compile("\r\n|\n")
+LONE_CR = re.compile("\r(?!\n)")
 BOM_CHAR = chr(0xFEFF)
 
 
 def convert_eol(text: str, eol: Eol) -> str:
-    """text with every line ending written as eol. A MIXED or NONE target leaves text as it is."""
+    """text with every line ending, CRLF or LF, written as eol. A lone CR ends no line, so it stays as it is:
+    converting it would split its line. A MIXED or NONE target leaves text as it is."""
     ending = ENDINGS.get(eol)
-    return text if ending is None else LINE_BREAK.sub(lambda _: ending, text)
+    return text if ending is None else ENDING.sub(lambda _: ending, text)
+
+
+def lone_cr_lines(text: str) -> list[int]:
+    """The line of each lone CR in text, counted from 1, where only CRLF and LF end a line."""
+    return [text.count("\n", 0, found.start()) + 1 for found in LONE_CR.finditer(text)]
 
 
 def with_bom(text: str, bom: Bom) -> str:

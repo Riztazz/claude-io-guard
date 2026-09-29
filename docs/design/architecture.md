@@ -91,6 +91,7 @@ plugins/io-guard/
                                    common one in any case, and a Python 2 body is never compiled (task 108)
         win_paths.py               win.paths: MSYS_PATH for slash arguments and cmd /c, RESERVED_NAME for nul
         conform_write.py           conform.write: EOL_CONVERTED, BOM_RESTORED, EOL_MISMATCH for a mixed file
+                                   and for a lone CR kept as written
         conform_edit.py            conform.edit: INDENT_MISMATCH, SPACE_DROPPED, LINES_JOINED
         journal_write.py           journal.write: each Edit and Write into the journal, before verify.write
         verify_write.py            verify.write: the file after an Edit or Write against its snapshot, repairs
@@ -790,7 +791,9 @@ def filled(command: Sequence[str], path: Path, ranges: Sequence[tuple[int, int]]
 def profile(data: bytes) -> Profile
 def target_profile(siblings: Sequence[Profile], editorconfig: Mapping[str, str],
                    gitattributes: Mapping[str, str]) -> Profile
-def convert_eol(text: str, eol: Eol) -> str                  # MIXED and NONE leave text as it is
+def convert_eol(text: str, eol: Eol) -> str                  # MIXED and NONE leave text as it is, and a
+                                                             # lone CR, which ends no line, stays (task 121)
+def lone_cr_lines(text: str) -> list[int]                    # task 121: the line of each lone CR
 def with_bom(text: str, bom: Bom) -> str                     # a leading U+FEFF, which Write writes as EF BB BF
 def with_final_newline(text: str, final: bool, eol: Eol) -> str
 
