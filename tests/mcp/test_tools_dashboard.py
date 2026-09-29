@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import tempfile
 import time
 import unittest
@@ -24,7 +25,8 @@ from ioguard.lib.events import Event, Surface
 from ioguard.lib.platform import detect
 from ioguard.lib.results import Code
 from ioguard.lib.telemetry import Telemetry, TelemetryEvent
-from ioguard.mcp.dashboard_http import PAGE, Dashboard
+from ioguard.mcp import dashboard_http
+from ioguard.mcp.dashboard_http import BODY_LIMIT, PAGE, Dashboard
 from ioguard.mcp.progress import CancelToken
 from ioguard.mcp.tools_dashboard import BOARDS, ConfigInput, DashboardInput, configure, dashboard
 from ioguard.mcp.toolspec import ToolCall, ToolFailure
@@ -247,6 +249,27 @@ class ThePageServerAnswersOnlyItsOwnPage(ConfigTest):
                                  "a form post": 415},
                          "only the page io.dashboard gave can read or change a setting")
 
+    def test_the_api_takes_the_token_from_its_header_alone_and_the_page_needs_none(self):
+        cases = {"query token": self.request("GET", f"/api/settings?token={self.token}")[0],
+                 "page, no token": self.request("GET", "/")[0],
+                 "page, another host": self.request("GET", "/", host=f"example.com:{self.port}")[0]}
+        self.assertEqual(cases, {"query token": 403, "page, no token": 200, "page, another host": 403},
+                         "a token in an address, a history or a log opens nothing, and the page holds no "
+                         "setting")
+
+    def test_a_body_with_no_length_a_negative_one_or_too_long_is_refused(self):
+        answers = {}
+        for name, length in (("none", None), ("negative", "-1"), ("not a number", "x"),
+                             ("too long", str(BODY_LIMIT + 1))):
+            with socket.create_connection(("127.0.0.1", self.port), timeout=10) as connection:
+                head = (f"POST /api/setting HTTP/1.1\r\nHost: 127.0.0.1:{self.port}\r\nX-IOGuard-Token: "
+                        f"{self.token}\r\nContent-Type: application/json\r\n")
+                head += "" if length is None else f"Content-Length: {length}\r\n"
+                connection.sendall((head + "\r\n").encode("ascii"))
+                answers[name] = int(connection.recv(64).split(b" ")[1])
+        self.assertEqual(answers, {"none": 400, "negative": 400, "not a number": 400, "too long": 400},
+                         "the server reads no body whose length it was not told within the limit")
+
     def test_the_page_is_ascii_loads_nothing_from_outside_and_calls_only_the_api(self):
         page = PAGE.read_bytes()
         calls = sorted(set(re.findall(rb'(?:fetch|post)\("([^"]+)"', page)))
@@ -256,6 +279,8 @@ class ThePageServerAnswersOnlyItsOwnPage(ConfigTest):
                                      b"/api/stats/from", b"/api/stats?days="]),
                          "one self-contained file, which calls only the paths the server answers, and names "
                          "the SVG namespace alone")
+        self.assertIn(b'history.replaceState(null, "", location.pathname)', page,
+                      "the page takes its token out of the address bar and the history")
 
     def test_each_row_carries_both_files_values_and_what_applies(self):
         key = "commit_policy.ascii_only"
@@ -364,6 +389,18 @@ class AnUnusedPageServerStops(unittest.TestCase):
         forever.last = 0.0
         self.assertEqual((board.expired(1299.0), board.expired(1300.0), forever.expired(10.0 ** 9)),
                          (False, True, False), "five minutes unasked stops it, and 0 never does")
+
+    def test_a_connection_that_sends_nothing_is_closed_after_the_timeout(self):
+        with mock.patch.object(dashboard_http, "REQUEST_TIMEOUT_S", 0.3):
+            board = Dashboard({}, {})
+            board.start()
+        self.addCleanup(board.stop)
+        with socket.create_connection(("127.0.0.1", board.port), timeout=10) as connection:
+            started = time.monotonic()
+            closed = connection.recv(64)
+            waited = time.monotonic() - started
+        self.assertEqual((closed, waited < 5), (b"", True),
+                         "a silent connection holds no server thread past the timeout")
 
     def test_a_server_nobody_asks_stops_and_says_so(self):
         stopped = []

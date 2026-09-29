@@ -1,10 +1,13 @@
 """The dashboard page and its JSON API, served on 127.0.0.1 for one io server's session.
 
 The server listens on a free port of 127.0.0.1 alone, in a daemon thread that ends with the io server. Every
-request carries the token the page's URL holds, in the token query parameter or the X-IOGuard-Token header,
-and a Host header naming 127.0.0.1 and the port. A web page from anywhere else knows neither, so it can
-neither read the settings nor change one, and a name that only resolves to this machine cannot reach it
-either. A change is a POST of JSON, which a form on another page cannot send.
+request carries a Host header naming 127.0.0.1 and the port, and every API request carries the token the
+page's URL holds, in the X-IOGuard-Token header alone. The page reads the token from its URL once, keeps it in
+the tab's sessionStorage and takes it out of the address bar and the history, and GET / serves the page, which
+holds no setting, with no token. A web page from anywhere else knows neither, so it can neither read the
+settings nor change one, and a name that only resolves to this machine cannot reach it either. A change is a
+POST of JSON, which a form on another page cannot send. A connection that sends nothing for
+REQUEST_TIMEOUT_S is closed, and a body's length must be given, from 0 to BODY_LIMIT.
 
     GET  /                   the page, ui/dashboard.html
     GET  /api/settings       every setting, what each file sets and what applies
@@ -29,6 +32,7 @@ from urllib.parse import parse_qs, urlsplit
 
 PAGE = Path(__file__).resolve().parents[3] / "ui" / "dashboard.html"
 BODY_LIMIT = 64 * 1024
+REQUEST_TIMEOUT_S = 10.0
 HEADERS = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
            "Content-Security-Policy": "default-src 'self'; style-src 'unsafe-inline'; "
                                       "script-src 'unsafe-inline'; frame-ancestors 'none'"}
@@ -110,8 +114,19 @@ class Dashboard:
         return host == f"127.0.0.1:{self.port}" and hmac.compare_digest(token or "", self.token)
 
 
+def body_length(given: str | None) -> int | None:
+    """A request's Content-Length when it is a whole number from 0 to BODY_LIMIT, else None."""
+    try:
+        length = int(given or "")
+    except ValueError:
+        return None
+    return length if 0 <= length <= BODY_LIMIT else None
+
+
 def handler_for(board: Dashboard) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
+        timeout = REQUEST_TIMEOUT_S
+
         def log_message(self, format: str, *args: Any) -> None:
             return None
 
@@ -128,9 +143,11 @@ def handler_for(board: Dashboard) -> type[BaseHTTPRequestHandler]:
             self.answer(status, json.dumps(value, ensure_ascii=True).encode("ascii"), "application/json")
 
         def permitted(self) -> str | None:
-            """The request's path when its Host and token check out, else None after answering 403."""
+            """The request's path when its Host checks out, and for anything but the page its header's token
+            too, else None after answering 403."""
             parts = urlsplit(self.path)
-            token = self.headers.get("X-IOGuard-Token") or parse_qs(parts.query).get("token", [""])[0]
+            page = parts.path == "/" and self.command == "GET"
+            token = board.token if page else self.headers.get("X-IOGuard-Token")
             if not board.allowed(self.headers.get("Host"), token):
                 self.json(403, {"message": "This page needs the URL io.dashboard gave, token and all."})
                 return None
@@ -156,9 +173,13 @@ def handler_for(board: Dashboard) -> type[BaseHTTPRequestHandler]:
             if path not in board.posts:
                 self.json(404, {"message": f"The dashboard has no {path}."})
                 return
-            length = int(self.headers.get("Content-Length") or 0)
-            if not self.headers.get("Content-Type", "").startswith("application/json") or length > BODY_LIMIT:
-                self.json(415, {"message": "A change arrives as JSON, at most 64 KB."})
+            if not self.headers.get("Content-Type", "").startswith("application/json"):
+                self.json(415, {"message": "A change arrives as JSON."})
+                return
+            length = body_length(self.headers.get("Content-Length"))
+            if length is None:
+                self.json(400, {"message": "A change names its length, at most 64 KB."})
+                self.close_connection = True
                 return
             try:
                 given = json.loads(self.rfile.read(length) or b"{}")

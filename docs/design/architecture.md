@@ -1627,10 +1627,15 @@ from it. A background run keeps running when its call is cancelled, because its 
 `DashboardOutput(url, project, checks_off, note)`. The page server is a `ThreadingHTTPServer` on a free port of
 `127.0.0.1`, in a daemon thread that ends with the io server, one per project the server serves (task 33).
 
-- **Who may ask.** Every request carries the token from the URL, in `?token=` or `X-IOGuard-Token`, compared
-  with `hmac.compare_digest`, and a `Host` of `127.0.0.1:<port>`. A page from anywhere else knows neither, and
-  a name that resolves to this machine fails the `Host` test. A change is a `POST` of `application/json`, which
-  a form elsewhere cannot send.
+- **Who may ask.** Every request carries a `Host` of `127.0.0.1:<port>`, and every API request the token from
+  the URL in `X-IOGuard-Token` alone, compared with `hmac.compare_digest` (task 86). `GET /` serves the page
+  with no token, since the page holds no setting. The page reads `?token=` once, keeps it in the tab's
+  `sessionStorage`, and calls `history.replaceState` to take it out of the address bar and the history, so a
+  reload still works. A page from anywhere else knows neither, and a name that resolves to this machine fails
+  the `Host` test. A change is a `POST` of `application/json`, which a form elsewhere cannot send.
+- **Bounds.** A connection that sends nothing for `REQUEST_TIMEOUT_S`, 10 seconds, is closed. A `POST` whose
+  `Content-Length` is missing, not a number, negative or over `BODY_LIMIT`, 64 KB, answers 400 and reads no
+  body (task 86).
 - **What it answers.** `GET /` is `ui/dashboard.html`. `GET /api/settings` is every setting with what the user's
   file and the project's file set, what applies, and what each may set. `POST /api/setting` takes
   `{key, scope, value, remove}` and runs the same `setting` call as `io.config`, so a refusal is

@@ -154,7 +154,17 @@ until you change it for this project.</p>
 <!-- io-guard static data -->
 <script>
 "use strict";
-const token = new URLSearchParams(location.search).get("token") || "";
+const token = (() => {
+  const given = new URLSearchParams(location.search).get("token");
+  try {
+    if (given) sessionStorage.setItem("io-guard-token", given);
+    else return sessionStorage.getItem("io-guard-token") || "";
+  } catch (failure) {
+    return given || "";
+  }
+  history.replaceState(null, "", location.pathname);
+  return given;
+})();
 const GLOBAL_ABOUT = {
   transport: "What happens to a command io-guard fixed, and when a long command body moves into a file.",
   pipeline: "How long the checks may take on one tool call.",

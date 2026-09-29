@@ -222,7 +222,8 @@ waits for your yes in Claude Code's permission prompt, and the settings page lea
 
 To see every setting at once, pick `settings` under io-guard in the plugin menu, type `/io-guard:settings`, or
 ask Claude to open io-guard's settings page. `io.dashboard` serves it on `127.0.0.1`, on this machine only and
-behind a token in its URL, and Claude opens it in the desktop app's browser pane. Claude also gives you a link,
+behind a token in its URL, and Claude opens it in the desktop app's browser pane. Once the page loads, the
+token leaves the address bar and the browser's history. Claude also gives you a link,
 Open io-guard's settings page, which opens the same page in any browser on this machine. Each setting shows a
 line of help and a tooltip with its key and default, then two columns: All projects, from your `config.json`,
 and Only this project, from the project's `.claude/io-guard.json`. The project's column shows your value,
