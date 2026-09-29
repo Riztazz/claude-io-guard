@@ -1790,7 +1790,8 @@ records the failure in `~/.claude/mcp-needs-auth-cache.json` and skips the serve
 minutes (row 33). With no heartbeat for its session, the check reads that cache and names the skip and its
 end. That hook is the only Python spawn per turn, and costs about 300 ms (`docs/launcher.md`).
 
-Shutdown is one ordered list: stop accepting, drain the workers with a 2 second cap, close the heartbeat. A
+Shutdown is one ordered list: stop accepting, drain the workers with a 2 second cap, cancel the calls still
+running and give them 1 second more (task 105), close the heartbeat. A
 background run keeps running past the server's end, and its log stays in io-guard's folder. Telemetry
 needs no flush, because each line is on disk before `record` returns.
 

@@ -173,6 +173,15 @@ class LiveContexts(unittest.TestCase):
         self.assertEqual((probe.transport_budget, probe.halving, probe.bash.version), (6000, True, "5.2"),
                          "a live context loads the probe the session probe saved")
 
+    def test_a_probe_file_that_cannot_be_read_counts_as_no_probe(self):
+        for data in (b'{"os": "win32"}', b"not json", b"[1, 2]"):
+            with self.subTest(data=data):
+                (self.data / "probe.json").write_bytes(data)
+                probe = Context.live(self.data, self.project).probe
+                self.assertEqual((probe.os, probe.taken_at), (detect().os, None),
+                                 "a broken probe file is left for the session probe to write again, and "
+                                 "never stops the server starting")
+
     def test_live_file_ports_round_trip_bytes(self):
         target = self.project / "a.txt"
         LiveFs().write_atomic(target, b"\xef\xbb\xbfone\r\n")

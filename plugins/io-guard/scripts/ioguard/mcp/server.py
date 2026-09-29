@@ -4,9 +4,10 @@ stdout.
 The reader answers every quick method itself, so initialize, tools/list and the rest keep the order they came
 in. Each tools/call goes to one of four workers, and a cancel notification sets that call's token. One lock
 serialises the writes to stdout, and sys.stdout points at stderr, so no stray print corrupts an answer. A line
-that is not JSON gets a parse error, and the loop goes on. A watchdog rewrites the session's heartbeat every 5
-seconds, which the UserPromptSubmit hook reads to tell the user when the server died. At the end of stdin the
-server stops taking calls, waits up to 2 seconds for the running ones, and marks the heartbeat stopped.
+that is not JSON, or a request whose id or params has the wrong type, gets an error, and the loop goes on. A
+watchdog rewrites the session's heartbeat every 5 seconds, which the UserPromptSubmit hook reads to tell the
+user when the server died. At the end of stdin the server stops taking calls, waits up to 2 seconds for the
+running ones, cancels what still runs, and marks the heartbeat stopped.
 """
 import json
 import logging
@@ -35,6 +36,7 @@ SERVER_INFO = {"name": "io-guard", "version": PLUGIN_VERSION}
 WORKERS = 4
 BEAT_S = 5.0
 DRAIN_S = 2.0
+CANCEL_S = 1.0          # after the drain, how long a cancelled call has to answer
 SAVED = ("results", "runs", "bodies")      # the folders of io-guard's where a project's content is saved
 
 
@@ -109,6 +111,11 @@ class Server:
             self.send(error(message.get("id") if isinstance(message, dict) else None, INVALID_REQUEST,
                             "A request is a JSON object with a method."))
             return
+        ident, params = message.get("id"), message.get("params")
+        if not isinstance(ident, (str, int, type(None))) or not isinstance(params, (dict, type(None))):
+            self.send(error(None, INVALID_REQUEST, "A request's id is a string or a number, and its params "
+                                                   "an object."))
+            return
         if "id" not in message:
             self.notified(message)
         elif message["method"] == "tools/call":
@@ -123,9 +130,11 @@ class Server:
 
     def notified(self, message: dict) -> None:
         if message["method"] == "notifications/cancelled":
-            params = message.get("params") or {}
+            request = (message.get("params") or {}).get("requestId")
+            if not isinstance(request, (str, int)):
+                return
             with self.state_lock:
-                token = self.tokens.get(params.get("requestId"))
+                token = self.tokens.get(request)
             if token is not None:
                 token.cancel()
 
@@ -147,10 +156,18 @@ class Server:
         self.stop()
 
     def stop(self) -> None:
-        """Take no more calls, and give the running ones DRAIN_S seconds to answer."""
+        """Take no more calls, give the running ones DRAIN_S seconds to answer, then cancel what still runs
+        and give it CANCEL_S more. The worker threads are joined when the process ends, so a call nobody
+        cancelled would hold the exit for as long as it runs."""
         with self.state_lock:
             running = set(self.running)
-        wait(running, timeout=DRAIN_S)
+        _, left = wait(running, timeout=DRAIN_S)
+        if left:
+            with self.state_lock:
+                tokens = list(self.tokens.values())
+            for token in tokens:
+                token.cancel()
+            wait(left, timeout=CANCEL_S)
         self.workers.shutdown(wait=False, cancel_futures=True)
 
 

@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -211,6 +212,46 @@ class ACancelledCallAnswersCancelled(unittest.TestCase):
         answer = json.loads(out.getvalue())
         self.assertEqual((answer["result"]["isError"], answer["result"]["structuredContent"]["code"]),
                          (True, Code.CANCELLED.value), "the call the client cancelled answers CANCELLED")
+
+
+class TheServerOutlastsBadInputAndStopsOnTime(unittest.TestCase):
+    def slow_server(self):
+        started, finished = threading.Event(), threading.Event()
+
+        def slow(arguments, call):
+            started.set()
+            call.cancel.event.wait(30)
+            finished.set()
+            return {"content": []}
+
+        tools = ToolRegistry()
+        tools.register(ToolSpec("test.slow", "Slow", "Waits for a cancel.", input=Nothing, output=None,
+                                read_only=True, destructive=False, idempotent=True, handler=slow))
+        protocol = Protocol(tools, SERVER_INFO, lambda cancel: ToolCall(lambda: None, cancel, REPO, None))
+        out = io.BytesIO()
+        return Server(protocol, out), out, started, finished
+
+    def test_a_request_with_a_list_id_or_text_params_is_answered_and_the_loop_goes_on(self):
+        server, out, _, _ = self.slow_server()
+        for line in (json.dumps({"jsonrpc": "2.0", "id": [1], "method": "tools/call", "params": {}}),
+                     json.dumps({"jsonrpc": "2.0", "method": "notifications/cancelled",
+                                 "params": {"requestId": [1]}}),
+                     json.dumps({"jsonrpc": "2.0", "id": 3, "method": "tools/list", "params": "x"})):
+            server.take(line.encode("ascii"))
+        server.take(request(4, "tools/list", {}))
+        server.stop()
+        answers = [json.loads(line) for line in out.getvalue().splitlines()]
+        self.assertEqual([answer.get("id") for answer in answers if "error" not in answer], [4],
+                         "each malformed request gets an error, and the next request is still answered")
+
+    def test_the_stop_cancels_a_running_call_and_returns_in_time(self):
+        server, out, started, finished = self.slow_server()
+        server.take(request(1, "tools/call", {"name": "test.slow", "arguments": {}}))
+        started.wait(10)
+        began = time.monotonic()
+        server.stop()
+        self.assertEqual((finished.wait(1), time.monotonic() - began < 4), (True, True),
+                         "a call still running at the stop is cancelled, so the process can end")
 
 
 class TheWorkerCountIsASetting(unittest.TestCase):

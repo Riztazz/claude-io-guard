@@ -426,10 +426,17 @@ def config_stamp(data_dir: Path | None, project: Path) -> tuple:
 
 
 def load_probe(data_dir: Path | None, platform: Platform) -> Probe:
+    """The probe the session probe saved, or the unprobed one when there is none or it cannot be read, which
+    the next session probe writes again."""
     path = None if data_dir is None else data_dir / "probe.json"
     if path is None or not path.is_file():
         return Probe.unprobed(platform)
-    return Probe.from_json(json.loads(bytesio.read_bytes(path).decode("utf-8")))
+    try:
+        return Probe.from_json(json.loads(bytesio.read_bytes(path).decode("utf-8")))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+        log.warning("io-guard could not read %s, and runs unprobed until the session probe writes it: %s",
+                    path, error)
+        return Probe.unprobed(platform)
 
 
 @dataclass(frozen=True)

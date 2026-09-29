@@ -3,7 +3,7 @@ title: Keep the io server up on bad input, and stop it on time
 stage: I
 area: mcp
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: []
 platforms: [windows, macos]
@@ -45,3 +45,23 @@ The code review of 2026-09-29, slice C items 8, 9, 10 and 16.
 
 - The broken probe file, the three malformed requests and the 12 s run each behave as above, in a test that
   starts the real server.
+
+## What changed
+
+- `lib/context.py`: `load_probe` reads a `probe.json` it cannot parse, or one missing a key, as no probe, with
+  a warning line, so the server starts and the next session probe writes the file again.
+- `mcp/server.py`: `take` answers a request whose `id` is not a string, a number or null, or whose `params` is
+  not an object, with `INVALID_REQUEST`, and a cancel whose `requestId` is not a string or a number is
+  ignored, so the loop goes on. `stop` waits `DRAIN_S` (2 s) for the running calls, cancels what still runs,
+  and gives it `CANCEL_S` (1 s) more. Cancelling first, before the drain, broke the recorded request scripts,
+  which close stdin right after their last request, so the calls get their drain first.
+- Tests, each failing first: three broken probe files (`tests/lib/test_context.py`), a list id, a list
+  `requestId` and text params, then a request that still gets its answer, and a call still running at the
+  stop that ends within 4 s (`tests/mcp/test_server.py`). The suite is 999, all passing, 2 skipped, on
+  Windows.
+- The real server, with an `io.run` of a 12 s sleep and stdin closed at 1.5 s, exited 2.2 s later and
+  answered the run `CANCELLED`. The review measured 10.8 s before. `live-server` passed on the CLI 2.1.283.
+- The fourth part, background runs, split out as task 124: the design already keeps a background run past
+  its server's end (section 8), so what is left is a cap on its log.
+- Docs: `docs/design/architecture.md` (the shutdown list), the `server.py` docstring.
+- Checked on Windows on 2026-09-29.
