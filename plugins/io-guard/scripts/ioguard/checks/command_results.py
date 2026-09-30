@@ -57,8 +57,6 @@ READERS = ["ls", "dir", "grep", "egrep", "fgrep", "rg", "ag", "ack", "findstr", 
            "more", "sed", "awk", "sort", "uniq", "wc", "cut", "tr", "jq", "git grep", "git log", "git show",
            "git diff", "select-string", "sls", "get-content", "gc", "type"]
 QUIET = frozenset({"echo", "printf", "true", ":", "cd", "pushd", "popd", "export", "unset", "set", "sleep"})
-BUILDS = ["make", "cmake --build", "ninja", "msbuild", "dotnet build", "cargo build", "go build", "gradle",
-          "gradlew", "mvn", "tsc"]
 RUNS = ["ctest", "dotnet test --no-build", "dotnet run --no-build"]
 SHELL_ERROR = re.compile(r"^(?:/usr/bin/)?bash(?:\.exe)?: ", re.M)
 # The Bash tool's own bash reports its -c text, while a script names its file and eval names eval.
@@ -344,9 +342,9 @@ def options() -> dict[str, ConfigKey]:
         "readers": ConfigKey(list, READERS, "Commands whose output quotes a file or a log, such as grep or "
                              "tail, each as its first words. Error lines in their output count for nothing. "
                              "A project's list replaces it."),
-        "builds": ConfigKey(list, BUILDS, "Commands that build a program, each as its first words. One that "
-                            "prints compiler or build errors marks the session's build as failed. A "
-                            "project's list replaces it."),
+        "builds": ConfigKey(list, list(shell.BUILDS), "Commands that build a program, each as its first "
+                            "words. One that prints compiler or build errors marks the session's build as "
+                            "failed. A project's list replaces it."),
         "runs": ConfigKey(list, RUNS, "Commands that run what a build made without building it, each as its "
                           "first words. One after a failed build gets a STALE_BINARY warning. A project's "
                           "list replaces it."),

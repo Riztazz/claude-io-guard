@@ -508,6 +508,8 @@ PYTHON = re.compile(rf"^{PYTHON_NAME}$", re.I)
 INTERPRETERS = re.compile(r"^(?:python[\d.]*|py|node|perl|ruby)$")
 INLINE = {"-c", "-m", "-", "-e", "--eval", "-p", "--print"}   # the flags that run no script file
 TAKES_VALUE = {"-W", "-X"}   # python's options whose value is the next word
+BUILDS = ("make", "cmake --build", "ninja", "msbuild", "dotnet build", "cargo build", "go build", "gradle",
+          "gradlew", "mvn", "tsc")   # the commands that build a program, by their first words, for matching
 
 
 @dataclass(frozen=True)

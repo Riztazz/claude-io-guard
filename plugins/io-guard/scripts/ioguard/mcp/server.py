@@ -22,6 +22,7 @@ from typing import Any, BinaryIO
 
 from ioguard import PLUGIN_VERSION
 from ioguard.lib import bytesio, retention, snapshots, telemetry
+from ioguard.lib.config import GLOBAL_KEYS
 from ioguard.lib.context import Context
 from ioguard.lib.folders import home_folder, session_file
 from ioguard.lib.heartbeat import Era, Heartbeat
@@ -34,7 +35,6 @@ from ioguard.mcp.toolspec import ToolCall, ToolRegistry
 log = logging.getLogger("ioguard.mcp")
 
 SERVER_INFO = {"name": "io-guard", "version": PLUGIN_VERSION}
-WORKERS = 4
 BEAT_S = 5.0
 DRAIN_S = 2.0
 CANCEL_S = 1.0          # after the drain, how long a cancelled call has to answer
@@ -83,7 +83,8 @@ class Watchdog(threading.Thread):
 class Server:
     """The loop between stdin and stdout for one protocol."""
 
-    def __init__(self, protocol: Protocol, out: BinaryIO, workers: int = WORKERS) -> None:
+    def __init__(self, protocol: Protocol, out: BinaryIO,
+                 workers: int = GLOBAL_KEYS["io.server.workers"].default) -> None:
         self.protocol, self.out = protocol, out
         self.write_lock = threading.Lock()
         self.workers = ThreadPoolExecutor(workers, thread_name_prefix="io-guard worker")

@@ -13,7 +13,7 @@ from typing import Any
 
 from ioguard.checks.base import Check, Cost
 from ioguard.checks.registry import Registry
-from ioguard.lib.config import Config
+from ioguard.lib.config import GLOBAL_KEYS, Config
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Rewrite, RewriteError, Verdict, apply_one, conflict_with
 from ioguard.lib.events import Event
@@ -26,11 +26,11 @@ SKIPS_TOLD = 3           # the budget skips of one check in a session that make 
 
 @dataclass(frozen=True)
 class Budget:
-    soft_ms: int = 300       # past this, checks that start a program are skipped
-    hard_ms: int = 2000      # past this, every remaining check is skipped
+    soft_ms: int = GLOBAL_KEYS["pipeline.soft_ms"].default   # past this, a check that starts a program skips
+    hard_ms: int = GLOBAL_KEYS["pipeline.hard_ms"].default   # past this, every remaining check skips
 
     @classmethod
-    def from_config(cls, config: Config) -> "Budget":
+    def from_config(cls, config: Config) -> Budget:
         return cls(config.get("pipeline.soft_ms"), config.get("pipeline.hard_ms"))
 
 

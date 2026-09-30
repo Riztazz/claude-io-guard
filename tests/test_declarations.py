@@ -1,9 +1,13 @@
 """Each fact the package shares is declared once: a constant, a character class, a view of a file's text, this
 Python's version, and how an enum reads a value it does not know."""
+import inspect
 import re
 import unittest
 
-from ioguard.checks import lint
+from ioguard.checks import command_results, lint
+from ioguard.checks.pipeline import Budget
+from ioguard.lib.config import GLOBAL_KEYS, defaults
+from ioguard.mcp.server import Server
 from ioguard.lib import anchors, diagnosis, drift, events, output, profile, rules, text
 from ioguard.lib.events import PermissionMode, Tool
 from ioguard.lib.platform import detect
@@ -67,6 +71,24 @@ class OneViewOfAFileAsTheEditToolReadsIt(unittest.TestCase):
         self.assertEqual(drift.edited(data, "two", "2", False).text, "one\n2\nthree\n",
                          "the write comparison applies the edit to the same view")
         self.assertEqual(lines_matching(r'LINE_BREAK\.sub\("\\n"'), [], "no module builds the view by hand")
+
+
+class EachDefaultIsTheConfigsOwn(unittest.TestCase):
+    def test_the_budget_and_the_workers_default_to_their_config_keys(self):
+        self.assertEqual(Budget(), Budget.from_config(defaults()), "a bare Budget is the configured one")
+        workers = inspect.signature(Server.__init__).parameters["workers"].default
+        self.assertEqual(workers, GLOBAL_KEYS["io.server.workers"].default,
+                         "a Server built without a worker count takes the config's default")
+        self.assertEqual(lines_matching(r"^WORKERS =|soft_ms: int = \d|hard_ms: int = \d"), [],
+                         "no second number stands beside the config key")
+
+    def test_the_build_commands_are_declared_once(self):
+        lint_builds = set(lint.Lint.meta.config["build_commands"].default)
+        result_builds = command_results.CommandResults.meta.config["builds"].default
+        self.assertLessEqual(set(result_builds), lint_builds,
+                             "every build shell.results knows, shell.lint knows")
+        self.assertEqual(len(lines_matching(r'"make", "cmake --build"')), 1,
+                         "the builds are one list, which shell.lint extends with its test runners")
 
 
 class ThisPythonIsMeasuredOnce(unittest.TestCase):

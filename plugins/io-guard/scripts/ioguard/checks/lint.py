@@ -46,10 +46,9 @@ READ_ONLY = ("pid|home|host|pshome|shellid|true|false|executioncontext|psversion
              "|psuiculture|psedition")
 ASSIGNED = re.compile(rf"(?:^|[\s{{(;|])\$({READ_ONLY})\s*=(?!=)", re.I)
 LOOPED = re.compile(rf"\(\s*\$({READ_ONLY})\s+in\b", re.I)
-BUILD_COMMANDS = ["make", "cmake --build", "ninja", "msbuild", "dotnet build", "dotnet test", "cargo build",
-                  "cargo test", "go build", "go test", "npm test", "npm run", "pnpm test", "yarn test",
-                  "pytest", "python -m pytest", "python -m unittest", "tox", "gradle", "gradlew", "mvn",
-                  "tsc", "ctest"]
+TEST_RUNNERS = ("dotnet test", "cargo test", "go test", "npm test", "npm run", "pnpm test", "yarn test",
+                "pytest", "python -m pytest", "python -m unittest", "tox", "ctest")
+BUILD_COMMANDS = [*shell.BUILDS, *TEST_RUNNERS]
 TO_POWERSHELL = "Send the command to the PowerShell tool, or write it for bash."
 
 
