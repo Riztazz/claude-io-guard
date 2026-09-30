@@ -49,7 +49,7 @@ def file_for(folder: Path, body: str, suffix: str) -> tuple[Path, bytes]:
 
 
 def size(data: bytes) -> str:
-    return f"{len(data) / 1024:.1f} KB"
+    return f"{len(data)}-byte" if len(data) < 1024 else f"{len(data) / 1024:.1f} KB"
 
 
 class TransportBody(Check):
@@ -91,9 +91,9 @@ class TransportBody(Check):
         if running.verdict is Verdict.DENY:
             return running
         moves = ", ".join(f"a {size(data)} {'heredoc' if part in heredocs else 'python -c'} body to "
-                          f"{path.as_posix()}" for part, (path, data) in files.items())
-        note = (f"io-guard moved {moves}, and the command reads it from there. The body arrives exactly as "
-                f"written, with no backslash halved.")
+                          f"the file {path.name}" for part, (path, data) in files.items())
+        note = (f"io-guard moved {moves}, and the command reads it from there. The body is unchanged, and "
+                f"every backslash arrives as written.")
         rewrite = Rewrite(self.meta.id, frozenset({"command"}),
                           lambda given: {**given, "command": rewritten}, note, Code.BODY_MOVED_TO_FILE)
         return Decision(self.meta.id, Verdict.ALLOW, results=running.results, rewrite=rewrite)

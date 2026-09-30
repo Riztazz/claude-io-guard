@@ -1202,13 +1202,16 @@ the shape, and a refusal outranks an ask, which outranks an allow.
 |---|---|
 | OBSERVE or ALLOW, no rewrite | `{}`, or `additionalContext` only. No `permissionDecision`, so no prompt is skipped |
 | DENY | `permissionDecision: "deny"`, the refusing check's results rendered first in the reason, then the lines of the checks before it |
-| ASK, no rewrite | `permissionDecision: "ask"` with the check's lines as the reason |
+| ASK, no rewrite | `permissionDecision: "ask"` with the check's lines as the reason, written for the user |
 | file-tool rewrite, no ASK or DENY | `updatedInput` and the notes in `additionalContext`, no `permissionDecision` |
-| rewrite, mode `ask`, or any rewrite with an ASK | `permissionDecision: "ask"`, `updatedInput`, the notes in `permissionDecisionReason` |
+| rewrite, mode `ask`, or any rewrite with an ASK | `permissionDecision: "ask"`, `updatedInput`, the notes in `permissionDecisionReason`, written for the user |
 | rewrite, mode `allow` | `permissionDecision: "allow"`, `updatedInput`, the notes in `additionalContext` |
 | rewrite, mode `refuse` | `permissionDecision: "deny"`, the notes, then the command to run instead, or the changed fields as JSON |
 
-A rewrite's note renders as `CODE: note`. The mode comes from `transport.rewrite_mode[permission_mode]`, and
+A rewrite's note renders as `CODE: note` for the model. An ask's reason is the text of the prompt the user
+answers, so `asked` writes it for a person: a rewrite's note as `note (CODE)` under one opening line, `io-guard
+changed how this call is written, and it does the same thing.`, and a check's result as `message (CODE)`, with
+no advice for the model. The mode comes from `transport.rewrite_mode[permission_mode]`, and
 applies to shell rewrites. A file-tool rewrite from `conform_write` and `conform_edit` answers with
 `updatedInput`, the notes in `additionalContext`, and no `permissionDecision`. The harness then applies the
 conformed input and asks or approves as it would have for the original call: task 17's `write-quiet` probe saw

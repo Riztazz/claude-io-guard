@@ -35,9 +35,9 @@ The agent sees each fix. For the long script:
 ```
 The agent sends   Bash: python - <<'EOF'  ...10 KB of Python...  EOF
 What runs         python - < "~/.claude/io-guard/bodies/body-7316d4896518f5c9.txt"
-The agent reads   BODY_MOVED_TO_FILE: io-guard moved a 10.0 KB heredoc body to
-                  ~/.claude/io-guard/bodies/body-7316d4896518f5c9.txt, and the command reads it from there.
-                  The body arrives exactly as written, with no backslash halved.
+The agent reads   BODY_MOVED_TO_FILE: io-guard moved a 10.0 KB heredoc body to the file
+                  body-7316d4896518f5c9.txt, and the command reads it from there. The body is
+                  unchanged, and every backslash arrives as written.
 ```
 
 In auto mode, io-guard gives the fixed command to the agent, and the agent sends it again. In the other modes,

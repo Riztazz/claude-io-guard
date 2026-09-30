@@ -77,13 +77,19 @@ class ABodyMovesToAFile(unittest.TestCase):
                          "the file holds the body byte for byte")
         self.assertEqual(path.parent, SCRATCH / "io-guard", "the file goes in the session scratchpad")
         self.assertEqual(outcome.rewrites[0].code, Code.BODY_MOVED_TO_FILE, "the rewrite reports its code")
-        self.assertIn("KB heredoc body to", outcome.rewrites[0].note, "the note says what moved and where")
+        self.assertEqual(outcome.rewrites[0].note,
+                         f"io-guard moved a 10.8 KB heredoc body to the file {path.name}, and the command "
+                         f"reads it from there. The body is unchanged, and every backslash arrives as "
+                         f"written.",
+                         "the note names the file by its name, and says the body is the same")
 
     def test_a_short_body_with_a_pair_of_backslashes_moves_on_windows(self):
         _, outcome, ctx = run(heredoc("print(len(r'\\\\n'))\n"))
         self.assertEqual(ctx.fs.files[ctx.fs.writes[0]], b"print(len(r'\\\\n'))\n",
                          "both backslashes reach the file, which the Bash tool would have halved")
         self.assertEqual(len(outcome.rewrites), 1, "a halving hazard moves even a short body")
+        self.assertIn("moved a 19-byte heredoc body", outcome.rewrites[0].note,
+                      "a body under 1 KB is sized in bytes, never as 0.0 KB")
 
     def test_a_python_c_body_with_a_pair_moves_to_a_py_file(self):
         _, outcome, ctx = run("python -c 'import re; print(re.sub(r\"\\\\s\", \"\", \"a b\"))'")

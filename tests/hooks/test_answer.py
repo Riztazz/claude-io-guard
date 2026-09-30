@@ -8,7 +8,7 @@ from ioguard.hooks.answer import answer
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Rewrite, Verdict
 from ioguard.lib.events import Event, HookEvent, Surface
-from ioguard.lib.results import Code, Layer
+from ioguard.lib.results import Code, Layer, Result
 from tests.support import events, injected
 from tests.support.checks import make_check
 
@@ -72,6 +72,13 @@ class APreToolUseAnswerFollowsTheVerdict(unittest.TestCase):
         self.assertEqual((reply["permissionDecision"], reply["permissionDecisionReason"]),
                          ("ask", "look first"), "an ask shows the user the check's lines")
 
+    def test_an_ask_says_what_happens_and_ends_on_its_code_with_no_advice(self):
+        result = Result.of(Code.RULE_ASKED, "io.run would run git push.", "Bash", "win32")
+        reply = answered(events.bash("echo hi", CWD), saying("a.ask", Verdict.ASK, results=(result,)),
+                         mode="allow")["hookSpecificOutput"]
+        self.assertEqual(reply["permissionDecisionReason"], "io.run would run git push. (RULE_ASKED)",
+                         "the user reads the prompt, so the code comes last and the model's advice stays out")
+
     def test_the_user_message_is_the_system_message(self):
         telling = saying("a.tell", Verdict.ALLOW, user_message="heads up")
         self.assertEqual(answered(events.bash("echo hi", CWD), telling)["systemMessage"], "heads up",
@@ -90,14 +97,19 @@ class ARewriteFollowsTheMode(unittest.TestCase):
                                  f"a rewrite in {mode} mode answers {decision}")
 
     def test_ask_and_allow_carry_the_rewritten_input_and_the_note(self):
-        for mode, note_field in (("ask", "permissionDecisionReason"), ("allow", "additionalContext")):
+        told = {"ask": ("permissionDecisionReason",
+                        "io-guard changed how this call is written, and it does the same thing.\n"
+                        "io-guard's test check rewrote the command. (REWRITE_CONFLICT)"),
+                "allow": ("additionalContext",
+                          "REWRITE_CONFLICT: io-guard's test check rewrote the command.")}
+        for mode, (note_field, note) in told.items():
             with self.subTest(mode=mode):
                 reply = self.rewritten(mode)
                 self.assertEqual(reply["updatedInput"]["command"], f"echo {injected.REWRITTEN}",
                                  "updatedInput is the whole input after every rewrite")
-                self.assertEqual(reply[note_field],
-                                 "REWRITE_CONFLICT: io-guard's test check rewrote the command.",
-                                 "the note goes out with its code, where this mode shows it")
+                self.assertEqual(reply[note_field], note,
+                                 "the user reads that the call does the same thing and the code last, and "
+                                 "the model reads the code first")
 
     def test_refuse_names_the_changed_fields_when_the_command_is_not_the_one(self):
         reply = answered(events.bash("echo hi", CWD), describing(), mode="refuse")["hookSpecificOutput"]

@@ -2,10 +2,13 @@
 
 For PreToolUse the verdict and the user's rewrite mode decide the shape, as docs/design/architecture.md,
 section 6, tabulates. A shell rewrite's mode is refuse, ask or allow, and a refusal outranks an ask, which
-outranks an allow. A file tool's rewrite carries the conformed input and no permission decision, so the
-harness applies it and still asks, or approves, as it would have for the original call. Every other event
-answers with its context lines, and PostToolUse also with the replaced output and the note for the
-auto-mode classifier. The outcome's user_message is the systemMessage the user sees.
+outranks an allow. An ask's reason is the text of the prompt the user answers, so each line says what
+happens and ends on its code, and a rewrite's lines open by saying the call does the same thing. Every other
+answer is for the model, and leads with the code. A file tool's rewrite carries the conformed input and no
+permission decision, so the harness applies it and still asks, or approves, as it would have for the
+original call. Every other event answers with its context lines, and PostToolUse also with the replaced
+output and the note for the auto-mode classifier. The outcome's user_message is the systemMessage the user
+sees.
 """
 import json
 from collections.abc import Iterable, Mapping
@@ -16,6 +19,7 @@ from ioguard.lib.decisions import RewriteMode, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.results import render
 FILE_TOOLS = frozenset({Tool.EDIT, Tool.WRITE})   # a rewrite leaves the permission decision to the harness
+SAME_CALL = "io-guard changed how this call is written, and it does the same thing."
 
 
 def answer(event: Event, outcome: Outcome, mode: str) -> dict[str, Any]:
@@ -60,11 +64,27 @@ def pre_tool_use(event: Event, outcome: Outcome, mode: str) -> dict[str, Any]:
             return {"permissionDecision": "deny", "permissionDecisionReason": reason}
         case Verdict.ASK:
             return present(permissionDecision="ask", updatedInput=updated,
-                           permissionDecisionReason=joined((*notes, *outcome.context)))
+                           permissionDecisionReason=asked(outcome))
         case Verdict.ALLOW if rewritten:
             return present(permissionDecision="allow", updatedInput=updated,
                            additionalContext=joined((*notes, *outcome.context)))
     return present(additionalContext=joined(outcome.context))
+
+
+def asked(outcome: Outcome) -> str | None:
+    """The prompt's text for the user who answers it: that a rewritten call does the same thing, each
+    rewrite's note, then each check's results and lines. The advice a result carries for the model stays
+    out."""
+    notes = tuple(coded(rewrite.note, rewrite.code.value) for rewrite in outcome.rewrites)
+    lines = tuple(line for decision in outcome.decisions
+                  for line in (*(coded(result.message, result.code.value) for result in decision.results),
+                               *decision.context))
+    return joined((*((SAME_CALL,) if notes else ()), *notes, *lines))
+
+
+def coded(text: str, code: str) -> str:
+    """The text, then its code in brackets, on a line of its own after text that ends in quoted lines."""
+    return f"{text}{'\n' if '\n' in text else ' '}({code})"
 
 
 def refusal(outcome: Outcome) -> str:

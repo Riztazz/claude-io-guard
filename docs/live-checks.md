@@ -110,6 +110,7 @@ Confirmed with `tools/probes/run_probe.py`, whose `verdicts` command rechecks ev
 | 41. An Edit with an empty `new_string` also removes the line break after its match, so `\nb` deleted from `a\nb\nc\n` leaves `ac\n` | `edit-delete-join` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | A deletion that would join two lines is refused with `LINES_JOINED`, and the model's `b\n` after it leaves `a\nc\n` | `live-lines-joined` | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
 | 40. A resume and a `/compact` keep the session id, and SessionStart fires with `startup`, `resume` and `compact`. A file dirty before the first start is named once, and one the session made before a compaction is not | one-off runs of `claude -p` for task 51 | 2.1.281, 2.1.283 | waits for the Mac | 2026-09-28 |
+| 43. A hook's `ask` shows its prompt in auto mode, with the reason and the rewritten command. The model gets no line of the reason | the author in the Code tab, task 153 | 2.1.283 | waits for the Mac | 2026-09-30 |
 
 ## io-guard itself
 
