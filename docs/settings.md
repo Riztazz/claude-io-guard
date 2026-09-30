@@ -89,6 +89,11 @@ asks about it or approves it as it would have anyway, and a prompt shows the inp
 **The time budget:** past 300 ms, the checks that start a subprocess are skipped. Past 2 s, every remaining check is
 skipped and the call goes ahead. Both are settings.
 
+**Seeing that the hooks run:** the checks stay silent on a call they have nothing to say about, so a silent
+Edit looks the same as one no hook saw. Turn on `telemetry.confirm`, off by default, and the agent reads one
+line after each such call: `io-guard: 4 checks ran on this Edit, and none had anything to say.` It adds a line
+of context to every quiet call, so it's for debugging.
+
 **The io server's threads:** each session's io server runs tool calls and hooks on 4 threads, or on
 `io.server.workers` from your own config, read when a session starts. At 1, a long `io.run` holds back every
 hook until it ends.

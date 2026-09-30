@@ -165,6 +165,9 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
                                           "one folder.", project_may_set=False),
     "telemetry.debug": ConfigKey(bool, False, "Write tracebacks and io-guard's debug lines to the debug "
                                               "log."),
+    "telemetry.confirm": ConfigKey(bool, False, "Tell the agent after each tool call that io-guard's checks "
+                                   "ran and had nothing to say. It adds an extra line of context to every "
+                                   "such call, so turn it on only to see that the hooks run."),
     "io.server.workers": ConfigKey(int, 4, "Threads each session's io server runs tool calls and hooks on, "
                                    "and the session probe measures with, at least 1. At 1, a long io.run "
                                    "holds back every hook until it ends. A change applies from the next "

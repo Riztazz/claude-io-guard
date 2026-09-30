@@ -16,7 +16,7 @@ from ioguard.checks.registry import Registry, default_registry
 from ioguard.hooks.answer import answer
 from ioguard.lib.config import config_stamp
 from ioguard.lib.context import Context
-from ioguard.lib.events import Event, PermissionMode, Surface
+from ioguard.lib.events import Event, HookEvent, PermissionMode, Surface
 from ioguard.lib.folders import home_folder, project_root
 from ioguard.lib.probing import file_stamp
 from ioguard.lib.results import Code, Result, render
@@ -91,7 +91,7 @@ def run_event(raw: Mapping[str, Any], surface: Surface, ctx: Context | None = No
         registry = registry or default_registry()
         ctx = (ctx or CONTEXTS.get(event.session_id, event.cwd, registry)).for_file(event.file_path)
         outcome = with_config_message(Pipeline(registry).run(event, ctx), ctx, ctx.project or event.cwd)
-        outcome = with_mode_message(outcome, event, ctx)
+        outcome = confirmed(with_mode_message(outcome, event, ctx), event, ctx)
         known = event.permission_mode
         if known is PermissionMode.UNKNOWN:
             known = PermissionMode.DEFAULT
@@ -112,6 +112,18 @@ def with_config_message(outcome: Outcome, ctx: Context, project: Path) -> Outcom
     if message is None or not ctx.session.first_time(f"config:{project}"):
         return outcome
     return replace(outcome, user_message="\n".join(filter(None, (message, outcome.user_message))))
+
+
+def confirmed(outcome: Outcome, event: Event, ctx: Context) -> Outcome:
+    """The outcome with one line saying the checks ran, after a tool call they had nothing to say about,
+    when telemetry.confirm is on. A call that ran no check, or that a check spoke about, gets none."""
+    ran = len(outcome.decisions)
+    if (event.kind is not HookEvent.POST_TOOL_USE or not ran or outcome.context
+            or not ctx.config.get("telemetry.confirm")):
+        return outcome
+    line = (f"io-guard: {ran:,} {'check' if ran == 1 else 'checks'} ran on this {event.tool_name}, and none "
+            f"had anything to say.")
+    return replace(outcome, context=(line,))
 
 
 def with_mode_message(outcome: Outcome, event: Event, ctx: Context) -> Outcome:

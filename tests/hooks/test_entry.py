@@ -12,10 +12,12 @@ from ioguard.checks.registry import Registry, default_registry
 from ioguard.hooks import entry
 from ioguard.lib.config import Config, ConfigError, LoadReport, defaults
 from ioguard.lib.context import Context
-from ioguard.lib.events import Event, Surface
+from ioguard.lib.decisions import Decision
+from ioguard.lib.events import Event, HookEvent, Surface
 from ioguard.lib.platform import detect
 from ioguard.lib.probing import Probe, ToolVersion
 from tests.support import events, injected
+from tests.support.checks import make_check
 from tests.support.fixtures import FIXTURES_DIR
 from tests.support.project import TemporaryProject
 
@@ -74,6 +76,24 @@ class RunEventAnswersAndNeverRaises(unittest.TestCase):
                          ["ask", "ask"], "the checks run, under default's rewrite mode, the one that asks")
         self.assertIn("turbo", first.get("systemMessage", ""), "the user hears which mode io-guard met")
         self.assertNotIn("systemMessage", second, "and hears it once a session")
+
+    def test_a_call_the_checks_pass_in_silence_is_confirmed_only_when_the_setting_is_on(self):
+        silent = make_check("t.silent", lambda check, event, ctx: Decision.observe("t.silent"),
+                            events=(HookEvent.PRE_TOOL_USE, HookEvent.POST_TOOL_USE))
+        registry = Registry()
+        registry.register(silent)
+        on = Config({**defaults().values, "telemetry.confirm": True})
+        after = events.post_tool_use("Edit", {"file_path": "a.txt"}, {}, CWD)
+        before = events.pre_tool_use("Edit", {"file_path": "a.txt"}, CWD)
+        replies = [entry.run_event(raw, Surface.COMMAND_HOOK, Context.fake(config=config), registry)
+                   for raw, config in ((after, on), (after, defaults()), (before, on))]
+        self.assertEqual(replies[0]["hookSpecificOutput"]["additionalContext"],
+                         "io-guard: 1 check ran on this Edit, and none had anything to say.",
+                         "with the setting on, a silent call gets one line after it")
+        self.assertEqual(replies[1:], [{}, {}], "off by default, and never before the call")
+        told = entry.run_event(after, Surface.COMMAND_HOOK, Context.fake(config=on), registry_of("note"))
+        self.assertEqual(told["hookSpecificOutput"]["additionalContext"], f"{injected.NOTE} PostToolUse Edit",
+                         "a call a check spoke about gets that line alone")
 
     def test_a_config_error_is_named_once_per_session(self):
         error = ConfigError(Path("io-guard.json"), "chekcs", "io-guard has no such key.", "checks")

@@ -1182,7 +1182,9 @@ dropped whole, the guard runs with the layers that loaded, and one
 JSON answer to stdout and exits 0. Nothing else reaches stdout. A crash before the answer is written prints `{}`
 and logs `GUARD_ERROR` to stderr. The `ioguard` logger has a `NullHandler`, so a log record reaches only
 `debug.log`, and only when `telemetry.debug` is true, which lowers the logger to DEBUG so the debug lines land
-too, such as each cancel a client sends and whether the server held the call (task 152).
+too, such as each cancel a client sends and whether the server held the call (task 152). `telemetry.confirm`,
+false by default, makes `hooks.entry.confirmed` add one context line after a tool call whose checks ran and
+said nothing, `io-guard: N checks ran on this <tool>, and none had anything to say.` (task 158).
 
 ```python
 def run_event(raw: Mapping[str, Any], surface: Surface, ctx: Optional[Context] = None,
