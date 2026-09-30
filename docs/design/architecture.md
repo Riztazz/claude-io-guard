@@ -1719,7 +1719,7 @@ undoes. The check's own `enabled` switches both off.
 @dataclass(frozen=True)
 class Handle:
     id: str              # UUIDv4
-    kind: str            # "run" or "snapshot"
+    kind: str            # the tool's own name for the work, "run" for io.run
     created: datetime
     expires: Optional[datetime]   # None while the work it names still runs
     payload: Mapping[str, Any]
@@ -2110,14 +2110,13 @@ Boxes, io-guard group:
 - `Protocol`: framing, _meta, era, errors.
 - `ToolRegistry`: io.* and hook.* specs with generated schemas.
 - `io tools`: read, edit, splice, append, run, status, read_log, format, snapshot, restore, compare, stage.
-- `HandleStore`: run and snapshot handles with lifetimes.
-- `Elicitor`: legacy request or modern input_required.
+- `HandleStore`: background run handles, in memory, each an hour past its program's end.
 - `Telemetry`: JSONL events with trace context.
 - `Heartbeat`: the alive file the watchdog writes.
 - `Config`: defaults, user, project, project local.
 - `Probe`: platform facts taken at session start.
 - `Scratchpad`: moved bodies and run logs.
-- `io-guard folder`: config, probe, snapshots, handles, locks, events, heartbeat, one per user.
+- `io-guard folder`: config, probe, snapshots, run logs, locks, events, heartbeat, one per user.
 - `Dashboard page`: the ui resource and the standalone HTML.
 - `Skill`: codes, fixes and the tool for each job.
 
@@ -2151,14 +2150,12 @@ Arrows:
 - `io tools` to `lib`: profile, anchors, atomic write, run.
 - `io tools` to `lib.rules`: match argv against the user's Bash rules.
 - `io tools` to `HandleStore`: create, get, close.
-- `io tools` to `Elicitor`: ask the user.
-- `Elicitor` to `MCP client`: elicitation/create or input_required.
 - `io tools` to `Telemetry`: one line per call with traceparent.
 - `io server` to `Heartbeat`: written every five seconds.
 - `hook.py` to `Heartbeat`: read once per turn, warn when stale.
 - `Config` to `Context`: loaded once, validated, merged.
 - `Probe` to `Context`: read by every platform-dependent check.
-- `io-guard folder` to `Config`, `Probe`, `HandleStore`, `Telemetry`, `Heartbeat`: the durable folder.
+- `io-guard folder` to `Config`, `Probe`, `Telemetry`, `Heartbeat`: the durable folder.
 - `Telemetry` to `Dashboard page`: counts and percentiles, details in the page only.
 - `Dashboard page` to `io tools`: io.config and io.restore after the user confirms.
 - `Skill` to `Model`: the code table and the callable tool names, generated from CODES and ToolRegistry.
