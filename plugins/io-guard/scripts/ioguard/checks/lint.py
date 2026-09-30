@@ -21,6 +21,7 @@ from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Rewrite, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
+from ioguard.lib.program import program_name
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity
 
 POWERSHELLS = frozenset({"powershell", "pwsh"})
@@ -99,7 +100,7 @@ def bash_dialect(command: str, found: shell.Scan, simples: tuple[shell.SimpleCom
                          f"expands to something else: {shown(command, at)}", TO_POWERSHELL, offset=at)
             break
     cmdlet = next((simple for simple in simples if simple.words and (
-        CMDLET.match(re.split(r"[\\/]", simple.words[0])[-1]) or simple.name in COMMON_CMDLETS)), None)
+        CMDLET.match(program_name(simple.words[0], (), fold=False)) or simple.name in COMMON_CMDLETS)), None)
     if cmdlet is not None:
         findings.add(Code.DIALECT_MISMATCH, f"{cmdlet.words[0]} is a PowerShell cmdlet, and bash has no such "
                      f"command.", TO_POWERSHELL, offset=cmdlet.span[0])

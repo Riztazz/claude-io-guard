@@ -27,17 +27,17 @@ import json
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path, PurePath
+from pathlib import Path
 
 from ioguard.lib import pwsh, shell, wildcard
 from ioguard.lib.context import claude_folder
 from ioguard.lib.platform import Platform
+from ioguard.lib.program import PROGRAM_SUFFIXES, program_name
 
 RULE = re.compile(r"^(Bash|PowerShell)(?:\((.*)\))?$", re.S)
 PARAMETER = re.compile(r"^\s*(?:command|run_in_background|dangerouslyDisableSandbox)\s*:")
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 PLAIN_WRAPPERS = frozenset({"time", "nohup", "builtin", "noglob"})
-PROGRAM_SUFFIXES = (".exe", ".cmd", ".bat", ".com")
 SHELLS = frozenset({"bash", "sh", "zsh", "dash", "ksh", "mksh", "fish"})
 SHELL_C = re.compile(r"^-[A-Za-z]*c[A-Za-z]*$")
 SHELL_VALUED = frozenset({"-o", "+o", "-O", "+O", "--rcfile", "--init-file"})
@@ -182,10 +182,7 @@ def named(words: Sequence[str]) -> list[str]:
     """words with the program by its bare name, such as git for C:/Git/cmd/git.exe."""
     if not words:
         return []
-    bare = PurePath(words[0].replace("\\", "/")).name
-    for suffix in PROGRAM_SUFFIXES:
-        bare = bare.removesuffix(suffix).removesuffix(suffix.upper())
-    return [bare, *words[1:]]
+    return [program_name(words[0], PROGRAM_SUFFIXES, fold=False), *words[1:]]
 
 
 def match_argv(rules: Rules, argv: Sequence[str]) -> RuleMatch:

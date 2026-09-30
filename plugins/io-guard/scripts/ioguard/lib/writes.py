@@ -19,6 +19,7 @@ from pathlib import Path
 from ioguard.lib import paths, pwsh, rules, shell
 from ioguard.lib.context import Context, FsPort
 from ioguard.lib.platform import Platform
+from ioguard.lib.program import program_name
 
 DEVICES = {"/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty", "nul", "$null", "con"}
 SCRIPT_BYTES = 1024 * 1024       # a script file past this is not read
@@ -151,7 +152,7 @@ def bash_writes(command: str, cwd: Path | None, host: Host, start: Path | None =
         writes += [Write(redirect.target, "a > redirect", where) for redirect in simple.redirects]
         under = delegated(without_env(list(simple.words)))
         words = rules.unwrapped(without_env(list(simple.words)))
-        name = shell.SimpleCommand(tuple(words), (), (), simple.span).name if words else ""
+        name = program_name(words[0]) if words else ""
         arguments = [word for word in words[1:] if not word.startswith("-")]
         edited = None if under is not None else in_place(words)
         wrapped = rules.wrapped(words)
@@ -197,7 +198,7 @@ def in_place(words: list[str]) -> tuple[str, list[str]] | None:
     """How words edit files in place, such as sed -i, and the files they edit, or None when they do not."""
     if not words:
         return None
-    name, flags = words[0].rsplit("/", 1)[-1].lower().removesuffix(".exe"), words[1:]
+    name, flags = program_name(words[0]), words[1:]
     if name in ("sed", "gsed") and any(re.match(r"^-[a-zA-Z]*[iI]|^--in-place", word) for word in flags):
         return f"{name} -i", sed_files(flags)
     if name in ("perl", "ruby") and any(re.match(r"^-[a-zA-Z0-9]*i", word) for word in flags):
@@ -225,7 +226,7 @@ def delegated(words: list[str]) -> tuple[list[str], list[str], str] | None:
     """The command find -exec or xargs runs on each file, the folders the files come from, and which of the
     two it is. None for any other command. xargs reads its files from stdin, so its folder is ".", the one it
     runs in."""
-    name = words[0].rsplit("/", 1)[-1].lower() if words else ""
+    name = program_name(words[0]) if words else ""
     if name == "find":
         at = next((index for index, word in enumerate(words) if word in ("-exec", "-execdir", "-ok")), None)
         if at is None:

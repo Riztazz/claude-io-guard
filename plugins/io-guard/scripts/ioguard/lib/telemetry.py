@@ -19,6 +19,7 @@ from pathlib import Path
 
 from ioguard import TELEMETRY_SCHEMA
 from ioguard.lib import bytesio
+from ioguard.lib.program import program_name
 
 COMMAND_HEAD = 200
 TRACEPARENT = re.compile(r"^[0-9a-f]{2}-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$")
@@ -132,7 +133,7 @@ def program_of(command: str) -> str:
     quote = text[:1] if text[:1] in ("'", '"') else ""
     end = text.find(quote, 1) if quote else -1
     word = text[1:end] if end > 0 else (text.split(maxsplit=1) or [""])[0]
-    return re.split(r"[\\/]", word)[-1]
+    return program_name(word, (), fold=False)
 
 
 def shrink_heads(data_dir: Path, days: int, now: datetime) -> list[Path]:

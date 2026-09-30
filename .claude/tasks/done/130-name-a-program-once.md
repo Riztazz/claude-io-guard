@@ -3,7 +3,7 @@ title: Take a program's bare name in one helper
 stage: I
 area: runtime
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: []
 platforms: [windows, macos]
@@ -59,3 +59,39 @@ writes an eleventh copy, and the eleventh disagrees with the others somewhere.
 
 - A grep of `plugins/io-guard/scripts` for `rsplit("/", 1)[-1]` and `re.split(r"[\\/]"` finds only the helper.
 - The suite passes, and a replay over the corpus shows no check's counts changed.
+
+## What changed
+
+Validated on 2026-09-30 before building: all ten sites were there. Task 129 had moved the three in
+`checks/shell_writes.py` to `lib/writes.py`, at lines 154, 200 and 228. The grep in "Done when" also matches
+`lib/editorconfig.py:136`, which splits a glob's path and names no program, so it stays and the test below
+looks for a command word split by hand instead.
+
+`lib/program.py` is new: `program_name(word, suffixes=(".exe",), fold=True)`, the last segment on either
+separator, less the first suffix it ends with in any case, and `PROGRAM_SUFFIXES`, moved from `lib/rules.py`.
+Each site calls it with the suffixes and the case it had: the shell parser, `matching`, `in_place`,
+`delegated` and the interpreter test in `bash_writes` take the default, the rules and the commit reader take
+`PROGRAM_SUFFIXES`, and telemetry, the report's `shape` and the cmdlet test keep the case and every suffix.
+`bash_writes` no longer builds a `SimpleCommand` to read a name.
+
+Four readers now agree where they disagreed, each shown on HEAD's code before the change:
+
+| Reader | Before | After |
+|---|---|---|
+| `writes.in_place` on `C:\tools\sed.exe -i` | None | `sed -i` |
+| `writes.delegated` on `C:\tools\find.exe ... -exec` | None | `find -exec` |
+| `commit_message.subcommand` on `C:\Git\cmd\git.cmd commit` | None | git's commit |
+| `rules.named` on `C:/Git/cmd/git.Exe` | `git.Exe` | `git` |
+
+`tests/lib/test_program.py`, 5 tests: each shape of a word, the caller's suffixes and case, a quoted first word
+in telemetry, the six readers on one Windows path, and a scan that no module but `lib/program.py` splits a
+command word by hand. The scan failed on the 10 sites first, and the readers' test on `in_place`.
+
+Docs: `docs/design/architecture.md` section 1 lists `program.py`. No other doc names these functions.
+
+Evidence, on Windows on 2026-09-30:
+
+- The suite: 1,068 tests, 1,063 before, OK with 2 skipped.
+- A replay over the corpus with HEAD's code and with this change: 7 checks, 0 differences.
+- Live, Claude Code 2.1.283, from this checkout: `live-refuse` (shell.writes), `live-commit-policy` (the commit
+  reader), `live-pipe-once` (shell.lint) and `live-run-wrapped` (the rules on a shell string) pass.

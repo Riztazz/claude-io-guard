@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from ioguard.lib.program import program_name
 from ioguard.lib.results import meanings
 from ioguard.lib.telemetry import session_files
 
@@ -132,7 +133,7 @@ def shape(command: str) -> str:
     words = command.split()
     if not words:
         return ""
-    head = words[0].replace("\\", "/").rsplit("/", 1)[-1]
+    head = program_name(words[0], (), fold=False)
     second = words[1] if len(words) > 1 else ""
     return f"{head} {second}" if second.startswith("-") or second.isalpha() and second.islower() else head
 

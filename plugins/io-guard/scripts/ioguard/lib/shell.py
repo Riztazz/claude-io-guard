@@ -12,6 +12,8 @@ import shlex
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from ioguard.lib.program import program_name
+
 NORMAL, SINGLE, DOUBLE, ANSI, COMMENT, BODY, ARITH = range(7)
 MAX_NESTING = 100                       # $( ... ) levels read, well inside Python's stack
 ESCAPED_IN_DOUBLE = "$`\"\\\n"          # a backslash escapes only these inside double quotes
@@ -324,10 +326,7 @@ class SimpleCommand:
     @property
     def name(self) -> str:
         """The program's name, without its folder or .exe."""
-        if not self.words:
-            return ""
-        name = re.split(r"[\\/]", self.words[0])[-1]
-        return name[:-4].lower() if name.lower().endswith(".exe") else name.lower()
+        return program_name(self.words[0]) if self.words else ""
 
 
 SEPARATORS = ";&|\n()"
@@ -562,7 +561,7 @@ def matching(simple: SimpleCommand, entries: Sequence[str]) -> str | None:
     python -m pytest. Case and a folder or .exe on the program are ignored. None when no entry fits."""
     for entry in entries:
         words = entry.lower().split()
-        head = re.split(r"[\\/]", words[0])[-1].removesuffix(".exe")
+        head = program_name(words[0])
         named = PYTHON.match(simple.name) if head == "python" else simple.name == head
         if named and [word.lower() for word in simple.words[1:len(words)]] == words[1:]:
             return " ".join(simple.words[:len(words)])

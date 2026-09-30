@@ -10,6 +10,8 @@ Words arrive unquoted, as lib.shell and lib.pwsh give them.
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from ioguard.lib.program import PROGRAM_SUFFIXES, program_name
+
 GIT_VALUE_OPTIONS = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"})
 COMMIT_VALUE_SHORT = frozenset("mFCctS")     # short options of git commit whose value may follow
 
@@ -28,7 +30,7 @@ class Problem:
 
 def subcommand(words: Sequence[str]) -> int | None:
     """The index of git's subcommand in words, or None when the words do not run git or name none."""
-    if not words or words[0].replace("\\", "/").rsplit("/", 1)[-1].lower() not in ("git", "git.exe"):
+    if not words or program_name(words[0], PROGRAM_SUFFIXES) != "git":
         return None
     at = 1
     while at < len(words) and words[at].startswith("-"):

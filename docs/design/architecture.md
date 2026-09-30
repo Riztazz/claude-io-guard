@@ -46,6 +46,8 @@ plugins/io-guard/
         shell.py                   scan, commands, blanked, budget_length, moved, pipelines, exit_candidates, the
                                    hazards bash reads differently
         pwsh.py                    commands, blanked, file_calls
+        program.py                 program_name, PROGRAM_SUFFIXES: the program a command word names, for
+                                   every reader of a command's first word
         kills.py                   broad_stop: a stop by a shared runtime's name or by a command-line match
         python_source.py           compile_report: a Python body's syntax error or warning, without running it
         paths.py                   normalise, msys_prefix, reserved, link_target, inside, resolved, LockTable
