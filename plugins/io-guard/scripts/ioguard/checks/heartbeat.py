@@ -74,5 +74,3 @@ class Heartbeat(Check):
         result = Result.of(Code.SERVER_DOWN, message, event.tool_name or "UserPromptSubmit", ctx.platform.os,
                            fix=fix, evidence=evidence)
         return Decision(self.meta.id, Verdict.ALLOW, results=(result,), user_message=render(result))
-
-

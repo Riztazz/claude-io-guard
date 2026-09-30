@@ -2,8 +2,9 @@
 
 It runs in the SessionStart command hook, because CLAUDE_ENV_FILE belongs to a hook process. The tools'
 versions are measured in parallel, and a version whose file has not changed since the last probe is kept. The
-env file gets one export line per default, so every later Bash call starts with them. Only the user sets the
-defaults, never a project, because a variable such as PYTHONSTARTUP or BASH_ENV runs a program (D24).
+env file gets one export line per default, so every later Bash call starts with them. Only the user's own
+config sets the defaults, never a project's file, because a variable such as PYTHONSTARTUP or BASH_ENV
+runs a program. A write of them through io.config waits for the user's yes (D38, D40).
 
 probe.json holds what is true of the machine, and every session on it shares the file. The files a session's
 repository had changed when the session first started are the session's own, so they go to

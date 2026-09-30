@@ -4,8 +4,7 @@ A handle is a UUIDv4 with a kind and an expiry, as the MCP guidance on stateful 
 unset while the work it names still runs, and settle sets it when the work ends: a run handle lasts one hour
 past its program's end. get raises HandleExpired for an id the store does not hold, or holds past its expiry,
 and each tool turns that into HANDLE_EXPIRED with the call that starts the work again. The store keeps
-handles in memory, so a run handle ends with the server, while the run's log stays on disk. Task 32's
-snapshot handles add a file each, which outlives the server.
+handles in memory, so a run handle ends with the server, while the run's log stays on disk.
 """
 import threading
 import uuid
@@ -18,7 +17,7 @@ from typing import Any
 @dataclass(frozen=True)
 class Handle:
     id: str
-    kind: str                        # "run", and later "snapshot"
+    kind: str                        # the tool's own name for the work, "run" for io.run
     created: datetime
     expires: datetime | None         # None while the work it names still runs
     payload: Mapping[str, Any]

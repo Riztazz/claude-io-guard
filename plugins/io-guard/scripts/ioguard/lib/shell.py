@@ -529,6 +529,8 @@ def script_run(simple: SimpleCommand) -> ScriptRun | None:
             return None
         at += 2 if words[at] in TAKES_VALUE else 1
     return ScriptRun(words[at], tuple(words[at + 1:])) if at < len(words) else None
+
+
 QUOTED_PATH_BEFORE_QUOTE = re.compile(r'"[A-Za-z]:\\[^"\n]*\\"(?=[\s;&|)<>]|$)')
 
 

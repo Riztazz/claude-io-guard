@@ -44,14 +44,13 @@ SHELL_C = re.compile(r"^-[A-Za-z]*c[A-Za-z]*$")
 SHELL_VALUED = frozenset({"-o", "+o", "-O", "+O", "--rcfile", "--init-file"})
 POWERSHELLS = frozenset({"pwsh", "powershell"})
 PWSH_VALUED = frozenset({"-executionpolicy", "-ep", "-ex", "-workingdirectory", "-wd", "-configurationname",
-                         "-outputformat", "-of", "-inputformat", "-if", "-windowstyle", "-w", "-version",
-                         "-v",
-                         "-settingsfile", "-custompipename", "-psconsolefile"})
+                         "-outputformat", "-of", "-inputformat", "-if", "-windowstyle", "-w",
+                         "-version", "-v", "-settingsfile", "-custompipename", "-psconsolefile"})
 CODE_FLAGS = {"python": ("-c",), "py": ("-c",), "node": ("-e", "-p", "--eval", "--print"),
               "perl": ("-e", "-E"), "ruby": ("-e",), "php": ("-r",), "deno": ("eval",),
               "bun": ("-e", "--eval")}
 CODE_VALUED = frozenset({"-X", "-W", "-r", "--require", "--import", "--loader"})
-UNREAD_BASH =("$(", "`", "<(", ">(")
+UNREAD_BASH = ("$(", "`", "<(", ">(")
 ARITHMETIC = re.compile(r"\(\(.*\)\)", re.S)     # bash's (( ... )), which runs no command
 PWSH_ASSIGNS = frozenset({"=", "+=", "-=", "*=", "/=", "%=", "??="})
 PWSH_ASSIGNMENT = re.compile(r"^\$[\w:]+(?:\+|-|\*|/|%|\?\?)?=(.*)$", re.S)   # $x=value, written as one word

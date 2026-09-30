@@ -7,9 +7,9 @@ the check refuses nothing until a user or a project names them. The message come
 file, from the heredoc a -F - reads, and from a PowerShell here-string, which arrives as the -m word. A -F
 file resolves after the command's cd. One the command writes from a heredoc, as cat > m.txt <<'EOF' does,
 is read from that heredoc. One it writes another way, or one not there yet, cannot be read before the commit
-runs, so the commit is refused with the step of writing the file first. An
-io.run call's argument list is read the same way, and so is the string a shell in it is given and a Bash or
-PowerShell body, so a commit through io.run meets the same policy.
+runs, so the commit is refused with the step of writing the file first. An io.run call's argument list is
+read the same way, and so is the string a shell in it is given and a Bash or PowerShell body, so a commit
+through io.run meets the same policy.
 """
 import re
 from collections.abc import Mapping

@@ -20,8 +20,8 @@ def newest(entry: Path) -> float:
 
 
 def older(folder: Path, cutoff: datetime) -> list[Path]:
-    """The files and folders directly in folder whose newest file changed before cutoff. None when folder
-    does not exist."""
+    """The files and folders directly in folder whose newest file changed before cutoff, and an empty list
+    when folder does not exist."""
     if not folder.is_dir():
         return []
     return sorted(entry for entry in folder.iterdir() if newest(entry) < cutoff.timestamp())

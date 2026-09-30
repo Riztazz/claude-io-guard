@@ -22,7 +22,7 @@ from ioguard.lib.text import invisible_added
 from ioguard.mcp.in_place import NOTE, Loaded, Place, encoded, held, load, places_shown, write
 from ioguard.mcp.toolspec import ToolCall, ToolFailure, ToolSpec, doc
 
-HASH_DOC =("Optional. A sha256 of the file from io.read, which refuses the call if any byte of the file "
+HASH_DOC = ("Optional. A sha256 of the file from io.read, which refuses the call if any byte of the file "
             "changed since. Leave it out when only the text the call names matters.")
 
 

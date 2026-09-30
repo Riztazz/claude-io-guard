@@ -144,6 +144,38 @@ class AnnotationsNameTheirTypesBare(unittest.TestCase):
                          "a quoted return, argument, nested argument and variable are each found")
 
 
+DEFINITIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+
+def misplaced_blank_lines(source: bytes) -> list[str]:
+    """Where source breaks the module layout: a top-level def or class with fewer than two blank lines between
+    it and its neighbour, or an end other than one newline."""
+    lines = source.decode("utf-8").splitlines()
+    body = ast.parse(source).body
+    found = ["end"] if source and (not source.endswith(b"\n") or source.endswith(b"\n\n")) else []
+    for before, after in zip(body, body[1:]):
+        start = min([after.lineno, *(node.lineno for node in getattr(after, "decorator_list", []))])
+        gap = lines[before.end_lineno:start - 1]
+        if (isinstance(before, DEFINITIONS) or isinstance(after, DEFINITIONS)) and \
+                sum(not line.strip() for line in gap) < 2 and not any(line.strip() for line in gap):
+            found.append(str(start))
+    return found
+
+
+class ModulesAreLaidOutAlike(unittest.TestCase):
+    def test_every_module_spaces_its_definitions_and_ends_with_one_newline(self):
+        found = [f"{path.relative_to(REPO).as_posix()}:{place}" for folder in ("plugins", "tests", "tools")
+                 for path in sorted((REPO / folder).rglob("*.py")) if "__pycache__" not in path.parts
+                 for place in misplaced_blank_lines(path.read_bytes())]
+        self.assertEqual(found, [], "two blank lines stand around a top-level definition, and one newline "
+                                    "ends a file")
+
+    def test_the_scan_finds_a_glued_constant_and_a_blank_end(self):
+        source = b"def f():\n    return 1\nX = 2\n\n"
+        self.assertEqual(misplaced_blank_lines(source), ["end", "3"],
+                         "a constant glued to a function and a blank line at the end are each found")
+
+
 def scripts() -> list[Path]:
     """Every file under tools/ and the plugin's scripts/ that runs as a program: it calls main or checks
     __main__. The ioguard package is modules, not scripts."""

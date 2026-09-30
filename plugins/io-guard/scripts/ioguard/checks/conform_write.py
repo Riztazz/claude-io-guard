@@ -7,8 +7,8 @@ file takes the convention target_profile gives: the .editorconfig properties tha
 .gitattributes, then most of its siblings with the same extension. With none of those, the content stays as
 written. A lone CR in the content ends no line, so it stays as written, and the agent hears which line holds
 it, since the Read tool shows it as nothing. A binary or UTF-16 file is left alone, because the Write tool
-writes UTF-8 text. hooks.answer leaves
-the permission decision to the harness, which asks or approves as it would have for the original call.
+writes UTF-8 text. hooks.answer leaves the permission decision to the harness, which asks or approves as it
+would have for the original call.
 """
 from pathlib import Path
 

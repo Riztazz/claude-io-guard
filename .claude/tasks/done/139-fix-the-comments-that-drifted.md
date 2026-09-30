@@ -3,11 +3,11 @@ title: Fix the comments that no longer match the code, and the glued lines
 stage: I
 area: runtime
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: []
 platforms: [windows, macos]
-commit: "docs: comments say what the code does now"
+commit: "style: comments and layout match the code"
 ---
 
 ## Why
@@ -63,3 +63,48 @@ Lines shaped like no other:
 - A grep of `plugins/io-guard/scripts` for `D24` finds nothing.
 - Each comment named above matches its body on a read-through.
 - The suite passes, since no code changes.
+
+## What changed
+
+Three items no longer held, since earlier tasks had fixed them:
+
+- `checks/shell_writes.py:17-18`: task 129 rewrapped the docstring when it moved the write finder to
+  `lib/writes.py`.
+- `checks/diagnose.py:51-52`: task 129 put the two blank lines before `@dataclass` when it moved the diagnosis to
+  `lib/diagnosis.py`.
+- `lib/rules.py:60`: `MANAGED` reads `{WINDOWS: Path(...)` since task 133 keyed it by `Platform`.
+
+The rest held, with lines moved. What changed:
+
+- `lib/retention.py`, `older`: the docstring says an empty list when the folder does not exist, which is what
+  the body returns.
+- `checks/session_probe.py`: the defaults are the user's own config's alone, never a project's file, and a
+  write of them through `io.config` waits for the user's yes (D38, D40), in place of D24.
+- `mcp/tools_format.py`: the command comes from the format key, and one a project's `.claude/io-guard.json`
+  names runs only once the user approves it through `io.trust` (D38), in place of D24. `untrusted` in
+  `lib/waiting.py` is what holds it back.
+- `mcp/handles.py`: the docstring drops the snapshot handles, since only `mcp/tools_run.py` imports the
+  module, and the `kind` comment says it is the tool's own name for the work, `"run"` for `io.run`.
+- `checks/conform_write.py` and `checks/commit_policy.py`: the glued wraps are one paragraph again.
+- `lib/rules.py`: `UNREAD_BASH = (`, and `PWSH_VALUED` wraps with no word alone on a line.
+  `mcp/tools_edit.py`: `HASH_DOC = (`, which lines up with its second line again.
+- `lib/shell.py`: two blank lines between `script_run` and `QUOTED_PATH_BEFORE_QUOTE`.
+  `checks/heartbeat.py`: ends with one newline.
+
+The test: `ModulesAreLaidOutAlike` in `tests/test_meta.py` scans every Python file in `plugins`, `tests` and
+`tools` for a top-level definition with fewer than two blank lines to its neighbour, and for a file that does
+not end with exactly one newline. It failed on `checks/heartbeat.py` and `lib/shell.py:532` first, the only
+two in the repository, then passed. Its second test shows it finds a constant glued to a function and a blank
+line at the end, in a built source. The spacing inside a line, such as `=(`, has no test: Python's tokenizer
+reads both spellings the same, and a scan of the text for it would be a formatter.
+
+Evidence:
+
+- `grep -rn D24 plugins/io-guard/scripts --include=*.py` finds nothing.
+- No Python line in `plugins`, `tests` or `tools` is over 110 characters.
+- `python tests/run_all.py`: 1,103 tests, OK, 2 skipped, against 1,101 at task 138.
+- `live-empty`, `live-server`, `live-results`, `live-format` and `live-trust` passed on the CLI 2.1.283.
+
+Docs: none needed. The comments were the stale copy, and the design doc already names D38 and D40.
+
+Checked on Windows 10 on 2026-09-30. macOS is covered by CI only.

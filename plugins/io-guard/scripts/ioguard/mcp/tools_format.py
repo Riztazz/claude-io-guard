@@ -5,7 +5,8 @@ clang-format over a whole file re-indents code nobody touched and adds namespace
 LineEnding in its config rewrites the endings of lines it did not change (BYT-3). Agents wrote a script that
 ran it over git's changed hunks only, and ran it 128 times. io.format does that job: git diff -U0 HEAD names
 the changed lines, a file git has no commit of counts whole, and a call may name its own lines instead. The
-command comes from the format key in the user's own config.json, clang-format by default for C and C++ (D24).
+command comes from the format key, clang-format by default for C and C++. A command that a project's
+.claude/io-guard.json names runs only once the user approves it through io.trust (D38).
 It reads the text on stdin and writes the formatted text on stdout. lib.edits.carried lands that text in the
 file's own endings, and a run of changes that meets none of the asked lines stays as the file had it. Every
 file is formatted in memory before any is written, so a formatter that fails on one file leaves them all as
