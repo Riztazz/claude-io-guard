@@ -50,7 +50,7 @@ class SnapshotGit:
         self.roots: dict[Path, Path | None] = {}
         self.files: dict[Path, frozenset[str]] = {}
 
-    def within(self, seconds: float) -> "SnapshotGit":
+    def within(self, seconds: float) -> SnapshotGit:
         return self
 
     @staticmethod

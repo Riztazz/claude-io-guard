@@ -48,7 +48,7 @@ class Record:
         return asdict(self) | {"labels": list(self.labels)}
 
     @classmethod
-    def from_json(cls, raw: dict) -> "Record":
+    def from_json(cls, raw: dict) -> Record:
         return cls(**(raw | {"labels": tuple(raw["labels"])}))
 
 

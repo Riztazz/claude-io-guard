@@ -42,7 +42,7 @@ class Tool(Enum):
     OTHER = "other"
 
     @classmethod
-    def named(cls, name: str) -> "Tool":
+    def named(cls, name: str) -> Tool:
         """The tool with this harness name, or OTHER for an MCP tool or a tool io-guard does not know."""
         return by_value(cls, name, cls.OTHER)
 
@@ -57,7 +57,7 @@ class PermissionMode(Enum):
     UNKNOWN = "unknown"          # a mode a later Claude Code adds, whose text stays in Event.raw
 
     @classmethod
-    def named(cls, name: str) -> "PermissionMode":
+    def named(cls, name: str) -> PermissionMode:
         return by_value(cls, name, cls.UNKNOWN)
 
 
@@ -114,7 +114,7 @@ class Event:
 
     @classmethod
     def from_hook_json(cls, raw: Mapping[str, Any], surface: Surface,
-                       platform: Platform | None = None) -> "Event":
+                       platform: Platform | None = None) -> Event:
         platform = platform or detect()
         missing = [key for key in ("hook_event_name", "session_id", "cwd") if not text(raw.get(key))]
         if missing:
@@ -149,7 +149,7 @@ class Event:
         )
 
     @classmethod
-    def from_fields(cls, fields: Mapping[str, str], platform: Platform | None = None) -> "Event":
+    def from_fields(cls, fields: Mapping[str, str], platform: Platform | None = None) -> Event:
         """Rebuild an event from the map an mcp_tool hook passes.
 
         Every value arrives as a string, and an absent one as an empty string. tool_input and tool_response
@@ -164,7 +164,7 @@ class Event:
                     raise EventError(f"The mcp_tool hook's {key} is not JSON: {error}.") from None
         return cls.from_hook_json(raw, Surface.MCP_HOOK, platform)
 
-    def with_tool_input(self, tool_input: Mapping[str, Any]) -> "Event":
+    def with_tool_input(self, tool_input: Mapping[str, Any]) -> Event:
         """The same event with another tool_input, and its derived fields worked out again."""
         return replace(self, tool_input=MappingProxyType(dict(tool_input)),
                        **derived(tool_input, self.cwd, self.platform))

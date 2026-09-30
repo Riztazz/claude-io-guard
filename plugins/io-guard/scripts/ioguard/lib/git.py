@@ -92,7 +92,7 @@ class Git:
         self.timeout_s = timeout_s
         self.deadline = deadline         # a time.monotonic() no call runs past, None for none
 
-    def within(self, seconds: float) -> "Git":
+    def within(self, seconds: float) -> Git:
         """This git with every call ending by seconds from now, so a hook's git calls share its budget."""
         return Git(self.timeout_s, time.monotonic() + seconds)
 

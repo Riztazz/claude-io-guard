@@ -55,7 +55,7 @@ class Decision:
     latency_ms: float = 0.0
 
     @staticmethod
-    def observe(check_id: str) -> "Decision":
+    def observe(check_id: str) -> Decision:
         return Decision(check_id, Verdict.OBSERVE)
 
 

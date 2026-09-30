@@ -97,7 +97,7 @@ class Telemetry:
         self.lock = threading.Lock()
 
     @classmethod
-    def memory(cls) -> "Telemetry":
+    def memory(cls) -> Telemetry:
         return cls(None)
 
     def path_for(self, event: TelemetryEvent) -> Path:

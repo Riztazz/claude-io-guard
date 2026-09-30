@@ -125,7 +125,7 @@ class Squeezed:
     starts: list[int]                # where the same run starts in the original text
 
     @classmethod
-    def of(cls, text: str) -> "Squeezed":
+    def of(cls, text: str) -> Squeezed:
         runs = list(WORD_RUN.finditer(text))
         kept_starts, total = [], 0
         for run in runs:

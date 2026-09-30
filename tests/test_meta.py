@@ -115,6 +115,35 @@ class PythonLinesStopAt110(unittest.TestCase):
         self.assertEqual(long, [], "D17: code and comments stop at 110 characters")
 
 
+def quoted_annotations(source: bytes) -> list[int]:
+    """The line of each annotation in source that is a string, such as -> "Event"."""
+    annotations = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            arguments = node.args
+            annotations += [node.returns, *(argument.annotation for argument in (
+                *arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs, arguments.vararg,
+                arguments.kwarg) if argument is not None)]
+        elif isinstance(node, ast.AnnAssign):
+            annotations.append(node.annotation)
+    return [inner.lineno for annotation in annotations if annotation is not None
+            for inner in ast.walk(annotation)
+            if isinstance(inner, ast.Constant) and isinstance(inner.value, str)]
+
+
+class AnnotationsNameTheirTypesBare(unittest.TestCase):
+    def test_no_annotation_in_the_repository_is_a_string(self):
+        quoted = [f"{path.relative_to(REPO).as_posix()}:{line}" for folder in ("plugins", "tests", "tools")
+                  for path in sorted((REPO / folder).rglob("*.py")) if "__pycache__" not in path.parts
+                  for line in quoted_annotations(path.read_bytes())]
+        self.assertEqual(quoted, [], "Python 3.14 defers annotations, so a forward reference is a bare name")
+
+    def test_the_scan_finds_a_quoted_return_and_argument(self):
+        source = b"def f(a: 'A', b: list['B']) -> 'C':\n    x: 'D' = 1\n"
+        self.assertEqual(quoted_annotations(source), [1, 1, 1, 2],
+                         "a quoted return, argument, nested argument and variable are each found")
+
+
 def scripts() -> list[Path]:
     """Every file under tools/ and the plugin's scripts/ that runs as a program: it calls main or checks
     __main__. The ioguard package is modules, not scripts."""

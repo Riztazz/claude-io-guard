@@ -294,7 +294,7 @@ class Result:
     auto_fixed: tuple[Code, ...] = ()
 
     @classmethod
-    def of(cls, code: Code, message: str, tool: str, platform: str, **fields: Any) -> "Result":
+    def of(cls, code: Code, message: str, tool: str, platform: str, **fields: Any) -> Result:
         """A result with the severity its code declares, unless fields names another. A control character or
         an invisible one in the message, which a file name or a command from a repository can carry, shows
         as its \\u or \\U escape, so it can neither move the text around it nor hide text in it."""
