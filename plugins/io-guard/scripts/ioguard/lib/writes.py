@@ -145,44 +145,61 @@ def bash_writes(command: str, cwd: Path | None, host: Host, start: Path | None =
     """Every write the Bash command run from cwd makes. start is the folder a nested shell string runs in,
     when it is known, and scripts are the command's script files when the caller read them already."""
     found = shell.scan(command)
-    writes = []
+    writes: list[Write] = []
     interpreter, script_cwd = False, start or cwd
-    bodies: list[str] = []
     for simple, where in located(command, found, start or cwd, host):
-        writes += [Write(redirect.target, "a > redirect", where) for redirect in simple.redirects]
-        under = delegated(without_env(list(simple.words)))
-        words = rules.unwrapped(without_env(list(simple.words)))
-        name = program_name(words[0]) if words else ""
-        arguments = [word for word in words[1:] if not word.startswith("-")]
-        edited = None if under is not None else in_place(words)
-        wrapped = rules.wrapped(words)
-        if shell.INTERPRETERS.match(name) and not interpreter:
+        writes += command_writes(simple, where, cwd, host, depth)
+        words = run_words(simple)
+        if not interpreter and words and shell.INTERPRETERS.match(program_name(words[0])):
             interpreter, script_cwd = True, where
-        if edited is not None:
-            writes += [Write(target, edited[0], where) for target in edited[1]]
-        elif under is not None:
-            inner, roots, how = under
-            if (edited := in_place(inner)) is not None:
-                files = [target for target in edited[1] if target != "{}"]
-                writes += [Write(target, f"{edited[0]} under {how}", where) for target in files or roots]
-        elif name == "tee":
-            writes += [Write(target, "tee", where) for target in arguments]
-        elif name in ("cp", "mv"):
-            writes += [Write(target, name, where) for target in landed(words[1:], where, host)]
-        elif wrapped is not None and wrapped.text is not None and depth < rules.NESTED:
-            reader = bash_writes if wrapped.dialect is rules.Dialect.BASH else powershell_writes
-            writes += reader(wrapped.text, cwd, host, where, depth + 1)
-        elif wrapped is not None and wrapped.text is None and wrapped.raw:
-            writes += [Write(target, "a script body", where) for target in script_targets(wrapped.raw)]
-    bodies += [heredoc.body for heredoc in found.heredocs] if interpreter else []
-    bodies += [body.body for body in found.bodies]
-    bodies += moved_bodies(command, host)
+    bodies = [heredoc.body for heredoc in found.heredocs] if interpreter else []
+    bodies += [body.body for body in found.bodies] + moved_bodies(command, host)
     writes += [Write(target, "a script body", script_cwd)
                for body in bodies for target in script_targets(body)]
     scripts = script_files(command, cwd, host) if scripts is None else scripts
     writes += [Write(target, "a script file", script.cwd)
                for script in scripts for target in script_targets(script.body)]
     return writes
+
+
+def run_words(simple: shell.SimpleCommand) -> list[str]:
+    """The words of the program a simple command runs, less env and the wrappers such as timeout."""
+    return rules.unwrapped(without_env(list(simple.words)))
+
+
+def command_writes(simple: shell.SimpleCommand, where: Path | None, cwd: Path | None, host: Host,
+                   depth: int) -> list[Write]:
+    """The writes of one simple command that runs in where. cwd is the whole command's folder, which a shell
+    string the simple command runs falls back to when where is unknown."""
+    writes = [Write(redirect.target, "a > redirect", where) for redirect in simple.redirects]
+    words = run_words(simple)
+    name = program_name(words[0]) if words else ""
+    wrapped = rules.wrapped(words)
+    if (under := delegated(without_env(list(simple.words)))) is not None:
+        return writes + delegated_writes(under, where)
+    if (edited := in_place(words)) is not None:
+        return writes + [Write(target, edited[0], where) for target in edited[1]]
+    if name == "tee":
+        return writes + [Write(target, "tee", where) for target in words[1:] if not target.startswith("-")]
+    if name in ("cp", "mv"):
+        return writes + [Write(target, name, where) for target in landed(words[1:], where, host)]
+    if wrapped is not None and wrapped.text is not None and depth < rules.NESTED:
+        reader = bash_writes if wrapped.dialect is rules.Dialect.BASH else powershell_writes
+        return writes + reader(wrapped.text, cwd, host, where, depth + 1)
+    if wrapped is not None and wrapped.text is None and wrapped.raw:
+        return writes + [Write(target, "a script body", where) for target in script_targets(wrapped.raw)]
+    return writes
+
+
+def delegated_writes(under: tuple[list[str], list[str], str], where: Path | None) -> list[Write]:
+    """The files find -exec or xargs edits in place: the files the inner command names, or the folders the
+    files come from when it names them only as {}."""
+    inner, roots, how = under
+    edited = in_place(inner)
+    if edited is None:
+        return []
+    files = [target for target in edited[1] if target != "{}"]
+    return [Write(target, f"{edited[0]} under {how}", where) for target in files or roots]
 
 
 def without_env(words: list[str]) -> list[str]:

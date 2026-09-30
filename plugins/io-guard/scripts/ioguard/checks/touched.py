@@ -21,6 +21,8 @@ that changed while an interpreter ran a script file also gets SHELL_WRITE, becau
 checks an Edit gets, unless a git command in the same command could have changed it.
 """
 import fnmatch
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from ioguard.checks.base import Check, CheckMeta, Cost
@@ -148,6 +150,110 @@ def named(found: list[Path], cwd: Path, limit: int, scratchpad: Path | None = No
     return in_words(shown + [f"{rest} more"] if rest else shown)
 
 
+def diffed(event: Event) -> list[Path]:
+    """The files a bashEditDiff in the tool's response names, when Claude Code sent one."""
+    listed = (event.tool_response or {}).get("files")
+    if not isinstance(listed, list):
+        return []
+    return [paths.normalise(entry["filePath"], event.cwd, event.platform) for entry in listed
+            if isinstance(entry, dict) and isinstance(entry.get("filePath"), str)]
+
+
+@dataclass(frozen=True)
+class Changes:
+    """What one shell command did to the files, as shell.touched names it."""
+    read: tuple[Path, ...]           # files the agent had read, which the command changed
+    changed: tuple[Path, ...]
+    created: tuple[Path, ...]
+    deleted: tuple[Path, ...]
+    moved: tuple[tuple[Path, Path], ...]
+    named_move: bool                 # the command names a move, as mv or git mv does
+    beside: bool                     # another shell command started while this one ran
+
+
+def changes(before: ShellSnapshot, event: Event, ctx: Context) -> Changes:
+    """What the command changed since before: the read files by their stat, the rest by git status, with
+    the session's own writes and the skipped trees left out, and each file that left one path and arrived
+    at another paired as a move."""
+    skipped, own = ctx.config.get("skip_trees"), ctx.session.written_since(before.step)
+    with ctx.session.lock:
+        beside = ctx.session.shell_started > before.step
+
+    def kept(path: Path) -> bool:
+        relative = paths.shown(path, before.root) if before.root is not None else path.as_posix()
+        return path not in own and not any(fnmatch.fnmatch(relative, glob) for glob in skipped)
+
+    stats = {path: ctx.fs.stat(path) for path in before.stats if kept(path)}
+    read = sorted(path for path, stat in stats.items() if stat is not None and stat != before.stats[path])
+    read += sorted(path for path in diffed(event) if path in before.stats and path not in read and kept(path))
+    deleted = sorted(path for path, stat in stats.items() if stat is None and before.stats[path] is not None)
+    entries = status(ctx, before.root)
+    after = codes(entries)
+    created, removed, added, changed = status_changes(before, after, kept, [*read, *deleted], ctx)
+    renamed = {before.root / entry.path: before.root / entry.original for entry in entries or ()
+               if entry.original and before.root is not None}
+    sizes = {path: stat.size for path, stat in (*before.stats.items(), *before.listed.items()) if stat}
+    named_move = names_a_move(event)
+    deleted += removed
+    moved = moves(deleted + vanished(before, after, ctx), created + added, renamed, sizes, named_move, ctx)
+    olds, news = {old for old, _ in moved}, {new for _, new in moved}
+    deleted = [path for path in deleted if path not in olds and (not named_move or path in removed)]
+    return Changes(tuple(read), tuple(changed + [path for path in added if path not in news]),
+                   tuple(path for path in created if path not in news), tuple(deleted), tuple(moved),
+                   named_move, beside)
+
+
+def status_changes(before: ShellSnapshot, after: frozenset[tuple[str, str]] | None,
+                   kept: Callable[[Path], bool], taken: list[Path],
+                   ctx: Context) -> tuple[list[Path], list[Path], list[Path], list[Path]]:
+    """The paths git status lists now and did not before, as created, deleted, added and changed, less the
+    ones taken already, the ones left out, the ones whose stat is as it was, and a deletion git staged of a
+    file still on disk."""
+    created, deleted, added, changed = [], [], [], []
+    if before.status is None or after is None:
+        return created, deleted, added, changed
+    unindexed = {name for name, code in after if code[0] == "D" and ctx.fs.exists(before.root / name)}
+    for name, code in sorted(after - before.status):
+        path = before.root / name
+        if not kept(path) or path in taken or name in unindexed:
+            continue
+        if path in before.listed and ctx.fs.stat(path) == before.listed[path]:
+            continue
+        (created if code == "??" else deleted if "D" in code else added if code[0] in "AR" else
+         changed).append(path)
+    return created, deleted, added, changed
+
+
+def summary(found: Changes, binary: frozenset[Path], cwd: Path, scratchpad: Path | None, limit: int,
+            tool: str, platform: str) -> Result | None:
+    """TOUCHED_BY_SHELL for a record of changes, with the steps each kind of change needs, or None when the
+    command changed nothing."""
+    def listed(items: Sequence[Path]) -> str:
+        return named(list(items), cwd, limit, scratchpad)
+
+    shown_moves = [] if found.named_move else [
+        f"{paths.shown(old, cwd, scratchpad)} to {paths.shown(new, cwd, scratchpad)}"
+        for old, new in found.moved]
+    kinds = (("changed", found.read, ", read before it"), ("changed", found.changed, ""),
+             ("created", found.created, ""), ("deleted", found.deleted, ""))
+    parts = [f"{verb} {listed(items)}{tail}" for verb, items, tail in kinds if items]
+    parts += [f"moved {in_words(shown_moves[:limit])}"] if shown_moves else []
+    if not parts:
+        return None
+    text = [path for path in found.read if path not in binary]
+    pictures = [path for path in found.read if path in binary]
+    steps = ([f"Read {listed(text)} again before the next Edit."] if text else []) + \
+            ([f"Read {listed(pictures)} again to see what the command made of it."] if pictures else []) + \
+            (["Delete any new file the task does not need, and keep the rest on purpose."]
+             if found.created else []) + (["Use the files' new paths from now on."] if shown_moves else [])
+    actor = "This command, or another command that ran at the same time," if found.beside else "This command"
+    evidence = {kind: [path.as_posix() for path in getattr(found, kind)]
+                for kind in ("read", "changed", "created", "deleted")}
+    evidence["moved"] = [[old.as_posix(), new.as_posix()] for old, new in found.moved]
+    return Result.of(Code.TOUCHED_BY_SHELL, f"{actor} {in_words(parts)}.", tool, platform,
+                     fix=Fix("Read", {}, " ".join(steps)) if steps else None, evidence=evidence)
+
+
 class Touched(Check):
     meta = CheckMeta(
         id="shell.touched", layer=Layer.STALE,
@@ -188,82 +294,16 @@ class Touched(Check):
         return Decision(self.meta.id, Verdict.ALLOW, results=found)
 
     def report(self, before: ShellSnapshot, event: Event, ctx: Context) -> tuple[Result, ...]:
-        skipped = ctx.config.get("skip_trees")
-        own = ctx.session.written_since(before.step)
+        found = changes(before, event, ctx)
         with ctx.session.lock:
-            beside = ctx.session.shell_started > before.step
-
-        def kept(path: Path) -> bool:
-            relative = paths.shown(path, before.root) if before.root is not None else path.as_posix()
-            return path not in own and not any(fnmatch.fnmatch(relative, glob) for glob in skipped)
-
-        moved = {path: ctx.fs.stat(path) for path, stat in before.stats.items() if kept(path)}
-        read = sorted(path for path, stat in moved.items() if stat is not None and stat != before.stats[path])
-        read += sorted(path for path in self.diffed(event)
-                       if path in before.stats and path not in read and kept(path))
-        deleted = sorted(path for path, stat in moved.items()
-                         if stat is None and before.stats[path] is not None)
-        by_status = set()
-        created, changed, added = [], [], []
-        entries = status(ctx, before.root)
-        after = codes(entries)
-        renamed = {before.root / entry.path: before.root / entry.original for entry in entries or ()
-                   if entry.original and before.root is not None}
-        if before.status is not None and after is not None:
-            unindexed = {name for name, code in after if code[0] == "D" and ctx.fs.exists(before.root / name)}
-            for name, code in sorted(after - before.status):
-                path = before.root / name
-                if not kept(path) or path in read or path in deleted or name in unindexed:
-                    continue
-                if path in before.listed and ctx.fs.stat(path) == before.listed[path]:
-                    continue
-                (created if code == "??" else deleted if "D" in code else
-                 added if code[0] in "AR" else changed).append(path)
-                if "D" in code:
-                    by_status.add(path)
-        sizes = {path: stat.size for path, stat in (*before.stats.items(), *before.listed.items()) if stat}
-        named_move = names_a_move(event)
-        gone = deleted + vanished(before, after, ctx)
-        moved = moves(gone, created + added, renamed, sizes, named_move, ctx)
-        deleted = [path for path in deleted if path not in {old for old, _ in moved}]
-        if named_move:
-            deleted = [path for path in deleted if path in by_status]
-        created = [path for path in created if path not in {new for _, new in moved}]
-        changed += [path for path in added if path not in {new for _, new in moved}]
-        limit, cwd, scratch = self.options["listed"], event.cwd, event.scratchpad
-
-        def listed(found: list[Path]) -> str:
-            return named(found, cwd, limit, scratch)
-
-        shown_moves = [] if named_move else [f"{paths.shown(old, cwd, scratch)} to "
-                                             f"{paths.shown(new, cwd, scratch)}" for old, new in moved]
-        parts = ([f"changed {listed(read)}, read before it"] if read else []) + \
-                ([f"changed {listed(changed)}"] if changed else []) + \
-                ([f"created {listed(created)}"] if created else []) + \
-                ([f"deleted {listed(deleted)}"] if deleted else []) + \
-                ([f"moved {in_words(shown_moves[:limit])}"] if shown_moves else [])
-        if not parts:
+            binary = frozenset(path for path in found.read
+                               if (seen := ctx.session.read_profiles.get(path)) and seen.binary)
+        said = summary(found, binary, event.cwd, event.scratchpad, self.options["listed"], event.tool_name,
+                       ctx.platform.os)
+        if said is None:
             return ()
-        with ctx.session.lock:
-            binary = [path for path in read if (seen := ctx.session.read_profiles.get(path)) and seen.binary]
-        text = [path for path in read if path not in binary]
-        steps = ([f"Read {listed(text)} again before the next Edit."] if text else []) + \
-                ([f"Read {listed(binary)} again to see what the command made of it."] if binary else []) + \
-                (["Delete any new file the task does not need, and keep the rest on purpose."]
-                 if created else []) + \
-                (["Use the files' new paths from now on."] if shown_moves else [])
-        actor = "This command, or another command that ran at the same time," if beside else "This command"
-        found = [Result.of(Code.TOUCHED_BY_SHELL, f"{actor} {in_words(parts)}.", event.tool_name,
-                           ctx.platform.os,
-                           fix=Fix("Read", {}, " ".join(steps)) if steps else None,
-                           evidence={"read": [path.as_posix() for path in read],
-                                     "changed": [path.as_posix() for path in changed],
-                                     "created": [path.as_posix() for path in created],
-                                     "deleted": [path.as_posix() for path in deleted],
-                                     "moved": [[old.as_posix(), new.as_posix()] for old, new in moved]})]
-        for path in read:
-            found.extend(self.drift(path, event, ctx))
-        return tuple(found) + self.scripted([*read, *changed], event, ctx)
+        drifted = [result for path in found.read for result in self.drift(path, event, ctx)]
+        return (said, *drifted) + self.scripted([*found.read, *found.changed], event, ctx)
 
     @staticmethod
     def scripted(touched: list[Path], event: Event, ctx: Context) -> tuple[Result, ...]:
@@ -298,15 +338,6 @@ class Touched(Check):
         return (Result.of(Code.SHELL_WRITE, message, event.tool_name, ctx.platform.os,
                           severity=Severity.WARNING, fix=fix,
                           evidence={"script": script, "files": [path.as_posix() for path in written]}),)
-
-    @staticmethod
-    def diffed(event: Event) -> list[Path]:
-        """The files a bashEditDiff in the tool's response names, when Claude Code sent one."""
-        listed = (event.tool_response or {}).get("files")
-        if not isinstance(listed, list):
-            return []
-        return [paths.normalise(entry["filePath"], event.cwd, event.platform) for entry in listed
-                if isinstance(entry, dict) and isinstance(entry.get("filePath"), str)]
 
     @staticmethod
     def drift(path: Path, event: Event, ctx: Context) -> tuple[Result, ...]:

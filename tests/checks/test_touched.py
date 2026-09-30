@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from types import MappingProxyType
 
+from ioguard.checks import touched
 from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import default_registry
 from ioguard.lib.config import Config, defaults
@@ -298,6 +299,23 @@ class WhatTheCommandDidToTheBytes(unittest.TestCase):
         session.after()
         session.run(events.bash("make", CWD))
         self.assertEqual(session.after(), [], "the profile moves on, so the next command is judged alone")
+
+
+class TheReportRendersARecordOfChanges(unittest.TestCase):
+    def test_a_record_of_changes_renders_on_its_own(self):
+        changes = touched.Changes(read=(), changed=(CWD / "b.h",), created=(CWD / "n.txt",), deleted=(),
+                                  moved=((CWD / "a.txt", CWD / "c.txt"),), named_move=False, beside=False)
+        result = touched.summary(changes, frozenset(), CWD, None, 8, "Bash", "win32")
+        self.assertEqual((result.message, result.fix.text),
+                         ("This command changed b.h, created n.txt and moved a.txt to c.txt.",
+                          "Delete any new file the task does not need, and keep the rest on purpose. Use the "
+                          "files' new paths from now on."),
+                         "the record alone decides the message and the steps")
+
+    def test_a_record_with_no_change_renders_nothing(self):
+        changes = touched.Changes((), (), (), (), (), named_move=False, beside=False)
+        self.assertIsNone(touched.summary(changes, frozenset(), CWD, None, 8, "Bash", "win32"),
+                          "a command that changed nothing gets no report")
 
 
 if __name__ == "__main__":

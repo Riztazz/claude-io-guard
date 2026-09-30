@@ -12,6 +12,7 @@ SURFACES = ("hooks", "mcp", "cli")                  # the ways in, which all run
 BRIDGE = (("mcp", "tools_hook"), "ioguard.hooks.bridge")   # the one import between two surfaces
 FRAMEWORK = {"base", "pipeline", "registry"}         # the checks modules that hold no check
 RUNNERS = {"ioguard.checks.pipeline", "ioguard.checks.registry"}   # what a surface takes from checks
+SHORT = 40                                           # the most lines a function of the split modules has
 
 
 def imports_of(path: Path) -> set[str]:
@@ -86,6 +87,16 @@ class PackageLayers(unittest.TestCase):
                     with self.subTest(module=f"{subpackage}/{path.name}", imports=name):
                         self.assertFalse(name.startswith("ioguard.checks") and name not in RUNNERS,
                                          "a way in runs the checks and takes its mechanism from lib")
+
+    def test_the_split_functions_stay_short(self):
+        for module in ("checks/touched.py", "checks/shell_writes.py", "checks/command_results.py",
+                       "lib/writes.py"):
+            tree = ast.parse((PACKAGE / module).read_bytes())
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef):
+                    with self.subTest(module=module, function=node.name):
+                        self.assertLessEqual(node.end_lineno - node.lineno + 1, SHORT,
+                                             "a function that does several jobs is split into one per job")
 
     def test_the_scan_sees_the_packages_it_guards(self):
         self.assertTrue(modules("lib") and modules("checks") and modules("hooks"),

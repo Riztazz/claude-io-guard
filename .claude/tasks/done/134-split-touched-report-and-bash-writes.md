@@ -3,7 +3,7 @@ title: Split the three functions that do several jobs
 stage: I
 area: runtime
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: []
 platforms: [windows, macos]
@@ -51,3 +51,43 @@ others, and a test of one job runs all of them.
 - No function in the three modules is longer than 40 lines.
 - The suite passes, and a replay over the corpus shows the same counts for `shell.touched`, `shell.writes`
   and `shell.results`.
+
+## What changed
+
+Validated on 2026-09-30 before building. All three functions were as described, with two updates: task 129
+moved `bash_writes` to `lib/writes.py:143`, 43 lines, and task 130 had already replaced the `SimpleCommand` it
+built with `program_name`. The rebinding of `edited` by a walrus was still there.
+
+- `lib/writes.py`: `bash_writes` walks the commands and gathers the bodies and script files.
+  `command_writes(simple, where, cwd, host, depth)` returns one simple command's writes, `delegated_writes` the
+  files `find -exec` or `xargs` edits in place, and `run_words` the program's words once. Each case returns,
+  so `edited` has one meaning.
+- `checks/touched.py`: `changes(before, event, ctx)` returns a frozen `Changes` record, the read, changed,
+  created, deleted and moved paths, with `status_changes` sorting what git status lists anew. `summary(changes,
+  binary, cwd, scratchpad, limit, tool, platform)` renders the record into TOUCHED_BY_SHELL, and
+  `Touched.report` joins the two with the byte drift and the script check. `diffed` became a module function.
+- `checks/command_results.py`: `Reading.__init__` reads the command, the exit code and what the call printed,
+  through `printed`. The saved file, its text, the whole output and the error lines are lazy properties,
+  worked out when a reader first asks.
+
+Tests first:
+
+- `test_the_split_functions_stay_short` in `tests/test_layout.py`: no function in the four modules is over 40
+  lines. It failed on `report`, 77, and `bash_writes`, 43.
+- `tests/lib/test_writes.py`: one command's writes for sed -i, find -exec, tee, a redirect, bash -c and ls.
+- `TheReportRendersARecordOfChanges` in `tests/checks/test_touched.py`: a record renders on its own, and an
+  empty one renders nothing.
+
+The existing tests pass unchanged.
+
+Docs: none. `architecture.md` lists no function of the three modules this changes.
+
+Evidence, on Windows on 2026-09-30:
+
+- The suite: 1,094 tests, 1,090 before, OK with 2 skipped.
+- A replay over the corpus with HEAD's code and with this change: 7 checks, shell.writes and shell.results
+  among them, 0 differences. The replay sends no PostToolUse to shell.touched, so its counts are the probes'
+  to show.
+- Live, Claude Code 2.1.283, from this checkout: `live-touched`, `live-touched-move` and `live-touched-index`
+  (the report), `live-refuse` and `live-script-write` (the write finder), `live-results` and `live-pipe-once`
+  (the shell result) pass.

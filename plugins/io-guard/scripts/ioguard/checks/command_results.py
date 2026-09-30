@@ -16,6 +16,7 @@ import logging
 import re
 from collections import Counter
 from collections.abc import Mapping, Sequence
+from functools import cached_property
 from pathlib import Path
 from typing import Any
 
@@ -104,8 +105,8 @@ def reporting(count: int) -> str:
 
 
 class Reading:
-    """One shell result, read once: the command, its exit code, its output and the lines that report
-    errors."""
+    """One shell result, read once: the command, its exit code and what it printed at construction, and the
+    saved output and the lines that report errors when a reader first asks for them."""
 
     def __init__(self, event: Event, ctx: Context, options: Mapping[str, Any]) -> None:
         self.event, self.ctx, self.options = event, ctx, options
@@ -115,28 +116,33 @@ class Reading:
         self.simples = shell.commands(self.command, self.found) if self.bash else pwsh.commands(self.command)
         self.failed = event.kind is HookEvent.POST_TOOL_USE_FAILURE
         self.response = {} if self.failed else dict(event.tool_response or {})
-        if self.failed:
-            error = event.error or ""
-            self.code = output.exit_code(error)
-            self.text = error.split("\n", 1)[1] if self.code is not None and "\n" in error else ""
-        else:
-            self.code = 0
-            stderr = str(self.response.get("stderr") or "")
-            self.text = str(self.response.get("stdout") or "") + (f"\n{stderr}" if stderr else "")
-        self.saved = output.saved_path(self.response or {"stdout": self.text})
-        if self.saved and not output.in_tool_results(self.saved, claude_folder(ctx.env), event.session_id):
-            log.debug("io-guard left %s unread: it is not in this session's tool-results folder", self.saved)
-            self.saved = None
-        self.size, self.whole = self.saved_text() if self.saved else (0, None)
-        self.full = self.text if self.whole is None else self.whole
-        quoting = all(simple.name in QUIET or shell.matching(simple, options["readers"])
-                      for simple in self.simples)
-        patterns = output.compiled(options["error_patterns"])
-        self.errors = () if quoting else output.error_lines(self.full, patterns)
+        self.code, self.text = self.printed()
 
-    def saved_text(self) -> tuple[int, str | None]:
-        """The size and text of the output Claude Code saved to a file. The text is None when the file is
-        missing or larger than max_bytes."""
+    def printed(self) -> tuple[int | None, str]:
+        """The exit code and what the command printed: the text after a failed call's Exit code line, or the
+        stdout and stderr of a call that ran."""
+        if self.failed:
+            error = self.event.error or ""
+            code = output.exit_code(error)
+            return code, error.split("\n", 1)[1] if code is not None and "\n" in error else ""
+        stderr = str(self.response.get("stderr") or "")
+        return 0, str(self.response.get("stdout") or "") + (f"\n{stderr}" if stderr else "")
+
+    @cached_property
+    def saved(self) -> str | None:
+        """The file Claude Code saved a long output to, when it is in this session's tool-results folder."""
+        found = output.saved_path(self.response or {"stdout": self.text})
+        if found and not output.in_tool_results(found, claude_folder(self.ctx.env), self.event.session_id):
+            log.debug("io-guard left %s unread: it is not in this session's tool-results folder", found)
+            return None
+        return found
+
+    @cached_property
+    def stored(self) -> tuple[int, str | None]:
+        """The size and text of the saved output. The text is None with no saved file, or one missing or
+        larger than max_bytes."""
+        if self.saved is None:
+            return 0, None
         path = Path(self.saved)
         found = self.ctx.fs.stat(path)
         if found is None or found.size > self.options["max_bytes"]:
@@ -145,6 +151,27 @@ class Reading:
             return found.size, self.ctx.fs.read_bytes(path).decode("utf-8", "replace")
         except OSError:
             return 0, None
+
+    @property
+    def size(self) -> int:
+        return self.stored[0]
+
+    @property
+    def whole(self) -> str | None:
+        return self.stored[1]
+
+    @property
+    def full(self) -> str:
+        """The whole output: the saved file's text when there is one, else what the call printed."""
+        return self.text if self.whole is None else self.whole
+
+    @cached_property
+    def errors(self) -> tuple[output.ErrorLine, ...]:
+        """The output's lines that report errors, none when every command only reads files or logs."""
+        quoting = all(simple.name in QUIET or shell.matching(simple, self.options["readers"])
+                      for simple in self.simples)
+        patterns = output.compiled(self.options["error_patterns"])
+        return () if quoting else output.error_lines(self.full, patterns)
 
     def label(self, entries: Sequence[str]) -> tuple[int, str] | None:
         """The index and label of the first simple command that runs one of entries."""
