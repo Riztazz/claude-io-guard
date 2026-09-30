@@ -14,6 +14,7 @@ from ioguard.lib.platform import Platform
 from ioguard.lib.results import Code
 from tests.support import events
 from tests.support.fixtures import FIXTURES_DIR
+from tests.support.project import TemporaryProject
 
 CWD = Path("C:/project")
 TARGET = CWD / "a.txt"
@@ -96,6 +97,30 @@ class ANewFileTakesTheConventionAroundIt(unittest.TestCase):
                                        "d.cpp": fixture("lf.txt")}).tool_input["content"]
         self.assertEqual((by_attribute, by_siblings), ("x\r\ny\r\n", "x\r\ny\r\n"),
                          "eol from .gitattributes, else most siblings with the same extension")
+
+    def test_a_new_folder_takes_the_files_of_the_nearest_folder_above(self):
+        files = {"Source/Game/a.h": fixture("crlf.txt"), "Source/Game/b.h": fixture("crlf.txt"),
+                 "Source/Game/c.cpp": fixture("lf.txt")}
+        outcome = write("x\ny\n", files, name="Source/Game/Public/New.h")
+        self.assertEqual((outcome.tool_input["content"], [rewrite.note for rewrite in outcome.rewrites]),
+                         ("x\r\ny\r\n", ["io-guard wrote the content with CRLF line endings, and a final "
+                                         "newline, as the .h files in Source/Game have them."]),
+                         "a folder the call creates holds no .h yet, so the nearest folder above with one "
+                         "sets the ending, and the note names it")
+
+    def test_a_new_folder_in_a_real_repository_takes_crlf(self):
+        with TemporaryProject({"Source/Game/a.h": b"int a;\r\n"}, git=True) as project:
+            path = project / "Source" / "Game" / "Public" / "New.h"
+            event = Event.from_hook_json(events.write(path, "int b;\n", project), Surface.MCP_HOOK)
+            outcome = Pipeline(REGISTRY).run(event, Context.live(None, project, REGISTRY.keys()))
+        self.assertEqual(outcome.tool_input["content"], "int b;\r\n",
+                         "git finds the root from the nearest folder that exists, and Source/Game's .h sets "
+                         "CRLF")
+
+    def test_the_walk_up_stops_at_the_repository_root(self):
+        outcome = write("x\ny\n", {"C:/outside.h": fixture("crlf.txt")}, name="Source/New.h")
+        self.assertEqual(outcome.rewrites, (), "a file above the repository is another project's, so it sets "
+                                               "nothing")
 
     def test_with_nothing_to_go_on_the_content_stays(self):
         self.assertEqual(write("x\ny\n", {"other.cpp": fixture("crlf.txt")}).rewrites, (),

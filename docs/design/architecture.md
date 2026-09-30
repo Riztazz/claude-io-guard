@@ -629,7 +629,9 @@ warned about, and makes the style `CR` only in a file with no other ending. A UT
 UTF-8 form, so its own NUL bytes do not mark it binary. It profiles a megabyte in about 11 ms (task 15).
 `target_profile(siblings, editorconfig, gitattributes)` returns the `Profile` a new file takes, from the
 `.editorconfig` properties that apply to it first, then its `.gitattributes`, then the majority of its siblings.
-The caller resolves all three for the file's path. Its `sha256` is empty and its counts are zero.
+The caller resolves all three for the file's path. `conform.write` takes the siblings from the nearest folder
+at or above the file's own that holds files of its extension, up to the repository's root, since a folder the
+same Write creates holds none yet. Its `sha256` is empty and its counts are zero.
 
 ## 3. Model a check
 

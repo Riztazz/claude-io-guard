@@ -116,6 +116,8 @@ READ_PROFILE = "Read profiled.txt with the Read tool. Then quote word for word a
                "was none, reply NONE."
 CONFORM = "Do these in order, one tool call each, and never retry a failed step. 1. Read keep.txt. 2. Use " \
           "the Write tool on keep.txt with two lines: gamma and delta. Then reply DONE."
+NEW_FOLDER = "Use the Write tool once to create Source/Game/Public/New.h, in a folder that does not exist " \
+             "yet, with two lines: int b; and int c;. Then reply DONE."
 TRAILING = "Read one.txt, then use the Edit tool once on one.txt to replace one = 1 with one = 9. " \
            "Then reply DONE."
 VERIFY = "Do these in order, one tool call each. 1. Read keep.txt. 2. Use the Write tool on keep.txt " \
@@ -543,6 +545,9 @@ PROBES = {
     "live-server-modern": Probe(0, "", guard="", allowed=("Bash", "ToolSearch", IO_READ), prompt=SERVER_READ,
                                 env={"MCP_PROTOCOL_NEGOTIATION": "auto"},
                                 setup={"keep.txt": b"\xef\xbb\xbfalpha\r\nbeta\r\n"}),
+    "live-new-folder": Probe(0, "", guard="", permission="acceptEdits", allowed=("Write",), git=True,
+                              prompt=NEW_FOLDER, check=("Source/Game/Public/New.h",),
+                              setup={"Source/Game/a.h": b"int a;\r\n", ".editorconfig": b"root = true\n"}),
     "live-server-down": Probe(0, "", guard="die", allowed=("Bash",), prompt="", turns=SERVER_DIES, pause_s=40,
                               extra={"dead_marker": True}),
     "live-verify-direct": Probe(0, "", guard="", permission="acceptEdits", allowed=("Read", "Write", "Edit"),
@@ -1365,6 +1370,7 @@ VERDICTS = {
     and "CRLF, BOM" in seen(s),
     "edit-trailing": lambda s, n: s["files"]["one.txt"] == "one = \ntwo = 2\n",
     "live-conform": lambda s, n: s["files"]["keep.txt"] == KEPT_CONFORMED,
+    "live-new-folder": lambda s, n: s["files"]["Source/Game/Public/New.h"] == "int b;\r\nint c;\r\n",
     "live-verify": lambda s, n: repaired_then_edited(s, n, ["Read", "Write", "Read", "Edit"]),
     "live-verify-direct": lambda s, n: repaired_then_edited(s, n, ["Read", "Write", "Edit"]),
     "live-read-only": lambda s, n: s["files"]["Hero.uasset"] == "hero v1\n"

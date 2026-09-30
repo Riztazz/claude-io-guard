@@ -4,19 +4,21 @@ The Write tool writes LF over a CRLF file and drops a BOM (BYT-1, BYT-7), and gi
 changed. For a file that exists, the content takes that file's line ending, BOM and final-newline convention.
 A file that mixes endings keeps the content's endings, with a warning, because no one ending is its own. A new
 file takes the convention target_profile gives: the .editorconfig properties that apply to it, then its
-.gitattributes, then most of its siblings with the same extension. With none of those, the content stays as
-written. A lone CR in the content ends no line, so it stays as written, and the agent hears which line holds
-it, since the Read tool shows it as nothing. A binary or UTF-16 file is left alone, because the Write tool
-writes UTF-8 text. hooks.answer leaves the permission decision to the harness, which asks or approves as it
-would have for the original call.
+.gitattributes, then most of the files with its extension in the nearest folder at or above its own that holds
+any, up to its repository's root, and the note names that folder when it is not the file's own. With none of
+those, the content stays as written. A lone CR in the content ends no line, so it stays as written, and the
+agent hears which line holds it, since the Read tool shows it as nothing. A binary or UTF-16 file is left
+alone, because the Write tool writes UTF-8 text. hooks.answer leaves the permission decision to the harness,
+which asks or approves as it would have for the original call.
 """
 from pathlib import Path
 
 from ioguard.checks.base import Check, CheckMeta, Cost
-from ioguard.lib import editorconfig
+from ioguard.lib import editorconfig, paths
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Rewrite, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
+from ioguard.lib.folders import repository_root
 from ioguard.lib.git import GitError
 from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.profile import (Bom, Eol, Profile, convert_eol, lone_cr_lines, profile, target_profile,
@@ -36,24 +38,44 @@ def read_text(ctx: Context, path: Path) -> str | None:
         return None
 
 
-def new_file_target(path: Path, ctx: Context) -> Profile | None:
-    """The convention a new file takes, or None when nothing names one."""
+def like_files_in(folder: Path, path: Path, ctx: Context) -> list[Profile]:
+    """The profiles of the text files in folder with path's extension, path itself left out."""
+    found = []
+    for sibling in ctx.fs.list_dir(folder):
+        if sibling != path and sibling.suffix.lower() == path.suffix.lower() and len(found) < SIBLINGS:
+            try:
+                found.append(profile(ctx.fs.read_bytes(sibling, SIBLING_BYTES)))
+            except OSError:
+                continue
+    return [sibling for sibling in found if not sibling.binary]
+
+
+def like_files(path: Path, ctx: Context) -> tuple[list[Profile], Path]:
+    """The files with path's extension in the nearest folder at or above path's own that holds any, up to its
+    repository's root, and that folder. A folder the same call creates holds none yet. Outside a repository
+    only path's own folder is read."""
+    found = like_files_in(path.parent, path, ctx)
+    existing = next((folder for folder in path.parents if ctx.fs.is_dir(folder)), None)
+    top = None if found or existing is None else repository_root(ctx.git, existing)
+    if top is None or not path.parent.is_relative_to(top):
+        return found, path.parent
+    for folder in (folder for folder in path.parent.parents if folder.is_relative_to(top)):
+        if above := like_files_in(folder, path, ctx):
+            return above, folder
+    return [], path.parent
+
+
+def new_file_target(path: Path, ctx: Context) -> tuple[Profile | None, Path]:
+    """The convention a new file takes, or None when nothing names one, and the folder whose files set it."""
     properties = editorconfig.properties(path, lambda file: read_text(ctx, file))
     try:
         attributes = dict(ctx.git.attributes(path))
     except GitError:
         attributes = {}
-    siblings = []
-    for sibling in ctx.fs.list_dir(path.parent):
-        if sibling != path and sibling.suffix.lower() == path.suffix.lower() and len(siblings) < SIBLINGS:
-            try:
-                siblings.append(profile(ctx.fs.read_bytes(sibling, SIBLING_BYTES)))
-            except OSError:
-                continue
-    siblings = [sibling for sibling in siblings if not sibling.binary]
+    siblings, folder = like_files(path, ctx)
     if not siblings and "eol" not in attributes and not any(key in properties for key in EDITORCONFIG_KEYS):
-        return None
-    return target_profile(siblings, properties, attributes)
+        return None, folder
+    return target_profile(siblings, properties, attributes), folder
 
 
 def conformed(content: str, target: Profile, existing: bool) -> str:
@@ -94,7 +116,7 @@ class ConformWrite(Check):
                                f"written.", event.tool_name, ctx.platform.os, file=path,
                                fix=Fix("Write", {}, "Write the whole file in one ending."))
             return Decision(self.meta.id, Verdict.ALLOW, results=(result,))
-        target = found if existing else new_file_target(path, ctx)
+        target, folder = (found, path.parent) if existing else new_file_target(path, ctx)
         if target is None:
             return Decision.observe(self.meta.id)
         text = conformed(content, target, existing)
@@ -105,7 +127,12 @@ class ConformWrite(Check):
             return Decision(self.meta.id, Verdict.ALLOW, results=kept)
         endings_changed = text.removeprefix(BOM_CHAR) != content.removeprefix(BOM_CHAR)
         code = Code.EOL_CONVERTED if endings_changed else Code.BOM_RESTORED
-        whose = f"{path.name} has them" if existing else f"a new {path.suffix or 'file'} here takes them"
+        if existing:
+            whose = f"{path.name} has them"
+        elif folder == path.parent:
+            whose = f"a new {path.suffix or 'file'} here takes them"
+        else:
+            whose = f"the {path.suffix} files in {paths.shown(folder, event.cwd)} have them"
         note = (f"io-guard wrote the content with {target.eol.value} line endings"
                 + (", a BOM" if target.bom is Bom.UTF8 else "")
                 + (", and a final newline" if target.final_newline and target.eol is not Eol.NONE else "")
