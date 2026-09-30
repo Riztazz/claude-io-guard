@@ -12,13 +12,14 @@ index alone: a listed file whose status moved while its size and time did not, a
 reset leave one, and a file git removed from the index that is still on disk. A file that moved, by git
 status's rename or by a path gone and a new one with the same name and size, is named as moved, and not at all
 when the command itself names a move, such as git mv, mv or Move-Item, even when a commit in it hides where
-the file went. A file the session's own Edit, Write or io tool wrote while the command ran is not the
-command's, and when another shell command started while it ran, the message says either one may have made
-the change. The advice holds one step for each kind of change that needs one: read a read file again, before
-the next Edit, or to see it when it is an image or other binary file, delete a new file the task does not
-need, and use a moved file's new path. A path in the session's scratchpad is shown from it. A tracked file
-that changed while an interpreter ran a script file also gets SHELL_WRITE, because that write skipped the
-checks an Edit gets, unless a git command in the same command could have changed it.
+the file went. Under such a command, as many paths gone as arrived are its renames, paired by size. A file
+the session's own Edit, Write or io tool wrote while the command ran is not the command's, and when another
+shell command started while it ran, the message says either one may have made the change. The advice holds
+one step for each kind of change that needs one: read a read file again, before the next Edit, or to see it
+when it is an image or other binary file, delete a new file the task does not need, and use a moved file's
+new path. A path in the session's scratchpad is shown from it. A tracked file that changed while an
+interpreter ran a script file also gets SHELL_WRITE, because that write skipped the checks an Edit gets,
+unless a git command in the same command could have changed it.
 """
 import fnmatch
 from collections.abc import Callable, Sequence
@@ -86,7 +87,8 @@ def moves(gone: list[Path], arrived: list[Path], renamed: dict[Path, Path], size
           named_move: bool, ctx: Context) -> list[tuple[Path, Path]]:
     """Each file that left one path and arrived at another: a rename git status names, or a path gone and a
     path new with the same file name, and the same size where the size before is known, or a command that
-    names a move where it is not."""
+    names a move where it is not. When the command names a move and as many paths are left gone as arrived,
+    those pair as its renames."""
     def same_file(old: Path, new: Path) -> bool:
         before, now = sizes.get(old), ctx.fs.stat(new)
         if old.name != new.name:
@@ -100,7 +102,26 @@ def moves(gone: list[Path], arrived: list[Path], renamed: dict[Path, Path], size
         if match is not None:
             pairs.append((match, path))
             left.remove(match)
+    unpaired = [path for path in arrived if path not in {new for _, new in pairs}]
+    if named_move and unpaired and len(unpaired) == len(left):
+        pairs += renames(left, unpaired, sizes, ctx)
     return pairs
+
+
+def renames(gone: list[Path], arrived: list[Path], sizes: dict[Path, int | None],
+            ctx: Context) -> list[tuple[Path, Path]]:
+    """gone and arrived, as long as each other, paired one to one: each arrival with a gone path of its size,
+    then the rest in the order given."""
+    left, pairs, rest = list(gone), [], []
+    for path in arrived:
+        now = ctx.fs.stat(path)
+        match = next((old for old in left if now is not None and sizes.get(old) == now.size), None)
+        if match is None:
+            rest.append(path)
+            continue
+        pairs.append((match, path))
+        left.remove(match)
+    return pairs + list(zip(left, rest))
 
 
 def vanished(before: ShellSnapshot, after: frozenset[tuple[str, str]] | None, ctx: Context) -> list[Path]:

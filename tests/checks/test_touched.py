@@ -123,6 +123,26 @@ class TheCommandsChangesAreNamed(unittest.TestCase):
         self.assertEqual(session.after(command=command), [],
                          "git lists no D for a file it never committed, and the move is still seen")
 
+    def test_untracked_files_the_command_renames_are_no_news(self):
+        command = 'for s in a b; do mv "fable-$s.md" "$n-$s.md"; done'
+        session = Session(before=(entry("fable-a.md", "??"), entry("fable-b.md", "??")))
+        session.fs.files.update({CWD / "fable-a.md": b"task a\n", CWD / "fable-b.md": b"b\n"})
+        session.run(events.bash(command, CWD))
+        for old, new in (("fable-a.md", "129-a.md"), ("fable-b.md", "130-b.md")):
+            session.fs.files[CWD / new] = session.fs.files.pop(CWD / old)
+        session.git.current_status = GitStatus((entry("129-a.md", "??"), entry("130-b.md", "??")))
+        self.assertEqual(session.after(command=command), [],
+                         "a rename the command names changes a file's name, and it creates nothing")
+
+    def test_a_named_rename_pairs_each_path_with_the_one_of_its_size(self):
+        fs = FakeFs({CWD / "129-a.md": b"task a\n", CWD / "130-b.md": b"b\n"})
+        ctx = Context.fake(platform=WINDOWS, fs=fs)
+        gone, arrived = [CWD / "fable-a.md", CWD / "fable-b.md"], [CWD / "130-b.md", CWD / "129-a.md"]
+        sizes = {CWD / "fable-a.md": 7, CWD / "fable-b.md": 2}
+        self.assertEqual(touched.moves(gone, arrived, {}, sizes, True, ctx),
+                         [(CWD / "fable-b.md", CWD / "130-b.md"), (CWD / "fable-a.md", CWD / "129-a.md")],
+                         "with as many paths gone as arrived, each pairs with the one of the same size")
+
     def test_a_move_the_command_does_not_name_is_named_as_a_move(self):
         session = Session()
         session.fs.files[CWD / "open" / "a.md"] = b"task\n"
