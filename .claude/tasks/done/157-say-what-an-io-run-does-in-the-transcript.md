@@ -3,7 +3,7 @@ title: Every io call reads "Used plugin io-guard io: ..." in the transcript, wit
 stage: I
 area: mcp
 created: 2026-09-30
-status: open
+status: done
 depends-on: []
 findings: []
 platforms: [windows, macos]
@@ -51,4 +51,21 @@ Evidence:
 - Not seen: the desktop app's row for a run that carries a description. It needs the plugin updated and the
   app restarted.
 
-Docs: `docs/tools.md` and the `io.run` signature in `docs/design/architecture.md`.
+Seen by the lead on 2026-09-30, in the desktop app on 2.1.283, with the plugin at `34b7823`: the closed row
+still reads "Using plugin io-guard io: Run a program without a shell". The description shows only in the
+opened row, as `description: LOOK FOR THIS SENTENCE`, first among the input's fields. So the field does not
+bring the reason back to the row, and the other options are open again.
+
+Also seen: the `io.run` schema Claude Code gave the session after the restart had no `description`, while the
+server declares it first and accepted a call that carried it. Whether the session held an old tool list or
+Claude Code drops the field is not known.
+
+The lead then chose the skill, on 2026-09-30: "Let's update the skill then". `skills/io-guard/SKILL.md` has a
+new row in its card, "Reach for Read, Edit, Write and Bash first, and an io tool only for the job in its row
+below", and "Pick the tool" opens with the same rule and asks for one line of text before a run of io calls.
+The page is 147 lines, under its limit of 150. D49 in `context.md` holds the decision.
+
+The skill steers a model and cannot make it comply, so how often a session still reaches for `io.read` is not
+measured. `io.run` keeps its `description`, which shows in the opened row.
+
+Docs: `docs/tools.md`, the `io.run` signature in `docs/design/architecture.md`, and D49 in `context.md`.

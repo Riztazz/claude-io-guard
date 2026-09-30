@@ -13,6 +13,7 @@ instead.
 |---|---|
 | **After a refusal, make the call its fix names, once, as written.** | io-guard builds the fix from the file or the command itself. |
 | **Never route around a refusal through the shell or a script.** | A shell write skips every check, and SHELL_WRITE refuses it too. |
+| **Reach for Read, Edit, Write and Bash first, and an io tool only for the job in its row below.** | io-guard checks the built-in tools too, and the user's transcript names their file or their reason. An io call shows only its title. |
 | **Load an io tool with ToolSearch before its first call**, with the query `select:` and the name the table gives. | The io tools stay behind tool search until loaded. |
 | **After an io tool changes a file, Read the file before the next Edit of it.** | Claude Code tracks only its own tools' writes. |
 | **Wait for a long run with the Bash tool's `run_in_background`**, never with a chain of sleep commands. | Claude Code tells the session when it ends, and blocks sleep chains. |
@@ -20,9 +21,10 @@ instead.
 
 ## Pick the tool
 
-Edit makes one change in a file, and Write makes a new file or replaces one whole. io-guard fits both to the
-file's line endings, BOM and indent before they run. The io tools do what the built-in tools do badly or not
-at all:
+Use Read, Edit, Write and Bash for ordinary work. io-guard fits an Edit and a Write to the file's line
+endings, BOM and indent before they run, and names them after a Read. The io tools do what the built-in
+tools do badly or not at all, so pick one only when the job is its row. Before a run of io calls, say in one
+line of text what the run is for, since each call's row shows the user only the tool's title:
 
 <!-- Generated from the io server's tool list. An edit between here and the end line is overwritten. -->
 | Job | Tool | Call it as |
