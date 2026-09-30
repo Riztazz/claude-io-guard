@@ -4,6 +4,11 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from ioguard.lib.editorconfig import properties
+from ioguard.lib.folders import project_root
+from ioguard.lib.git import Git
+from tests.support.project import TemporaryProject
+
 RUNNER = Path(__file__).resolve().parents[1] / "tools" / "probes" / "run_probe.py"
 SPEC = importlib.util.spec_from_file_location("run_probe", RUNNER)
 run_probe = importlib.util.module_from_spec(SPEC)
@@ -31,6 +36,34 @@ class ALiveInvisibleVerdict(unittest.TestCase):
         with named:
             self.assertTrue(run_probe.invisible_named(summary, "live-invisible"),
                             "a character io-guard named still passes")
+
+
+OUTER = {".gitattributes": b"* text=auto eol=lf\n", ".editorconfig": b"root = true\n[*]\nend_of_line = lf\n",
+         ".claude/io-guard.json": b'{"schema": 1, "checks": {"conform.edit": {"enabled": false}}}\n'}
+
+
+def read_text(path: Path) -> str | None:
+    return path.read_bytes().decode("utf-8") if path.is_file() else None
+
+
+class AWorkFolderIsItsOwnProject(unittest.TestCase):
+    def test_a_work_folder_takes_nothing_from_the_repository_around_it(self):
+        with TemporaryProject(OUTER, git=True) as outer:
+            work = outer / "workbench" / "w"
+            run_probe.prepare_work(run_probe.Probe(0, "", ""), work)
+            found = (project_root(work), properties(work / "a.h", read_text).get("end_of_line"),
+                     Git().attributes(work / "a.txt").get("eol"))
+        self.assertEqual(found, (work, None, None),
+                         "the work folder is its own project root, and neither the repository's "
+                         ".editorconfig nor its .gitattributes reach it")
+
+    def test_a_file_the_probe_gives_is_kept(self):
+        with TemporaryProject() as outer:
+            own = b"root = true\n[*]\nindent_size = 3\n"
+            probe = run_probe.Probe(0, "", "", setup={".editorconfig": own})
+            run_probe.prepare_work(probe, outer / "w")
+            given = (outer / "w" / ".editorconfig").read_bytes()
+        self.assertEqual(given, own, "the probe's own file is never replaced")
 
 
 if __name__ == "__main__":

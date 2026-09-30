@@ -116,6 +116,8 @@ READ_PROFILE = "Read profiled.txt with the Read tool. Then quote word for word a
                "was none, reply NONE."
 CONFORM = "Do these in order, one tool call each, and never retry a failed step. 1. Read keep.txt. 2. Use " \
           "the Write tool on keep.txt with two lines: gamma and delta. Then reply DONE."
+EVERY_WORK = {".editorconfig": b"root = true\n"}
+OUTSIDE_GIT = {".gitattributes": b"* !text !eol\n", ".claude/io-guard.json": b'{"schema": 1}\n'}
 NEW_FOLDER = "Use the Write tool once to create Source/Game/Public/New.h, in a folder that does not exist " \
              "yet, with two lines: int b; and int c;. Then reply DONE."
 TRAILING = "Read one.txt, then use the Edit tool once on one.txt to replace one = 1 with one = 9. " \
@@ -550,7 +552,7 @@ PROBES = {
                                 setup={"keep.txt": b"\xef\xbb\xbfalpha\r\nbeta\r\n"}),
     "live-new-folder": Probe(0, "", guard="", permission="acceptEdits", allowed=("Write",), git=True,
                               prompt=NEW_FOLDER, check=("Source/Game/Public/New.h",),
-                              setup={"Source/Game/a.h": b"int a;\r\n", ".editorconfig": b"root = true\n"}),
+                              setup={"Source/Game/a.h": b"int a;\r\n"}),
     "live-server-down": Probe(0, "", guard="die", allowed=("Bash",), prompt="", turns=SERVER_DIES, pause_s=40,
                               extra={"dead_marker": True}),
     "live-verify-direct": Probe(0, "", guard="", permission="acceptEdits", allowed=("Read", "Write", "Edit"),
@@ -677,9 +679,17 @@ def git(work: Path, *args: str) -> None:
                    timeout=60)
 
 
+def shields(probe: Probe) -> dict[str, bytes]:
+    """The files that make a work folder its own project, so this repository's .editorconfig stops at it,
+    and, for a work folder that is no repository of its own, its .gitattributes and .claude/io-guard.json
+    too. A file the probe's setup names is the probe's."""
+    found = {**EVERY_WORK, **({} if probe.git else OUTSIDE_GIT)}
+    return {rel: data for rel, data in found.items() if rel not in probe.setup}
+
+
 def prepare_work(probe: Probe, work: Path) -> None:
     work.mkdir(parents=True)
-    for rel, data in probe.setup.items():
+    for rel, data in {**shields(probe), **probe.setup}.items():
         (work / rel).parent.mkdir(parents=True, exist_ok=True)
         (work / rel).write_bytes(data)
     if probe.extra.get("outside_dir"):
