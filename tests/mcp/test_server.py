@@ -14,14 +14,18 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from ioguard.checks.registry import default_registry
 from ioguard.lib import snapshots
 from ioguard.lib.config import Config, Scope, all_keys, defaults, validate
 from ioguard.lib.context import Context
 from ioguard.lib.heartbeat import Era, parse
+from ioguard.lib.platform import detect
+from ioguard.lib.ports import LiveFs
 from ioguard.lib.results import Code
 from ioguard.mcp.progress import CancelToken
 from ioguard.mcp.protocol import Protocol
 from ioguard.mcp.server import SAVED, SERVER_INFO, Server, expire
+from ioguard.mcp.tools_run import SPECS as RUN_SPECS
 from ioguard.mcp.toolspec import ToolCall, ToolRegistry, ToolSpec
 from tests import PLUGIN_SCRIPTS, REPO
 from tests.support import injected
@@ -223,6 +227,54 @@ class ACancelledCallAnswersCancelled(unittest.TestCase):
         answer = json.loads(out.getvalue())
         self.assertEqual((answer["result"]["isError"], answer["result"]["structuredContent"]["code"]),
                          (True, Code.CANCELLED.value), "the call the client cancelled answers CANCELLED")
+
+    def test_a_foreground_io_run_cancelled_mid_run_stops_and_answers_cancelled(self):
+        data = Path(tempfile.mkdtemp(prefix="ioguard-cancel-"))
+        self.addCleanup(shutil.rmtree, data, True)
+        ctx = Context.fake(config=defaults(default_registry().keys()), fs=LiveFs(), data_dir=data,
+                           platform=detect(), env=dict(os.environ))
+        tools = ToolRegistry()
+        for spec in RUN_SPECS:
+            tools.register(spec)
+        protocol = Protocol(tools, SERVER_INFO, lambda cancel: ToolCall(lambda: ctx, cancel, REPO, None))
+        out = Watched()
+        server = Server(protocol, out)
+        started = time.monotonic()
+        server.take(request(1, "tools/call", {"name": "io.run", "_meta": {"progressToken": "t"},
+                                               "arguments": {"argv": [sys.executable, "-c",
+                                                                      "import time; time.sleep(5)"]}}))
+        out.progress.wait(10)
+        server.take(json.dumps({"jsonrpc": "2.0", "method": "notifications/cancelled",
+                                "params": {"requestId": 1}}).encode("ascii"))
+        server.stop()
+        took = time.monotonic() - started
+        answer = next(json.loads(line) for line in out.getvalue().splitlines() if b'"id": 1' in line)
+        self.assertEqual((answer["result"]["structuredContent"]["code"], took < 4),
+                         (Code.CANCELLED.value, True),
+                         "a run the client cancels stops before its program would end, and answers CANCELLED")
+
+    def test_every_cancel_is_logged_with_whether_io_guard_held_the_call(self):
+        protocol = Protocol(ToolRegistry(), SERVER_INFO,
+                            lambda cancel: ToolCall(lambda: None, cancel, REPO, None))
+        server = Server(protocol, io.BytesIO())
+        with self.assertLogs("ioguard.mcp", "DEBUG") as logged:
+            server.take(json.dumps({"jsonrpc": "2.0", "method": "notifications/cancelled",
+                                    "params": {"requestId": 7, "reason": "user interrupt"}}).encode("ascii"))
+        self.assertIn("request 7, which io-guard holds no call for", "\n".join(logged.output),
+                      "a cancel for a call that never reached the server leaves a trace in the debug log")
+
+
+class Watched(io.BytesIO):
+    """The server's output, which says when the first progress notification went out."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.progress = threading.Event()
+
+    def write(self, data: bytes) -> int:
+        if b"notifications/progress" in data:
+            self.progress.set()
+        return super().write(data)
 
 
 class TheServerOutlastsBadInputAndStopsOnTime(unittest.TestCase):

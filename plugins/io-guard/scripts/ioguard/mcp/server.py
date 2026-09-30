@@ -137,6 +137,9 @@ class Server:
                 return
             with self.state_lock:
                 token = self.tokens.get(request)
+            held = "a running call" if token is not None else "which io-guard holds no call for"
+            log.debug("The client cancelled request %s, %s: %s", request, held,
+                      (message.get("params") or {}).get("reason") or "no reason given")
             if token is not None:
                 token.cancel()
 

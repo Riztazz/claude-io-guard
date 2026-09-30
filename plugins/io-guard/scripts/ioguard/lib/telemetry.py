@@ -200,11 +200,13 @@ def removed(data_dir: Path, paths: list[Path], now: datetime) -> list[Path]:
 
 
 def debug_log(path: Path) -> None:
-    """Send every ioguard log record to path as well, once per process however often it is called."""
+    """Send every ioguard log record to path as well, the debug lines too, once per process however often it
+    is called."""
     logger = logging.getLogger("ioguard")
     target = os.path.abspath(path)
     if any(getattr(handler, "baseFilename", None) == target for handler in logger.handlers):
         return
+    logger.setLevel(logging.DEBUG)
     path.parent.mkdir(parents=True, exist_ok=True)
     handler = logging.FileHandler(target, encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))

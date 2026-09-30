@@ -1,5 +1,6 @@
 """Telemetry writes one line per event into its session's monthly file, and never file content."""
 import json
+import logging
 import os
 import shutil
 import tempfile
@@ -8,8 +9,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ioguard import TELEMETRY_SCHEMA
-from ioguard.lib.telemetry import (Telemetry, TelemetryEvent, erase, expire, program_of, session_files,
-                                   shrink_heads, trace_from)
+from ioguard.lib.telemetry import (Telemetry, TelemetryEvent, debug_log, erase, expire, program_of,
+                                   session_files, shrink_heads, trace_from)
 
 WHEN = datetime(2026, 9, 27, 14, 3, 11, 412000, tzinfo=timezone.utc)
 NOW = datetime(2026, 10, 5, 12, tzinfo=timezone.utc)
@@ -151,6 +152,27 @@ class TraceContexts(unittest.TestCase):
         self.assertEqual(trace_from("toolu_01ABC", "garbage").trace_id,
                          trace_from("toolu_01ABC", None).trace_id,
                          "a traceparent that is not W3C form is ignored")
+
+
+class TheDebugLogHoldsDebugLines(unittest.TestCase):
+    def test_a_debug_line_reaches_the_debug_log(self):
+        logger = logging.getLogger("ioguard")
+        level, kept = logger.level, list(logger.handlers)
+        folder = Path(tempfile.mkdtemp(prefix="ioguard-debug-"))
+        self.addCleanup(shutil.rmtree, folder, True)
+
+        def restore() -> None:
+            for handler in [handler for handler in logger.handlers if handler not in kept]:
+                logger.removeHandler(handler)
+                handler.close()
+            logger.setLevel(level)
+        self.addCleanup(restore)
+        debug_log(folder / "debug.log")
+        logging.getLogger("ioguard.mcp").debug("The client cancelled request 7")
+        for handler in logger.handlers:
+            handler.flush()
+        self.assertIn("The client cancelled request 7", (folder / "debug.log").read_bytes().decode("utf-8"),
+                      "with telemetry.debug on, a debug line reaches debug.log, not only warnings")
 
 
 if __name__ == "__main__":

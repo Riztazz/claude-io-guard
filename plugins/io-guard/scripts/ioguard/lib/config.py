@@ -163,7 +163,8 @@ GLOBAL_KEYS: dict[str, ConfigKey] = {
                                           "line, checked when the io server starts. 0 keeps every file. Only "
                                           "your own config sets it, since every project's telemetry shares "
                                           "one folder.", project_may_set=False),
-    "telemetry.debug": ConfigKey(bool, False, "Write tracebacks to the debug log."),
+    "telemetry.debug": ConfigKey(bool, False, "Write tracebacks and io-guard's debug lines to the debug "
+                                              "log."),
     "io.server.workers": ConfigKey(int, 4, "Threads each session's io server runs tool calls and hooks on, "
                                    "and the session probe measures with, at least 1. At 1, a long io.run "
                                    "holds back every hook until it ends. A change applies from the next "

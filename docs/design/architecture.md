@@ -1178,7 +1178,8 @@ dropped whole, the guard runs with the layers that loaded, and one
 `scripts/hook.py <event>` reads stdin as bytes, decodes UTF-8, calls `hooks.entry.run_event`, writes one ASCII
 JSON answer to stdout and exits 0. Nothing else reaches stdout. A crash before the answer is written prints `{}`
 and logs `GUARD_ERROR` to stderr. The `ioguard` logger has a `NullHandler`, so a log record reaches only
-`debug.log`, and only when `telemetry.debug` is true.
+`debug.log`, and only when `telemetry.debug` is true, which lowers the logger to DEBUG so the debug lines land
+too, such as each cancel a client sends and whether the server held the call (task 152).
 
 ```python
 def run_event(raw: Mapping[str, Any], surface: Surface, ctx: Optional[Context] = None,
