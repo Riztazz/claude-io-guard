@@ -13,6 +13,7 @@ from pathlib import Path, PurePath
 from typing import Any
 
 from ioguard.lib import paths
+from ioguard.lib.text import character_class
 
 EXIT = re.compile(r"\AExit code (\d+)")
 SAVED = re.compile(r"Output too large \([^)\n]*\)\. Full output saved to: ([^\n]+)")
@@ -23,8 +24,7 @@ CODE_PAGE_SPANS = ((0x80, 0xFF), (0x102, 0x107), (0x10C, 0x111), (0x118, 0x11B),
                    (0x16E, 0x171), (0x178, 0x17E), (0x192, 0x192), (0x2C6, 0x2C7), (0x2D8, 0x2DD),
                    (0x2013, 0x2014), (0x2018, 0x201E), (0x2020, 0x2022), (0x2026, 0x2026),
                    (0x2030, 0x2030), (0x2039, 0x203A), (0x20AC, 0x20AC), (0x2122, 0x2122))
-CODE_PAGE_RUN = re.compile("[" + "".join(f"{chr(low)}-{chr(high)}" for low, high in CODE_PAGE_SPANS)
-                           + "]{2,}")
+CODE_PAGE_RUN = re.compile(f"[{character_class(CODE_PAGE_SPANS)}]{{2,}}")
 
 
 @dataclass(frozen=True)

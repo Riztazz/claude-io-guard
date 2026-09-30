@@ -21,6 +21,7 @@ from ioguard.lib.git import GitError
 from ioguard.lib.profile import (Bom, Eol, Profile, convert_eol, lone_cr_lines, profile, target_profile,
                                  with_bom, with_final_newline)
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity
+from ioguard.lib.text import BOM_CHAR
 
 SIBLINGS = 20                  # the most same-extension files profiled for a new file's convention
 SIBLING_BYTES = 64 * 1024      # read from each, enough for its endings, BOM and indent
@@ -101,7 +102,7 @@ class ConformWrite(Check):
             return Decision.observe(self.meta.id)
         if text == content:
             return Decision(self.meta.id, Verdict.ALLOW, results=kept)
-        endings_changed = text.removeprefix(chr(0xFEFF)) != content.removeprefix(chr(0xFEFF))
+        endings_changed = text.removeprefix(BOM_CHAR) != content.removeprefix(BOM_CHAR)
         code = Code.EOL_CONVERTED if endings_changed else Code.BOM_RESTORED
         whose = f"{path.name} has them" if existing else f"a new {path.suffix or 'file'} here takes them"
         note = (f"io-guard wrote the content with {target.eol.value} line endings"

@@ -13,7 +13,7 @@ import re
 import tokenize
 from dataclasses import dataclass
 
-from ioguard.lib.profile import BOM_CHAR
+from ioguard.lib.text import BOM_CHAR
 
 C_FAMILY = frozenset({".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp", ".cs",
                       ".java", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs", ".swift", ".kt", ".kts", ".m",

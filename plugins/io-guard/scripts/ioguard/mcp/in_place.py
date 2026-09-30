@@ -15,8 +15,9 @@ from pathlib import Path
 
 from ioguard.lib import journal, locks, paths
 from ioguard.lib.context import Context
-from ioguard.lib.profile import BOM_CHAR, Bom, Profile, profile
+from ioguard.lib.profile import Bom, Profile, profile
 from ioguard.lib.results import Code, Fix, Result, Severity, callable_name
+from ioguard.lib.text import BOM_CHAR
 from ioguard.mcp.toolspec import ToolFailure
 
 NOTE = "The built-in Edit tool needs a fresh Read of this file before its next use."

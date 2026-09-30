@@ -16,6 +16,12 @@ class EventError(ValueError):
     """The harness sent an event io-guard cannot read."""
 
 
+def by_value[E: Enum](enum: type[E], value: str, fallback: E) -> E:
+    """The member of enum whose value is value, or fallback for a value enum does not know, and for the
+    fallback's own value, which names no real member."""
+    return next((each for each in enum if each.value == value and each is not fallback), fallback)
+
+
 class HookEvent(Enum):
     SESSION_START = "SessionStart"
     PRE_TOOL_USE = "PreToolUse"
@@ -38,7 +44,7 @@ class Tool(Enum):
     @classmethod
     def named(cls, name: str) -> "Tool":
         """The tool with this harness name, or OTHER for an MCP tool or a tool io-guard does not know."""
-        return next((tool for tool in cls if tool.value == name and tool is not cls.OTHER), cls.OTHER)
+        return by_value(cls, name, cls.OTHER)
 
 
 class PermissionMode(Enum):
@@ -52,7 +58,7 @@ class PermissionMode(Enum):
 
     @classmethod
     def named(cls, name: str) -> "PermissionMode":
-        return next((mode for mode in cls if mode.value == name and mode is not cls.UNKNOWN), cls.UNKNOWN)
+        return by_value(cls, name, cls.UNKNOWN)
 
 
 class Surface(Enum):

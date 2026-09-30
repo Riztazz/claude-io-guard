@@ -12,6 +12,8 @@ import difflib
 import re
 from dataclasses import dataclass
 
+from ioguard.lib.text import BOM_CHAR
+
 SPACE_RUN = re.compile(r"[ \t]+")
 WORD_RUN = re.compile(r"[^ \t]+")
 FUZZY_FLOOR = 0.5          # a window scoring below this is not offered as a near miss
@@ -38,6 +40,11 @@ class Candidate:
 def edit_view(text: str) -> str:
     """text as the Edit tool reads it, with every CRLF and every lone CR as LF."""
     return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def file_view(text: str) -> str:
+    """A file's whole text as the Edit tool reads it: no BOM, and every ending as LF."""
+    return edit_view(text.removeprefix(BOM_CHAR))
 
 
 def line_of(text: str, offset: int) -> int:

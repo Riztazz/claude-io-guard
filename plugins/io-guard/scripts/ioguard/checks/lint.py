@@ -23,8 +23,7 @@ from ioguard.lib.decisions import Decision, Rewrite, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.program import program_name
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity
-
-POWERSHELLS = frozenset({"powershell", "pwsh"})
+from ioguard.lib.rules import POWERSHELLS
 # A cmdlet as PowerShell writes it, Verb-Noun with capitals, or one of the common ones in any case. A lower
 # case verb-noun is also how programs such as wait-on or start-server are named.
 CMDLET = re.compile(r"^(?:Get|Set|New|Remove|Select|Where|ForEach|Write|Test|Start|Stop|Invoke|Out|Format"

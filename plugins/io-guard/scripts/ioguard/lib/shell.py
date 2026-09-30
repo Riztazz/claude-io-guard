@@ -507,7 +507,7 @@ BODY_FILE = re.compile(r"(?<![^\s'\"<>])[^\s'\"<>]*(?:io-guard|bodies)/body-[0-9
 PYTHON = re.compile(rf"^{PYTHON_NAME}$", re.I)
 INTERPRETERS = re.compile(r"^(?:python[\d.]*|py|node|perl|ruby)$")
 INLINE = {"-c", "-m", "-", "-e", "--eval", "-p", "--print"}   # the flags that run no script file
-TAKES_VALUE = {"-W", "-X"}
+TAKES_VALUE = {"-W", "-X"}   # python's options whose value is the next word
 
 
 @dataclass(frozen=True)
@@ -545,7 +545,7 @@ def python_reads_stdin(simple: SimpleCommand) -> bool:
             return True
         if word in ("-c", "-m") or not word.startswith("-"):
             return False
-        if word in ("-W", "-X"):
+        if word in TAKES_VALUE:
             next(words, None)
     return True
 

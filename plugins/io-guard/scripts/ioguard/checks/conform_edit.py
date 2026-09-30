@@ -53,7 +53,7 @@ class ConformEdit(Check):
             return Decision.observe(self.meta.id)
         try:
             data = ctx.fs.read_bytes(path)
-            text = anchors.edit_view(data.decode("utf-8").removeprefix(chr(0xFEFF)))
+            text = anchors.file_view(data.decode("utf-8"))
         except (OSError, UnicodeDecodeError):
             return Decision.observe(self.meta.id)
         every = event.replace_all is True

@@ -11,15 +11,16 @@ import json
 import re
 from collections import Counter
 
-PRIVATE_USE = re.compile(f"[{chr(0xE000)}-{chr(0xF8FF)}{chr(0xF0000)}-{chr(0x10FFFD)}]")
-MARKERS = {"\t": "[TAB]", "\r": "[CR]", chr(0xFEFF): "[BOM]"}
+BOM_CHAR = chr(0xFEFF)
+MARKERS = {"\t": "[TAB]", "\r": "[CR]", BOM_CHAR: "[BOM]"}
+PRIVATE_RANGES = ((0xE000, 0xF8FF), (0xF0000, 0x10FFFD))
 FORMAT_RANGES = ((0xAD, 0xAD), (0x600, 0x605), (0x61C, 0x61C), (0x6DD, 0x6DD), (0x70F, 0x70F), (0x890, 0x891),
                  (0x8E2, 0x8E2), (0x180E, 0x180E), (0x200B, 0x200F), (0x202A, 0x202E), (0x2060, 0x2064),
                  (0x2066, 0x206F), (0xFEFF, 0xFEFF), (0xFFF9, 0xFFFB), (0x110BD, 0x110BD), (0x110CD, 0x110CD),
                  (0x13430, 0x1343F), (0x1BCA0, 0x1BCA3), (0x1D173, 0x1D17A), (0xE0001, 0xE0001),
                  (0xE0020, 0xE007F))              # Unicode category Cf, 16.0
 SPACES = ((0xA0, 0xA0), (0x2028, 0x2029))       # a no-break space, and the line and paragraph separators
-INVISIBLE_RANGES = (*FORMAT_RANGES, *SPACES, (0xE000, 0xF8FF), (0xF0000, 0x10FFFD))
+INVISIBLE_RANGES = (*FORMAT_RANGES, *SPACES, *PRIVATE_RANGES)
 SHOWN = 5               # line numbers a message lists before it gives the rest as a count
 
 
@@ -29,14 +30,15 @@ def character_class(ranges: tuple[tuple[int, int], ...]) -> str:
 
 
 INVISIBLE = re.compile(f"[{character_class(INVISIBLE_RANGES)}]")
+PRIVATE_USE = re.compile(f"[{character_class(PRIVATE_RANGES)}]")
 
 
 def invisible_added(before: str, after: str,
                     allowed: frozenset[str] = frozenset()) -> tuple[tuple[int, str], ...]:
     """Each invisible character after holds more of than before does, by its first line in after counted from
     1, as U+XXXX, less the allowed ones. A BOM at the very start of after is the file's, not text."""
-    had = Counter(INVISIBLE.findall(before.removeprefix(chr(0xFEFF))))
-    body = after.removeprefix(chr(0xFEFF))
+    had = Counter(INVISIBLE.findall(before.removeprefix(BOM_CHAR)))
+    body = after.removeprefix(BOM_CHAR)
     extra = Counter(INVISIBLE.findall(body)) - had
     found = []
     for char in sorted(extra):

@@ -21,7 +21,7 @@ from pathlib import Path
 from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.lib import probing, proc
 from ioguard.lib.config import ConfigKey
-from ioguard.lib.context import Context, FsPort, GitPort, Probe, session_file
+from ioguard.lib.context import Context, FsPort, GitPort, Probe, ToolVersion, session_file
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent
 from ioguard.lib.git import GitError
@@ -68,7 +68,7 @@ def measure(event: Event, ctx: Context, dirty_wanted: bool) -> tuple[Probe, tupl
         os=ctx.platform.os,
         bash=versions["bash"].result() if "bash" in versions else None,
         pwsh=versions["pwsh"].result() if "pwsh" in versions else None,
-        python=probing.this_python(),
+        python=ToolVersion.this_python(),
         git=versions["git"].result() if "git" in versions else None,
         console_encoding=probing.console_encoding(),
         fs_case_insensitive=probing.case_insensitive(folder, ctx.platform.case_insensitive),

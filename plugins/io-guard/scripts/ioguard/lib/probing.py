@@ -5,12 +5,11 @@ proc.on_path finds each tool.
 import locale
 import os
 import re
-import sys
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from ioguard.lib import proc
-from ioguard.lib.context import ToolVersion
+from ioguard.lib.context import ToolVersion, file_stamp
 
 AGENT = re.compile(r"claude-code_(\d+)-(\d+)-(\d+)")
 EXECUTABLE = re.compile(r"[\\/](\d+\.\d+\.\d+)[\\/]claude(?:\.exe)?$", re.I)
@@ -19,21 +18,12 @@ FIXED_IN: str | None = None  # the first Claude Code release without the cut and
 Runner = Callable[..., proc.RunResult]
 
 
-def stamp(path: str) -> str | None:
-    """The file's size and modification time, which change when the tool is replaced."""
-    try:
-        found = os.stat(path)
-    except OSError:
-        return None
-    return f"{found.st_size}:{found.st_mtime_ns}"
-
-
 def tool_version(path: str, pattern: re.Pattern, previous: ToolVersion | None = None,
                  run: Runner = proc.run, timeout_s: float = 2.0) -> ToolVersion | None:
     """The version path --version prints, found by pattern's first group, run in the tool's own folder. A
     previous measure of the same unchanged file is kept without running anything. None when the tool fails or
     prints no version."""
-    current = stamp(path)
+    current = file_stamp(path)
     if previous is not None and current is not None and (previous.path, previous.stamp) == (path, current):
         return previous
     done = run([path, "--version"], Path(path).parent, timeout_s=timeout_s)
@@ -61,11 +51,6 @@ def cut_applies(windows: bool, version: str | None) -> bool:
     if FIXED_IN is None or version is None:
         return True
     return version_tuple(version) < version_tuple(FIXED_IN)
-
-
-def this_python() -> ToolVersion:
-    return ToolVersion(sys.executable, ".".join(str(part) for part in sys.version_info[:3]),
-                       stamp(sys.executable))
 
 
 def console_encoding() -> str:

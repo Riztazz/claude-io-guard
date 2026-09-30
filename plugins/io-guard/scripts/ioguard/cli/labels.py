@@ -6,6 +6,8 @@ rule here changes only with a note in both reports.
 """
 import re
 
+from ioguard.lib.text import BOM_CHAR
+
 SHELLS = frozenset({"Bash", "PowerShell"})
 BACKSLASH = chr(92)
 
@@ -36,7 +38,7 @@ SHELL_RESULT: tuple[tuple[str, re.Pattern], ...] = (
     ("no-such-file", re.compile(r"No such file or directory|cannot find (?:the )?path|does not exist"
                                 r"|FileNotFoundError|Cannot find path", re.I)),
     ("null-bytes", re.compile(any_of(BACKSLASH + "x00", chr(0), chr(0xFF) + chr(0xFE)) + "|UTF-16", re.I)),
-    ("bom", re.compile(any_of(chr(0xFEFF), BACKSLASH + "ufeff", chr(0xEF) + chr(0xBB) + chr(0xBF))
+    ("bom", re.compile(any_of(BOM_CHAR, BACKSLASH + "ufeff", chr(0xEF) + chr(0xBB) + chr(0xBF))
                        + r"|\bBOM\b|utf-8-sig", re.I)),
     ("truncated", re.compile(r"Output too large|output truncated|\[truncated|lines truncated", re.I)),
 )

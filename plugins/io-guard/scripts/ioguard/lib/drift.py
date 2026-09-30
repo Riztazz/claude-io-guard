@@ -8,7 +8,9 @@ import difflib
 import re
 from dataclasses import dataclass
 
-from ioguard.lib.profile import BOM_CHAR, LINE_BREAK, Bom, Eol, Profile, convert_eol, with_bom
+from ioguard.lib import anchors
+from ioguard.lib.profile import LINE_BREAK, Bom, Eol, Profile, convert_eol, with_bom
+from ioguard.lib.text import BOM_CHAR
 
 STYLES = (Eol.CRLF, Eol.LF, Eol.CR)
 CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
@@ -70,7 +72,7 @@ class Edited:
 def edited(before: str, old: str, new: str, replace_all: bool) -> Edited | None:
     """before with the edit applied. None when old_string is not in before once, or at all for replace_all,
     because the tool then matched some other way or failed."""
-    text, old, new = (LINE_BREAK.sub("\n", part) for part in (before.removeprefix(BOM_CHAR), old, new))
+    text, old, new = anchors.file_view(before), anchors.edit_view(old), anchors.edit_view(new)
     found = text.count(old) if old else 0
     if found == 0 or (found > 1 and not replace_all):
         return None

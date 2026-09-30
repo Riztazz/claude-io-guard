@@ -37,8 +37,8 @@ plugins/io-guard/
         writes.py                  Host, Write, located, resolve, targets, bash_writes, powershell_writes: the
                                    files a shell command writes, and the folder each of its commands runs in
         commands.py                command_for, filled: the user's verify and format commands per extension
-        anchors.py                 find, blind, closest, unique_anchor, edit_view, joins: where an old_string
-                                   is, or nearly is, and where an Edit joins two words
+        anchors.py                 find, blind, closest, unique_anchor, edit_view, file_view, joins: where an
+                                   old_string is, or nearly is, and where an Edit joins two words
         edits.py                   replaced, change, apply, appended, wrapped, carried: changes placed as the
                                    Edit tool reads a file, and made in the file's own text
         indent.py                  style, reindented, around, fitted: new text in the indent of the lines where
@@ -59,8 +59,9 @@ plugins/io-guard/
         config.py                  Config, SCHEMA, load, validate, merge
         config_edit.py             placed, value_at, encoded: one setting written where its file keeps it.
                                    needs_yes, config_write: the io.config write that waits for the user's yes
-        events.py                  HookEvent, Tool, PermissionMode, Surface, Event
-        context.py                 Context, the ports, SessionState, Probe, tracked, project_of
+        events.py                  HookEvent, Tool, PermissionMode, Surface, Event, by_value
+        context.py                 Context, the ports, SessionState, Probe, ToolVersion.this_python, tracked,
+                                   project_of
         decisions.py               Verdict, Rewrite, Decision, compose
         telemetry.py               Telemetry, TraceContext, session_files, expire, erase
         trust.py                   fingerprint, approved, approve, listed, untrusted: the project commands the
@@ -68,7 +69,9 @@ plugins/io-guard/
         telemetry_summary.py       Summary, files, summarise, page: every session's telemetry summed
         platform.py                Platform, detect
         probing.py                 tool_version, claude_version, console_encoding, case_insensitive, cut_applies
-        text.py                    visible, quoted, snippet, head, invisible_added, listed
+        text.py                    BOM_CHAR, PRIVATE_USE, character_class, visible, quoted, snippet, head,
+                                   invisible_added, listed: the characters io-guard names, and text shown to
+                                   the model
         transcript.py              refusals: the calls Claude Code refused before any hook, from the transcript
         output.py                  exit_code, saved_path, compiled, error_lines, mojibake, excerpt: what a shell
                                    result says
@@ -823,6 +826,7 @@ def blind(text: str, anchor: str) -> tuple[Match, ...]      # each place with sp
 def closest(text: str, anchor: str, limit: int = 3) -> tuple[Candidate, ...]  # blind, or scored windows
 def unique_anchor(text: str, match: Match) -> str           # whole lines around match, below then above
 def edit_view(text: str) -> str                             # task 24: every CRLF and lone CR as LF
+def file_view(text: str) -> str                             # a whole file: no BOM, then edit_view
 def joins(text: str, old: str, new: str, every: bool) -> tuple[Joined, ...]
                                                             # task 49: each line new ends up joined to the
                                                             # text after the space old ends with

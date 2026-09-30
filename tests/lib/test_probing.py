@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from ioguard.lib import probing
-from ioguard.lib.context import ToolVersion
+from ioguard.lib.context import ToolVersion, file_stamp
 from ioguard.lib.platform import detect
 from ioguard.lib.proc import RunResult
 from tests.support.project import TemporaryProject
@@ -39,7 +39,7 @@ class AToolVersionIsMeasuredOnce(unittest.TestCase):
     def test_an_unchanged_tool_keeps_its_previous_version_without_running(self):
         with TemporaryProject({"tool": b"x"}) as root:
             path = str(root / "tool")
-            previous = ToolVersion(path, "1.0.0", probing.stamp(path))
+            previous = ToolVersion(path, "1.0.0", file_stamp(path))
             runner = Runner(b"version 9.9.9")
             found = probing.tool_version(path, PATTERN, previous, run=runner)
         self.assertEqual((found, runner.calls), (previous, []), "a stamp that still matches skips the run")
@@ -92,7 +92,7 @@ class TheMachine(unittest.TestCase):
         self.assertTrue(probing.console_encoding(), "the encoding a piped Python prints through has a name")
 
     def test_this_python_is_stamped(self):
-        python = probing.this_python()
+        python = ToolVersion.this_python()
         self.assertEqual((python.version.split(".")[0], python.stamp is not None), ("3", True),
                          "the running Python is measured with its stamp")
 

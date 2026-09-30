@@ -62,7 +62,7 @@ class Failed:
 
 def file_text(data: bytes) -> str:
     """The file as the Edit tool reads it: UTF-8, every line ending as LF, no BOM."""
-    return anchors.edit_view(data.decode("utf-8", "replace").removeprefix(chr(0xFEFF)))
+    return anchors.file_view(data.decode("utf-8", "replace"))
 
 
 def span(match: anchors.Match) -> str:

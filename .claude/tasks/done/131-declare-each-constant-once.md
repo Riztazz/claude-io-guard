@@ -3,7 +3,7 @@ title: Declare each shared constant and small helper once
 stage: I
 area: runtime
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: []
 platforms: [windows, macos]
@@ -64,3 +64,49 @@ drift on the next change, and nothing tests that they agree.
 - A grep of `plugins/io-guard/scripts` finds one `PRIVATE_USE`, one `POWERSHELLS`, and `chr(0xFEFF)` only in
   `profile.py`.
 - The suite passes.
+
+## What changed
+
+Validated on 2026-09-30 before building: every pair was there. Two corrections: task 129 moved
+`checks/diagnose.py:72` to `lib/diagnosis.py:65`, and a `chr(0xFEFF)` the task did not list sat in
+`cli/labels.py:39`. The done-when put the one `chr(0xFEFF)` in `profile.py`, but `profile` needs
+`text.PRIVATE_USE` and `text` needs the BOM character, and one of the two has to import the other. `text`
+imports nothing from io-guard, so it holds both, and `profile` imports them.
+
+- `lib/text.py` declares `BOM_CHAR`, `PRIVATE_RANGES` and `PRIVATE_USE`, built through `character_class`, and
+  `INVISIBLE_RANGES` takes `PRIVATE_RANGES`. `profile`, `drift`, `code_tokens`, `editorconfig`,
+  `conform_write`, `mcp.in_place` and `cli.labels` take `BOM_CHAR` from there.
+- `output.CODE_PAGE_RUN` builds through `text.character_class`. Both rebuilt patterns have the same text as
+  HEAD's, compared directly.
+- `lib/rules.py` holds the one `POWERSHELLS`, which `checks/lint.py` imports.
+- `python_reads_stdin` in `lib/shell.py` reads `TAKES_VALUE`.
+- `anchors.file_view` is a whole file as the Edit tool reads it: no BOM, then `edit_view`. `drift.edited`,
+  `diagnosis.file_text` and `conform_edit` call it. `edit_view` itself keeps a leading U+FEFF, since it also
+  reads old_string and new_string, where the character is text.
+- `ToolVersion.this_python` and `file_stamp` moved from `lib/probing.py` to `lib/context.py`, beside
+  `ToolVersion`, since `probing` imports `context` and not the other way. `Probe.unprobed` calls it, so the
+  fallback probe's Python now carries its stamp as the measured one does.
+- `events.by_value(enum, value, fallback)` is the lookup both `Tool.named` and `PermissionMode.named` call.
+  `events.member`, which raises, stays: an unknown hook event is an error, and an unknown tool is not.
+
+`tests/test_declarations.py`, 8 tests: one `chr(0xFEFF)`, one declaration each of `PRIVATE_USE`,
+`POWERSHELLS`, `PROGRAM_SUFFIXES` and `BOM_CHAR`, the readers sharing one object, one character class
+builder, one spelling of `-W` and `-X`, one file view, one Python version, and one enum lookup. All 8 failed
+first, each on a missing helper or a second copy. `tests/lib/test_probing.py` imports `file_stamp` and
+`ToolVersion.this_python` from their new home.
+
+Docs: `docs/design/architecture.md` section 1, the tree's lines for `anchors`, `events`, `context` and
+`text`, and section 4's `anchors` block, which lists `file_view`.
+
+Evidence, on Windows on 2026-09-30:
+
+- The suite: 1,076 tests, 1,068 before, OK with 2 skipped.
+- A replay over the corpus with HEAD's code and with this change: 7 checks, 0 differences.
+- The rebuilt `PRIVATE_USE` and `CODE_PAGE_RUN` have the same pattern text as HEAD's, so every code point
+  matches as before.
+- Live, Claude Code 2.1.283, from this checkout: `live-conform`, `live-diagnose`, `live-read-profile`,
+  `live-invisible` and `live-results` pass. `live-space-dropped` read FAIL without reaching the changed code:
+  the probe's work folder takes this repository's own `.claude/io-guard.json`, where the lead turned
+  conform.edit off on 2026-09-29. The probe's own Edit, run offline through the pipeline, is refused with
+  SPACE_DROPPED by HEAD's code and by this change alike. So conform.edit's use of `file_view` is checked by
+  the suite and that offline run, not live. Filed as task 146.

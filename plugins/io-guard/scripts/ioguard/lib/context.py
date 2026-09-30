@@ -37,11 +37,26 @@ class FileStat:
     readonly: bool
 
 
+def file_stamp(path: str) -> str | None:
+    """The file's size and modification time, which change when the tool is replaced."""
+    try:
+        found = os.stat(path)
+    except OSError:
+        return None
+    return f"{found.st_size}:{found.st_mtime_ns}"
+
+
 @dataclass(frozen=True)
 class ToolVersion:
     path: str
     version: str
     stamp: str | None = None     # the file's size and mtime when measured, so an unchanged tool is not rerun
+
+    @classmethod
+    def this_python(cls) -> ToolVersion:
+        """The Python io-guard runs on, with its stamp."""
+        version = ".".join(str(part) for part in sys.version_info[:3])
+        return cls(sys.executable, version, file_stamp(sys.executable))
 
 
 class GitPort(Protocol):
@@ -102,10 +117,9 @@ class Probe:
     @classmethod
     def unprobed(cls, platform: Platform) -> "Probe":
         """What is known before the session probe has run: the platform and this Python."""
-        python = ToolVersion(sys.executable, ".".join(str(part) for part in sys.version_info[:3]))
-        return cls(os=platform.os, bash=None, pwsh=None, python=python, git=None, console_encoding=None,
-                   fs_case_insensitive=platform.case_insensitive, transport_budget=None, halving=None,
-                   claude_code_version=None, taken_at=None)
+        return cls(os=platform.os, bash=None, pwsh=None, python=ToolVersion.this_python(), git=None,
+                   console_encoding=None, fs_case_insensitive=platform.case_insensitive,
+                   transport_budget=None, halving=None, claude_code_version=None, taken_at=None)
 
     @classmethod
     def from_json(cls, raw: Mapping[str, Any]) -> "Probe":

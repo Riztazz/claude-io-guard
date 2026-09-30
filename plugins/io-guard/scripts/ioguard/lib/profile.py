@@ -14,12 +14,13 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 
+from ioguard.lib.text import BOM_CHAR, PRIVATE_USE
+
 SNIFF_BYTES = 8 * 1024       # a NUL in this many leading bytes marks the file binary (INP-4)
 C0 = bytes([*range(0x01, 0x09), 0x0B, 0x0C, *range(0x0E, 0x20)])   # control bytes but tab, LF and CR
 LEAD_BYTES = bytes(range(0xC0, 0x100))                              # each starts one UTF-8 character
 HIGH_BYTES = bytes(range(0x80, 0x100))
 REPLACEMENT = chr(0xFFFD).encode("utf-8")
-PRIVATE_USE = re.compile(f"[{chr(0xE000)}-{chr(0xF8FF)}{chr(0xF0000)}-{chr(0x10FFFD)}]")
 PRIVATE_EF = re.compile(rb"\xef[\x80-\xa3]")      # U+F000 to U+F8FF, where U+E000 on starts with EE
 SPACE_INDENT = re.compile(rb"\n( {2,})(?=[^\s])")
 FIRST_SPACE_INDENT = re.compile(rb"( {2,})(?=[^\s])")
@@ -250,7 +251,6 @@ ENDINGS = {Eol.CRLF: "\r\n", Eol.LF: "\n", Eol.CR: "\r"}
 LINE_BREAK = re.compile("\r\n|\r|\n")
 ENDING = re.compile("\r\n|\n")
 LONE_CR = re.compile("\r(?!\n)")
-BOM_CHAR = chr(0xFEFF)
 
 
 def convert_eol(text: str, eol: Eol) -> str:
