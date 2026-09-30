@@ -62,12 +62,14 @@ plugins/io-guard/
         events.py                  HookEvent, Tool, PermissionMode, Surface, Event, by_value
         context.py                 Context: what a check reads, built live or fake
         ports.py                   GitPort, FsPort, Clock, LiveFs, SystemClock, FileStat, newlines, read_or_none
+        fakes.py                   FakeFs, FakeGit: the in-memory ports Context.fake builds, for tests
         folders.py                 claude_folder, home_folder, session_file, memory_file, project_root,
                                    project_of, repository_root: where things are
         session.py                 SessionState, Snapshot, ShellSnapshot, first_in_file, tracked: what a session
                                    learns, and what a PreToolUse keeps for its PostToolUse
         decisions.py               Verdict, Rewrite, Decision, compose
         telemetry.py               Telemetry, TraceContext, session_files, expire, erase
+        retention.py               newest, older, delete: the entries of io-guard's folders past io.saved_days
         trust.py                   fingerprint, approved, approve: the project commands the user approved
         waiting.py                 listed, inside, untrusted: the project commands that wait for approval, as
                                    the prompt and the notice name them
@@ -139,7 +141,6 @@ plugins/io-guard/
         protocol.py                framing, _meta, eras, JSON-RPC errors
         toolspec.py                ToolSpec, schema generation, tools/list
         handles.py                 Handle, HandleStore, HandleExpired, STORE
-        elicit.py                  Elicitor, LegacyElicitor, ModernElicitor, when a client shows a form
         progress.py                CancelToken, ProgressReporter
         in_place.py                held, load, write: a file an io tool changes, held, loaded and written once
         tools_read.py              io.read

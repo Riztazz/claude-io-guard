@@ -3,7 +3,7 @@ title: List the package in the design as it is built
 stage: I
 area: docs
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: []
 platforms: [windows, macos]
@@ -41,3 +41,34 @@ A reader who takes the tree as the package looks for a module that is not there,
 
 - Every `.py` under `plugins/io-guard/scripts/ioguard` has a row in the tree, and every row names a file
   that exists or says it is planned.
+
+## What changed
+
+The three claims held. The line numbers had moved with the tree rows tasks 129 to 137 added, and nothing else in
+the tree was out of step: after those tasks' `ports`, `folders`, `session`, `probing`, `compare`, `diagnosis`,
+`writes`, `program` and `waiting` rows, these three were the only ones the package and the tree disagreed on.
+
+- The `elicit.py` row is gone. Section 7, "Elicitation in both eras", stays as the record of the plan, and it
+  already says no elicitor is built.
+- `fakes.py` has a row after `ports.py`: `FakeFs` and `FakeGit`, the in-memory ports `Context.fake` builds.
+- `retention.py` has a row after `telemetry.py`: `newest`, `older` and `delete`, which clear io-guard's folders
+  past `io.saved_days`.
+
+The test: `test_the_design_tree_lists_every_module_and_only_those` in `tests/test_layout.py` reads section 1's
+tree and compares its module rows with the `.py` files in `lib`, `checks`, `hooks`, `mcp` and `cli`, less
+their `__init__.py`. It failed on exactly the three rows first, then passed. Its second test shows the scan
+counts each module under the folder row above it, in a built tree. So a module added or removed without its
+row now fails the suite.
+
+Filed: task 147. The drawing's `handles` box names an elicitor and snapshot handles, its `data` box lists
+handles among the files in io-guard's folder, and the design's arrow list names two `Elicitor` arrows. None of
+those is built, and the drawing is outside section 1.
+
+Evidence:
+
+- `python tests/run_all.py`: 1,105 tests, OK, 2 skipped, against 1,103 at task 139.
+- No probe: the change is a design page and a test, and no plugin code moved.
+
+Docs: `docs/design/architecture.md`, section 1.
+
+Checked on Windows 10 on 2026-09-30.

@@ -1,6 +1,7 @@
 """The package keeps its layers: lib imports only the standard library and lib, a check imports lib and
 checks.base, and hooks, mcp and cli import lib and the pipeline and registry and never each other."""
 import ast
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -14,6 +15,8 @@ FRAMEWORK = {"base", "pipeline", "registry"}         # the checks modules that h
 RUNNERS = {"ioguard.checks.pipeline", "ioguard.checks.registry"}   # what a surface takes from checks
 SHORT = 40                                           # the most lines a function of the split modules has
 OWN_OPENS = {"bytesio", "locks", "logcap"}          # bytesio, a lock's descriptor, a copier run by path
+DESIGN = PLUGIN_SCRIPTS.parents[2] / "docs" / "design" / "architecture.md"
+TREE_ROW = re.compile(r"^ {6}(\w+)/(?= |$)|^ {8}(\w+\.py) ")   # a subpackage of ioguard/, or a module in one
 
 
 def imports_of(path: Path) -> set[str]:
@@ -31,6 +34,17 @@ def imports_of(path: Path) -> set[str]:
                 base = f"{parent}.{base}" if base else parent
             found.add(base)
     return found
+
+
+def listed_in_design(text: str) -> set[str]:
+    """Every module the design's package tree names, as subpackage/name.py."""
+    tree = text.split("## 1. Lay out the package", 1)[1].split("```", 2)[1]
+    listed, folder = set(), ""
+    for line in tree.splitlines():
+        if match := TREE_ROW.match(line):
+            folder = match[1] or folder
+            listed |= {f"{folder}/{match[2]}"} if match[2] else set()
+    return listed
 
 
 def modules(subpackage: str) -> list[Path]:
@@ -127,6 +141,20 @@ class PackageLayers(unittest.TestCase):
                 with self.subTest(module=path.name, line=node.lineno):
                     self.assertFalse(name in opens or bare_read,
                                      "a file is read and written through lib.bytesio, which refuses a device")
+
+    def test_the_design_tree_lists_every_module_and_only_those(self):
+        built = {f"{path.parent.name}/{path.name}" for subpackage in ("lib", "checks", *SURFACES)
+                 for path in modules(subpackage) if path.name != "__init__.py"}
+        listed = listed_in_design(DESIGN.read_bytes().decode("utf-8"))
+        self.assertEqual((sorted(built - listed), sorted(listed - built)), ([], []),
+                         "architecture.md, section 1, names every module the package has and no other")
+
+    def test_the_tree_scan_reads_modules_under_their_folder(self):
+        text = ("## 1. Lay out the package\n\n```\n    ioguard/\n      lib/          mechanism\n"
+                "        a.py          one\n                      a wrapped line\n      mcp/\n"
+                "        b.py          two\n```\n")
+        self.assertEqual(listed_in_design(text), {"lib/a.py", "mcp/b.py"},
+                         "each module row counts under the folder row above it")
 
     def test_the_scan_sees_the_packages_it_guards(self):
         self.assertTrue(modules("lib") and modules("checks") and modules("hooks"),
