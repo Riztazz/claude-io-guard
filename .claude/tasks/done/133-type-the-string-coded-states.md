@@ -3,7 +3,7 @@ title: Give each string-coded state a type
 stage: I
 area: runtime
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: []
 platforms: [windows, macos]
@@ -71,3 +71,46 @@ a type for every identity, and never two id spaces sharing a primitive.
 - A grep of `plugins/io-guard/scripts` for `== "deny"`, `== "bash"`, `== "mixed"` and `== "modern"` finds
   nothing.
 - The suite passes.
+
+## What changed
+
+Validated on 2026-09-30 before building: every state was there as described. Task 129 had moved some readers:
+the dialect to `lib/writes.py:173`, and the decision to `lib/runs.py:97,110`. The order of decisions is
+spelled at `lib/rules.py:333`.
+
+One item deleted: `Fix.tool` stays a string. It names what the model calls next, which is an MCP callable name,
+the event's own tool name, or in shell.touched a script to run again. A `Tool | str` union accepts all of that
+and checks nothing, and the `Tool` enum cannot hold a script.
+
+- `lib/rules.py`: `RuleVerdict` (DENY, ASK, UNREAD, NONE) for `RuleMatch.decision`, with the order
+  `STRONGEST_FIRST` declared once, and `Dialect` (BASH, POWERSHELL, NONE) for `Wrapped.dialect`. The settings
+  file's "deny" and "ask" keys stay words, since they are Claude Code's JSON.
+- `lib/indent.py`: `style` returns `profile.IndentKind`, and `reindented`, `fitted`, `edits.Changed` and
+  `edits.Applied` carry it. The messages print its value, the same words as before.
+- `lib/code_tokens.py`: `CompareMode` for `compare`'s mode and `Comparison.how`, and `MODES` is gone.
+  io.compare turns its `mode` argument into the member, and refuses an unknown one as before.
+- `mcp/tools_run.py`: `RunState`, turned into its word only in `RunOutput.state`.
+- `lib/heartbeat.py`: `Era` moved here from `mcp/protocol.py`, and `Heartbeat.era` carries it. The file holds
+  its word, and a word io-guard does not know reads as no heartbeat.
+- `lib/decisions.py`: `RewriteMode`, whose members carry their verdict. `config.REWRITE_MODES` is its words,
+  and `answer.MODE_VERDICTS` is gone.
+- `lib/platform.py`: `EVERY_PLATFORM`, which 21 checks use. win.paths names `WINDOWS` alone, and
+  `rules.MANAGED` keys by the two constants.
+- `cli/replay.py`: `Kind` for `kind_of` and the counts. The report's JSON keeps the keys fix, refuse and warn.
+
+`tests/test_states.py`, 11 tests: every `Tool` and `PermissionMode` reads back as itself, each new enum at its
+boundary, the checks' platforms, and a scan that no module compares a decision, dialect, era, mode, run state
+or indent style to a string. The scan finds 13 such comparisons in HEAD's code. The tests of rules, indent,
+edits, code_tokens and the heartbeat compare members, or the member's value where a table lists words.
+
+Docs: `docs/design/architecture.md`: `CheckMeta.platforms`, `indent.style`, the rules block with the two new
+enums, the rewrite mode's paragraph, and `Era`, which had been drawn with numbers for values.
+
+Evidence, on Windows on 2026-09-30:
+
+- The suite: 1,090 tests, 1,079 before, OK with 2 skipped.
+- A replay over the corpus with HEAD's code and with this change: 7 checks, 0 differences, and the printed
+  summary still reads fix, refuse and warn.
+- Live, Claude Code 2.1.283, from this checkout: `live-run-asked` and `live-run-wrapped` (the rule
+  decisions), `live-run-background` (the run state), `live-server` and `live-server-modern` (the era in both
+  MCP eras and the heartbeat), `live-edit-parallel` (io.edit's indent) and `live-dashboard` pass.

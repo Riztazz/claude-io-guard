@@ -14,6 +14,7 @@ from ioguard.lib import paths, snapshots
 from ioguard.lib.context import Context, project_of, read_or_none
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
+from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.results import Code, Layer, Result, Severity, callable_name
 
 RESTORE = callable_name("io.restore")
@@ -23,7 +24,7 @@ NAMED = 10
 class RestoreAsk(Check):
     meta = CheckMeta(
         id="restore.ask", layer=Layer.LOCATION, events=frozenset({HookEvent.PRE_TOOL_USE}),
-        tools=frozenset({Tool.OTHER}), platforms=frozenset({"win32", "darwin"}), severity=Severity.WARNING,
+        tools=frozenset({Tool.OTHER}), platforms=EVERY_PLATFORM, severity=Severity.WARNING,
         cost=Cost.MEDIUM, reads=frozenset({"tag", "paths"}), writes=frozenset(), after=frozenset(),
         config={}, codes=frozenset({Code.RESTORE_ASKED}),
         description="Asks the user before io.restore replaces files that changed since their snapshot.")

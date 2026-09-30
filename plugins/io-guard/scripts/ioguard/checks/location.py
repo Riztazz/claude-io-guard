@@ -24,6 +24,7 @@ from ioguard.lib.context import Context, repository_root
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.git import GitError
+from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity
 
 LOCK_ERROR = re.compile(r"\b(EPERM|EBUSY|EACCES)\b")
@@ -39,7 +40,7 @@ def relative(path: Path, root: Path | None) -> str:
 class Location(Check):
     meta = CheckMeta(
         id="write.location", layer=Layer.LOCATION, events=frozenset({HookEvent.PRE_TOOL_USE}),
-        tools=frozenset({Tool.EDIT, Tool.WRITE}), platforms=frozenset({"win32", "darwin"}),
+        tools=frozenset({Tool.EDIT, Tool.WRITE}), platforms=EVERY_PLATFORM,
         severity=Severity.REFUSED, cost=Cost.MEDIUM, reads=frozenset({"file_path"}), writes=frozenset(),
         after=frozenset(), config={},
         codes=frozenset({Code.RESERVED_NAME, Code.READ_ONLY, Code.LINKED_PATH}),
@@ -122,7 +123,7 @@ class Location(Check):
 class LockHolders(Check):
     meta = CheckMeta(
         id="write.locks", layer=Layer.LOCATION, events=frozenset({HookEvent.POST_TOOL_USE_FAILURE}),
-        tools=frozenset({Tool.EDIT, Tool.WRITE}), platforms=frozenset({"win32", "darwin"}),
+        tools=frozenset({Tool.EDIT, Tool.WRITE}), platforms=EVERY_PLATFORM,
         severity=Severity.WARNING, cost=Cost.EXPENSIVE, reads=frozenset({"file_path"}), writes=frozenset(),
         after=frozenset(), config={}, codes=frozenset({Code.FILE_LOCKED}),
         description="Names the process that holds a file an Edit or Write could not replace.")

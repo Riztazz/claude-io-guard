@@ -4,7 +4,7 @@ import unittest
 
 from ioguard.lib import edits
 from ioguard.lib.edits import Applied, Change, Missed
-from ioguard.lib.profile import Eol
+from ioguard.lib.profile import Eol, IndentKind
 
 
 class AChangeLandsInTheFilesOwnText(unittest.TestCase):
@@ -47,7 +47,8 @@ class ABatchIsMadeWholeOrNotAtAll(unittest.TestCase):
 
     def test_new_text_takes_the_indent_style_around_it(self):
         made = edits.apply("{\n\tone;\n\ttwo;\n}\n", [Change("\ttwo;", "  two;\n  three;")], Eol.LF, None)
-        self.assertEqual((made.text, made.indented), ("{\n\tone;\n\ttwo;\n\tthree;\n}\n", ((0, "tabs"),)),
+        self.assertEqual((made.text, made.indented),
+                         ("{\n\tone;\n\ttwo;\n\tthree;\n}\n", ((0, IndentKind.TABS),)),
                          "spaces become tabs beside tab-indented lines, and Applied names the change")
         self.assertIsInstance(made, Applied, "a batch that matched is Applied")
 

@@ -17,7 +17,7 @@ from pathlib import Path
 from ioguard.lib import snapshots
 from ioguard.lib.config import Config, Scope, all_keys, defaults, validate
 from ioguard.lib.context import Context
-from ioguard.lib.heartbeat import parse
+from ioguard.lib.heartbeat import Era, parse
 from ioguard.lib.results import Code
 from ioguard.mcp.progress import CancelToken
 from ioguard.mcp.protocol import Protocol
@@ -136,7 +136,7 @@ class TheServerKeepsAHeartbeat(ServerTest):
     def test_the_heartbeat_names_the_era_and_a_clean_stop(self):
         exchange([request(0, "initialize", {"protocolVersion": "2025-11-25"})], self.data)
         beat = parse((self.data / "sessions" / f"{SESSION}.alive").read_bytes())
-        self.assertEqual((beat.session, beat.era, beat.stopped is not None), (SESSION, "legacy", True),
+        self.assertEqual((beat.session, beat.era, beat.stopped is not None), (SESSION, Era.LEGACY, True),
                          "a server that stopped at the end of stdin says so, so no hook warns about it")
 
 

@@ -16,6 +16,7 @@ from pathlib import Path
 from ioguard.lib import anchors, edits, editorconfig, paths
 from ioguard.lib.context import Context
 from ioguard.lib.diagnosis import Diagnosis, Failed, Wording
+from ioguard.lib.profile import IndentKind
 from ioguard.lib.results import Code, Fix, Result, Severity, callable_name, spec
 from ioguard.lib.text import invisible_added
 from ioguard.mcp.in_place import NOTE, Loaded, Place, encoded, held, load, places_shown, write
@@ -97,8 +98,8 @@ def written(loaded: Loaded, text: str, places: list[Place], indented: list[str],
                         indented, NOTE, len(done.data), unseen)
 
 
-def indent_notes(indented: tuple[tuple[int, str], ...], what: str) -> list[str]:
-    return [f"io-guard indented {what.format(index + 1)} with {style}, as the lines around it are."
+def indent_notes(indented: tuple[tuple[int, IndentKind], ...], what: str) -> list[str]:
+    return [f"io-guard indented {what.format(index + 1)} with {style.value}, as the lines around it are."
             for index, style in indented]
 
 

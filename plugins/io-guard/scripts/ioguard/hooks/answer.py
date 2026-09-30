@@ -12,11 +12,9 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from ioguard.checks.pipeline import Outcome
-from ioguard.lib.decisions import Verdict
+from ioguard.lib.decisions import RewriteMode, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.results import render
-
-MODE_VERDICTS = {"refuse": Verdict.DENY, "ask": Verdict.ASK, "allow": Verdict.ALLOW}
 FILE_TOOLS = frozenset({Tool.EDIT, Tool.WRITE})   # a rewrite leaves the permission decision to the harness
 
 
@@ -52,7 +50,7 @@ def pre_tool_use(event: Event, outcome: Outcome, mode: str) -> dict[str, Any]:
     updated = dict(outcome.tool_input) if rewritten else None
     if rewritten and event.tool in FILE_TOOLS and outcome.verdict < Verdict.ASK:
         return present(updatedInput=updated, additionalContext=joined((*notes, *outcome.context)))
-    shape = max(outcome.verdict, MODE_VERDICTS[mode] if rewritten else Verdict.OBSERVE)
+    shape = max(outcome.verdict, RewriteMode(mode).verdict if rewritten else Verdict.OBSERVE)
     match shape:
         case Verdict.DENY if outcome.verdict is Verdict.DENY:
             return {"permissionDecision": "deny", "permissionDecisionReason": refusal(outcome)}

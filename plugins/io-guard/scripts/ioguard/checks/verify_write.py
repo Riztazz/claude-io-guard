@@ -21,6 +21,7 @@ from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.drift import Edited, drift, edited, frontmatter_end, restored, text_of
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.locks import file_lock, lock_folder
+from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.profile import Bom, profile
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity
 
@@ -34,7 +35,7 @@ class VerifyWrite(Check):
     meta = CheckMeta(
         id="verify.write", layer=Layer.BYTES,
         events=frozenset({HookEvent.PRE_TOOL_USE, HookEvent.POST_TOOL_USE, HookEvent.POST_TOOL_USE_FAILURE}),
-        tools=frozenset({Tool.EDIT, Tool.WRITE}), platforms=frozenset({"win32", "darwin"}),
+        tools=frozenset({Tool.EDIT, Tool.WRITE}), platforms=EVERY_PLATFORM,
         severity=Severity.WARNING, cost=Cost.MEDIUM,
         reads=frozenset({"file_path", "content", "old_string", "new_string", "replace_all"}),
         writes=frozenset(), after=frozenset({"conform.write", "conform.edit", "journal.write"}),

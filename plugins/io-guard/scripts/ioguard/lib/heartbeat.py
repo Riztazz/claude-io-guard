@@ -11,24 +11,33 @@ that file too. Its format is Claude Code's own and undocumented, and the live-se
 import json
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
+from enum import Enum
+
+
+class Era(Enum):
+    """The MCP era the io server answers in, decided once per process."""
+    UNDECIDED = "undecided"
+    LEGACY = "legacy"          # after initialize
+    MODERN = "modern"          # after the first request with a protocol version in _meta
 
 
 @dataclass(frozen=True)
 class Heartbeat:
     pid: int
     session: str
-    era: str                     # "undecided", "legacy" or "modern"
+    era: Era
     started: datetime
     beat: datetime
     stopped: datetime | None = None
 
-    def again(self, now: datetime, era: str) -> "Heartbeat":
+    def again(self, now: datetime, era: Era) -> Heartbeat:
         return replace(self, beat=now, era=era)
 
     def encode(self) -> bytes:
+        """The file's bytes: one line of JSON, the era as its word and each time in ISO 8601."""
         fields = {key: value.isoformat() if isinstance(value, datetime) else value
                   for key, value in asdict(self).items()}
-        return (json.dumps(fields) + "\n").encode("ascii")
+        return (json.dumps({**fields, "era": self.era.value}) + "\n").encode("ascii")
 
 
 def skipped_since(cache: bytes, server: str, default_ttl_s: float) -> tuple[datetime, datetime] | None:
@@ -48,7 +57,7 @@ def parse(data: bytes) -> Heartbeat | None:
     try:
         raw = json.loads(data.decode("utf-8"))
         stopped = raw.get("stopped")
-        return Heartbeat(int(raw["pid"]), str(raw["session"]), str(raw["era"]),
+        return Heartbeat(int(raw["pid"]), str(raw["session"]), Era(raw["era"]),
                          datetime.fromisoformat(raw["started"]), datetime.fromisoformat(raw["beat"]),
                          None if stopped is None else datetime.fromisoformat(stopped))
     except (ValueError, KeyError, TypeError, AttributeError):

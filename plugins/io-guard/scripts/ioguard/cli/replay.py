@@ -15,6 +15,7 @@ import time
 from collections import Counter, defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
+from enum import Enum
 from pathlib import Path
 
 from ioguard.checks.pipeline import Pipeline
@@ -34,7 +35,6 @@ from ioguard.lib.telemetry import Telemetry
 
 REPORT_SCHEMA = 1
 SAMPLE = 20
-KINDS = ("fix", "refuse", "warn")
 DRIVE = re.compile(r"^[A-Za-z]:")
 WINDOWS = Platform("win32", True)
 REPLAY_DATA = Path("replay-data")      # a data folder that exists only in the in-memory file system
@@ -89,20 +89,27 @@ class SnapshotGit:
         return {}
 
 
-def kind_of(decision: Decision) -> str | None:
+class Kind(Enum):
+    """What a check's decision did to a recorded call. The report keys its counts by the value."""
+    FIX = "fix"
+    REFUSE = "refuse"
+    WARN = "warn"
+
+
+def kind_of(decision: Decision) -> Kind | None:
     """What a decision did to the call: refuse, fix, warn, or nothing."""
     if decision.verdict is Verdict.DENY:
-        return "refuse"
+        return Kind.REFUSE
     if decision.rewrite is not None:
-        return "fix"
+        return Kind.FIX
     if decision.verdict is not Verdict.OBSERVE or decision.results or decision.context:
-        return "warn"
+        return Kind.WARN
     return None
 
 
 @dataclass
 class CheckTally:
-    counts: dict[str, Counter] = field(default_factory=lambda: {kind: Counter() for kind in KINDS})
+    counts: dict[Kind, Counter] = field(default_factory=lambda: {kind: Counter() for kind in Kind})
     events: Counter = field(default_factory=Counter)
     labels: Counter = field(default_factory=Counter)
     raised: int = 0
@@ -110,10 +117,9 @@ class CheckTally:
     candidates: int = 0
 
     def to_json(self) -> dict:
-        return {"fix": dict(self.counts["fix"]), "refuse": dict(self.counts["refuse"]),
-                "warn": dict(self.counts["warn"]), "events": dict(self.events), "raised": self.raised,
-                "labels": dict(self.labels.most_common()), "false_positive_candidates": self.candidates,
-                "samples": self.samples}
+        return {**{kind.value: dict(self.counts[kind]) for kind in Kind}, "events": dict(self.events),
+                "raised": self.raised, "labels": dict(self.labels.most_common()),
+                "false_positive_candidates": self.candidates, "samples": self.samples}
 
 
 class Replay:
@@ -178,7 +184,7 @@ class Replay:
                 tally.counts[kind][outcome_key] += 1
                 tally.events[event.kind.value] += 1
                 tally.labels.update(record.labels)
-                if kind == "refuse" and not record.failed:
+                if kind is Kind.REFUSE and not record.failed:
                     self.keep_sample(tally, record, decision)
 
     def keep_sample(self, tally: CheckTally, record: Record, decision: Decision) -> None:
@@ -251,7 +257,7 @@ def render(report: dict) -> str:
     lines.append(f"Top labels: {labels or 'none'}.")
     for check_id, tally in report["checks"].items():
         counts = "  ".join(f"{kind} {tally[kind].get('ok', 0)}/{tally[kind].get('failed', 0)}"
-                           for kind in KINDS)
+                           for kind in (each.value for each in Kind))
         lines.append(f"{check_id}: {counts}  raised {tally['raised']}  (ok/failed calls)")
         for sample in tally["samples"]:
             lines.append(f"  refused a call that ran: {sample['tool']} {sample['input']!r}")

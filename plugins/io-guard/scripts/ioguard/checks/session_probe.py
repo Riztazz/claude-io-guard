@@ -25,6 +25,7 @@ from ioguard.lib.context import Context, FsPort, GitPort, Probe, ToolVersion, se
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent
 from ioguard.lib.git import GitError
+from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.results import Layer, Severity
 
 log = logging.getLogger("ioguard.checks.session_probe")
@@ -105,7 +106,7 @@ def add_lines(path: Path, lines: list[bytes], fs: FsPort) -> None:
 class SessionProbe(Check):
     meta = CheckMeta(
         id="session.probe", layer=Layer.INTERNAL, events=frozenset({HookEvent.SESSION_START}),
-        tools=frozenset(), platforms=frozenset({"win32", "darwin"}), severity=Severity.INFO,
+        tools=frozenset(), platforms=EVERY_PLATFORM, severity=Severity.INFO,
         cost=Cost.EXPENSIVE, reads=frozenset(), writes=frozenset(), after=frozenset(), codes=frozenset(),
         config={
             "env": ConfigKey(dict, ENV, "Variables every later Bash call starts with.",

@@ -288,8 +288,11 @@ def line_of(text: str, number: int) -> str:
 
 def compare(given: CompareInput, call: ToolCall) -> CompareOutput:
     ctx, tool = call.context, "io.compare"
-    if given.mode not in code_tokens.MODES:
-        raise InvalidArguments(f"mode must be one of {', '.join(code_tokens.MODES)}.")
+    try:
+        mode = code_tokens.CompareMode(given.mode)
+    except ValueError:
+        named = ", ".join(each.value for each in code_tokens.CompareMode)
+        raise InvalidArguments(f"mode must be one of {named}.") from None
     plan = planned(given.tag, given.paths, call, tool)
     same, differ = [kept.path.as_posix() for kept in plan.same], []
     for kept in plan.changed:
@@ -300,11 +303,11 @@ def compare(given: CompareInput, call: ToolCall) -> CompareOutput:
                                      line_of(before, 1), ""))
             continue
         after = text_of(now)
-        found = code_tokens.compare(before, after, kept.path.suffix, given.mode)
+        found = code_tokens.compare(before, after, kept.path.suffix, mode)
         if found.same:
             same.append(kept.path.as_posix())
             continue
-        differ.append(Difference(kept.path.as_posix(), found.how, found.before_line, found.after_line,
+        differ.append(Difference(kept.path.as_posix(), found.how.value, found.before_line, found.after_line,
                                  line_of(before, found.before_line), line_of(after, found.after_line),
                                  list(found.added), list(found.removed)))
     return CompareOutput(plan.snapshot.id, given.mode, sorted(same), differ)

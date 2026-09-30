@@ -1,7 +1,7 @@
 """What a check decides about one call, and how the pipeline chains the rewrites checks propose."""
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from enum import IntEnum
+from enum import Enum, IntEnum
 from types import MappingProxyType
 from typing import Any
 
@@ -13,6 +13,19 @@ class Verdict(IntEnum):
     ALLOW = 1            # say something, and let the call run
     ASK = 2              # show the input to the user
     DENY = 3             # refuse, with the fix
+
+
+class RewriteMode(Enum):
+    """What the hook does with a call a check rewrote, per permission mode: refuse it with the fixed input,
+    ask the user with it, or let it run."""
+    REFUSE = "refuse"
+    ASK = "ask"
+    ALLOW = "allow"
+
+    @property
+    def verdict(self) -> Verdict:
+        return {RewriteMode.REFUSE: Verdict.DENY, RewriteMode.ASK: Verdict.ASK,
+                RewriteMode.ALLOW: Verdict.ALLOW}[self]
 
 
 class RewriteError(Exception):

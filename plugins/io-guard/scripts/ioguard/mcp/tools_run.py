@@ -16,6 +16,7 @@ import tempfile
 import time
 import uuid
 from dataclasses import dataclass
+from enum import Enum
 from datetime import timedelta
 from pathlib import Path
 
@@ -64,6 +65,14 @@ class ErrorLine:
     line: int
     kind: str
     text: str
+
+
+class RunState(Enum):
+    """Where an io.run program is. Its result carries the value."""
+    RUNNING = "running"
+    ENDED = "ended"
+    TIMED_OUT = "timed out"
+    STOPPED = "stopped"
 
 
 @dataclass(frozen=True)
@@ -139,7 +148,8 @@ def meaning_of(argv: tuple[str, ...], exit_code: int | None, ctx: Context) -> st
     return ""
 
 
-def reading(pump: proc.Pump, state: str, command: str, handle: str, note: str, ctx: Context) -> RunOutput:
+def reading(pump: proc.Pump, state: RunState, command: str, handle: str, note: str,
+            ctx: Context) -> RunOutput:
     """The run as it stands: its exit code and meaning, and its log's error lines and last lines."""
     options = ctx.config.check_options("shell.results")
     found = ctx.fs.stat(pump.log)
@@ -157,7 +167,7 @@ def reading(pump: proc.Pump, state: str, command: str, handle: str, note: str, c
     tail = [line.rstrip("\r")[:width] for line in lines[-options["tail_lines"]:]]
     exit_code = pump.exit_code
     meaning = meaning_of(pump.argv, exit_code, ctx)
-    return RunOutput(command, state, exit_code, exit_code == 0 or bool(meaning), meaning,
+    return RunOutput(command, state.value, exit_code, exit_code == 0 or bool(meaning), meaning,
                      round(pump.seconds(), 1), pump.log.as_posix(), size, errors, tail, handle, note,
                      data.endswith(logcap.CUT))
 
@@ -168,9 +178,9 @@ def checked(given: RunInput, call: ToolCall) -> dict:
     ctx = call.context
     fields = {"argv": list(given.argv), "lang": given.lang, "code": given.code}
     found = runs.judge(fields, ctx.env, ctx.fs, ctx.probe, ctx.platform, call.cwd)
-    if found.decision == "deny":
+    if found.decision is rules.RuleVerdict.DENY:
         raise failure(Code.RULE_DENIED, f"io.run did not run {runs.said(found)}.", "io.run", ctx)
-    if found.decision == "ask":
+    if found.decision is rules.RuleVerdict.ASK:
         if not ctx.session.take_ask(call.tool_use_id, runs.key(fields), ctx.clock.now()):
             raise failure(Code.RULE_ASKED, f"io.run did not run {runs.said(found)}, and no permission prompt "
                           f"on this call put it to the user.", "io.run", ctx)
@@ -242,27 +252,27 @@ def started(pump: proc.Pump, command: str, ctx: Context) -> RunOutput:
     note = (f"Call {callable_name('io.status')} with this handle for its state, and "
             f"{callable_name('io.read_log')} with log_path for its output. The handle lasts {minutes:g} "
             f"minutes past the program's end.")
-    return reading(pump, "running", command, handle.id, note, ctx)
+    return reading(pump, RunState.RUNNING, command, handle.id, note, ctx)
 
 
 def waited(pump: proc.Pump, command: str, timeout_s: float, call: ToolCall) -> RunOutput:
     """The run once it ends, or once io-guard stops it past timeout_s or on the client's cancel."""
     deadline = time.monotonic() + timeout_s
-    state = "ended"
+    state = RunState.ENDED
     while not pump.wait(POLL_S):
         if call.cancel.cancelled:
             pump.stop()
-            state = "stopped"
+            state = RunState.STOPPED
             break
         if time.monotonic() >= deadline:
             pump.stop()
-            state = "timed out"
+            state = RunState.TIMED_OUT
             break
         found = call.context.fs.stat(pump.log)
         call.progress.report(round(pump.seconds(), 1),
                              f"{0 if found is None else found.size:,} bytes of output after "
                              f"{pump.seconds():,.0f} s")
-    note = f"io-guard stopped it after {timeout_s:g} seconds." if state == "timed out" else ""
+    note = f"io-guard stopped it after {timeout_s:g} seconds." if state is RunState.TIMED_OUT else ""
     return reading(pump, state, command, "", note, call.context)
 
 
@@ -277,7 +287,7 @@ def status(given: HandleInput, call: ToolCall) -> RunOutput:
                       Fix(run_tool, {}, f"Call {run_tool} again to start it over. Its log stays in "
                                         f"{runs_folder(ctx).as_posix()}.")) from None
     pump: proc.Pump = found.payload["pump"]
-    state = "ended" if pump.done.is_set() else "running"
+    state = RunState.ENDED if pump.done.is_set() else RunState.RUNNING
     return reading(pump, state, found.payload["command"], found.id, "", ctx)
 
 

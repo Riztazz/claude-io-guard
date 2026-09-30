@@ -25,6 +25,7 @@ from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context, claude_folder
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
+from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity
 
 log = logging.getLogger("ioguard.checks.command_results")
@@ -339,7 +340,7 @@ class CommandResults(Check):
     meta = CheckMeta(
         id="shell.results", layer=Layer.OUTPUT,
         events=frozenset({HookEvent.POST_TOOL_USE, HookEvent.POST_TOOL_USE_FAILURE}),
-        tools=frozenset({Tool.BASH, Tool.POWERSHELL}), platforms=frozenset({"win32", "darwin"}),
+        tools=frozenset({Tool.BASH, Tool.POWERSHELL}), platforms=EVERY_PLATFORM,
         severity=Severity.WARNING, cost=Cost.MEDIUM, reads=frozenset({"command"}), writes=frozenset(),
         after=frozenset(), config=options(),
         codes=frozenset({Code.EXIT_BENIGN, Code.ERRORS_IN_OUTPUT, Code.OUTPUT_SAVED, Code.MOJIBAKE,

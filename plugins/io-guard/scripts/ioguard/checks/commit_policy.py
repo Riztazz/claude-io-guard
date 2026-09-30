@@ -21,6 +21,7 @@ from ioguard.lib import commit_message, pwsh, rules, runs, shell
 from ioguard.lib.context import Context, read_or_none
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
+from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity, callable_name
 from ioguard.lib.writes import Host, Write, bash_writes, located, powershell_writes, resolve, targets
 
@@ -59,7 +60,8 @@ def run_messages(event: Event, ctx: Context) -> list[Message]:
     inside = rules.wrapped(rules.unwrapped(argv))
     if inside is None or inside.text is None:
         return []
-    return (bash_messages if inside.dialect == "bash" else powershell_messages)(inside.text, event, cwd, ctx)
+    reader = bash_messages if inside.dialect is rules.Dialect.BASH else powershell_messages
+    return reader(inside.text, event, cwd, ctx)
 
 
 def powershell_messages(command: str, event: Event, cwd: Path, ctx: Context) -> list[Message]:
@@ -145,7 +147,7 @@ def message(found: commit_message.Sources, stdin: tuple[str, ...], cwd: Path | N
 class CommitPolicy(Check):
     meta = CheckMeta(
         id="commit.policy", layer=Layer.TRANSPORT, events=frozenset({HookEvent.PRE_TOOL_USE}),
-        tools=frozenset({Tool.BASH, Tool.POWERSHELL, Tool.OTHER}), platforms=frozenset({"win32", "darwin"}),
+        tools=frozenset({Tool.BASH, Tool.POWERSHELL, Tool.OTHER}), platforms=EVERY_PLATFORM,
         severity=Severity.REFUSED, cost=Cost.CHEAP, reads=frozenset({"command", "argv", "lang", "code"}),
         writes=frozenset(), after=frozenset(), config={}, codes=frozenset({Code.COMMIT_POLICY}),
         description="Refuses a git commit whose message holds text the commit policy forbids.")

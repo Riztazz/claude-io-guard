@@ -11,6 +11,7 @@ from typing import Any
 from ioguard.lib import proc, rules
 from ioguard.lib.context import FsPort, Probe, read_or_none
 from ioguard.lib.platform import Platform
+from ioguard.lib.rules import RuleVerdict
 
 SUFFIXES = {"python": ".py", "bash": ".sh", "powershell": ".ps1", "node": ".js"}
 BODY = "io-run-body"
@@ -92,20 +93,21 @@ def judge(given: Mapping[str, Any], env: Mapping[str, str], fs: FsPort, probe: P
     found = rules.load(rules.settings_files(env, project, platform), partial(read_or_none, fs))
     argv = argv_of(given, probe, platform, env)
     if argv is None:
-        return rules.RuleMatch("none", None, "")
+        return rules.RuleMatch(RuleVerdict.NONE, None, "")
     met = rules.match_command(found, argv)
-    if given.get("code") and met.decision == "none":
+    if given.get("code") and met.decision is RuleVerdict.NONE:
         named_by = rules.rule_named(found, str(given["code"]))
-        met = rules.RuleMatch("unread", named_by, f"a {given.get('lang')} body") if named_by else met
-    if met.decision != "unread":
+        if named_by:
+            met = rules.RuleMatch(RuleVerdict.UNREAD, named_by, f"a {given.get('lang')} body")
+    if met.decision is not RuleVerdict.UNREAD:
         return met
-    return rules.RuleMatch("ask", None, f"{met.command}, whose code names the program of the rule "
-                                        f"{met.rule.text} in {met.rule.source.as_posix()}")
+    return rules.RuleMatch(RuleVerdict.ASK, None, f"{met.command}, whose code names the program of the rule "
+                                                  f"{met.rule.text} in {met.rule.source.as_posix()}")
 
 
 def said(found: rules.RuleMatch) -> str:
     """The command and the reason it is denied or asked about, to follow "io.run would run"."""
     if found.rule is None:
         return f"{found.command}, and no rule can read what code does, so the user decides"
-    verb = "denies" if found.decision == "deny" else "asks about"
+    verb = "denies" if found.decision is RuleVerdict.DENY else "asks about"
     return f"{found.command}, which the rule {found.rule.text} in {found.rule.source.as_posix()} {verb}"

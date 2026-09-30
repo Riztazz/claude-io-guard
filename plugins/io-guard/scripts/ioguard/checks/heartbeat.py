@@ -15,6 +15,7 @@ from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context, claude_folder, session_file
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent
+from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity, render
 
 SERVER = "plugin:io-guard:io"
@@ -28,7 +29,7 @@ def clock(moment: datetime) -> str:
 class Heartbeat(Check):
     meta = CheckMeta(
         id="server.heartbeat", layer=Layer.INTERNAL, events=frozenset({HookEvent.USER_PROMPT_SUBMIT}),
-        tools=frozenset(), platforms=frozenset({"win32", "darwin"}), severity=Severity.WARNING,
+        tools=frozenset(), platforms=EVERY_PLATFORM, severity=Severity.WARNING,
         cost=Cost.CHEAP, reads=frozenset(), writes=frozenset(), after=frozenset(),
         config={"stale_s": ConfigKey(int, 30, "Seconds after its last heartbeat that the io server counts as "
                                      "stopped. It writes one every 5 seconds.")},

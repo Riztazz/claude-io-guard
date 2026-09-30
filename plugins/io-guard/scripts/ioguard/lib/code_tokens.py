@@ -12,6 +12,7 @@ import io
 import re
 import tokenize
 from dataclasses import dataclass
+from enum import Enum
 
 from ioguard.lib.text import BOM_CHAR
 
@@ -96,17 +97,22 @@ def docstring(significant: list[tokenize.TokenInfo], index: int) -> bool:
     return alone and first
 
 
+class CompareMode(Enum):
+    """How io.compare reads two texts: their code without comments, their lines without includes, or their
+    exact lines."""
+    CODE = "code"
+    INCLUDES = "includes"
+    EXACT = "exact"
+
+
 @dataclass(frozen=True)
 class Comparison:
     same: bool
-    how: str                         # code, includes, or exact for a kind with no rules for the mode
+    how: CompareMode                 # the mode asked for, or EXACT for a kind with no rules for it
     before_line: int                 # the first line that differs, from 1, or 0 where the text has ended
     after_line: int
     added: tuple[str, ...] = ()      # include lines the after text has and the before text lacks
     removed: tuple[str, ...] = ()
-
-
-MODES = ("code", "includes", "exact")
 
 
 def first_mismatch(before: list[str], after: list[str]) -> int | None:
@@ -117,30 +123,32 @@ def first_mismatch(before: list[str], after: list[str]) -> int | None:
     return at
 
 
-def compare(before: str, after: str, suffix: str, mode: str) -> Comparison:
+def compare(before: str, after: str, suffix: str, mode: CompareMode) -> Comparison:
     """Whether after holds the same code as before, as mode reads it: code without comments and layout,
     lines without includes and their order, or the exact lines. A kind with no rules for mode compares
     exactly, and the result says so."""
-    if mode == "code" and (old := code_tokens(before, suffix)) is not None:
+    if mode is CompareMode.CODE and (old := code_tokens(before, suffix)) is not None:
         new = code_tokens(after, suffix)
         at = first_mismatch([token.text for token in old], [token.text for token in new])
         if at is None:
-            return Comparison(True, "code", 0, 0)
+            return Comparison(True, CompareMode.CODE, 0, 0)
         lines = (tokens[at].line if at < len(tokens) else 0 for tokens in (old, new))
-        return Comparison(False, "code", *lines)
-    if mode == "includes" and (old_split := split_includes(before, suffix)) is not None:
+        return Comparison(False, CompareMode.CODE, *lines)
+    if mode is CompareMode.INCLUDES and (old_split := split_includes(before, suffix)) is not None:
         new_split = split_includes(after, suffix)
         at = first_mismatch([text for _, text in old_split[1]], [text for _, text in new_split[1]])
         added = tuple(sorted(set(new_split[0]) - set(old_split[0])))
         removed = tuple(sorted(set(old_split[0]) - set(new_split[0])))
         lines = (0, 0) if at is None else tuple(rest[at][0] if at < len(rest) else 0
                                                 for rest in (old_split[1], new_split[1]))
-        return Comparison(at is None and not added and not removed, "includes", *lines, added, removed)
+        same = at is None and not added and not removed
+        return Comparison(same, CompareMode.INCLUDES, *lines, added, removed)
     old_lines, new_lines = before.splitlines(keepends=True), after.splitlines(keepends=True)
     at = first_mismatch(old_lines, new_lines)
     if at is None:
-        return Comparison(True, "exact", 0, 0)
-    return Comparison(False, "exact", *(at + 1 if at < len(lines) else 0 for lines in (old_lines, new_lines)))
+        return Comparison(True, CompareMode.EXACT, 0, 0)
+    return Comparison(False, CompareMode.EXACT,
+                      *(at + 1 if at < len(lines) else 0 for lines in (old_lines, new_lines)))
 
 
 def split_includes(text: str, suffix: str) -> tuple[list[str], list[tuple[int, str]]] | None:

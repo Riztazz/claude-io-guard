@@ -15,7 +15,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ioguard.lib import anchors, indent
-from ioguard.lib.profile import Eol, convert_eol
+from ioguard.lib.profile import Eol, IndentKind, convert_eol
 
 CRLF = re.compile("\r\n")
 LIST_LEAD = re.compile(r"[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+)?")
@@ -32,7 +32,7 @@ class Changed:
     text: str
     start: int                       # where the new text sits in text's LF view
     end: int
-    indented: str | None             # "tabs" or "spaces" when the new text took the indent around it
+    indented: IndentKind | None      # TABS or SPACES when the new text took the indent around it
 
 
 @dataclass(frozen=True)
@@ -46,7 +46,7 @@ class Missed:
 class Applied:
     text: str
     lines: tuple[tuple[int, int], ...]       # each change's first and last line in text, counted from 1
-    indented: tuple[tuple[int, str], ...]    # each change, from 0, whose new text took the indent around it
+    indented: tuple[tuple[int, IndentKind], ...]   # each change, from 0, whose new text took the indent there
 
 
 @dataclass(frozen=True)
@@ -82,7 +82,7 @@ def apply(text: str, changes: Sequence[Change], eol: Eol, width: int | None) -> 
     """text with each change made in order, each old text found exactly once in what the changes before it
     left. Missed names the first change that is not, and then no change is made."""
     spans: list[tuple[int, int]] = []
-    indented: list[tuple[int, str]] = []
+    indented: list[tuple[int, IndentKind]] = []
     for index, wanted in enumerate(changes):
         found = anchors.find(anchors.edit_view(text), anchors.edit_view(wanted.old))
         if len(found) != 1:

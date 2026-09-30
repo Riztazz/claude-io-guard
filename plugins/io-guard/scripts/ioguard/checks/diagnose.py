@@ -16,6 +16,7 @@ from ioguard.lib.context import Context, claude_folder
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.diagnosis import FIND_LIMIT, PART_BYTES, Diagnosis, Failed
 from ioguard.lib.events import Event, HookEvent, Tool
+from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.results import Code, Layer, Result, Severity
 
 log = logging.getLogger("ioguard.checks.diagnose")
@@ -35,7 +36,7 @@ class DiagnoseFailure(Check):
     meta = CheckMeta(
         id="diagnose.failure", layer=Layer.READ, events=frozenset({HookEvent.POST_TOOL_USE_FAILURE}),
         tools=frozenset({Tool.READ, Tool.GREP, Tool.GLOB, Tool.EDIT, Tool.WRITE}),
-        platforms=frozenset({"win32", "darwin"}), severity=Severity.WARNING, cost=Cost.MEDIUM,
+        platforms=EVERY_PLATFORM, severity=Severity.WARNING, cost=Cost.MEDIUM,
         reads=frozenset({"file_path", "path", "pattern", "old_string"}), writes=frozenset(),
         after=frozenset(), config=OPTIONS,
         codes=frozenset({Code.PATH_NOT_FOUND, Code.READ_TOO_LARGE, Code.PATTERN_INVALID,
@@ -53,7 +54,7 @@ class DiagnoseRefused(Check):
     meta = CheckMeta(
         id="diagnose.refused", layer=Layer.STALE,
         events=frozenset({HookEvent.PRE_TOOL_USE, HookEvent.POST_TOOL_USE, HookEvent.POST_TOOL_USE_FAILURE}),
-        tools=frozenset(), platforms=frozenset({"win32", "darwin"}), severity=Severity.WARNING,
+        tools=frozenset(), platforms=EVERY_PLATFORM, severity=Severity.WARNING,
         cost=Cost.MEDIUM, reads=frozenset(), writes=frozenset(), after=frozenset(),
         config={**OPTIONS,
                 "tail_bytes": ConfigKey(int, TAIL_BYTES, "The bytes at the end of the transcript read for "

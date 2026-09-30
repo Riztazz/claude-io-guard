@@ -24,7 +24,7 @@ class CheckMeta:
     layer: Layer
     events: frozenset[HookEvent]
     tools: frozenset[Tool]                   # empty means every tool
-    platforms: frozenset[str]                # sys.platform values, such as {"win32", "darwin"}
+    platforms: frozenset[str]                # lib.platform's names, EVERY_PLATFORM for most checks
     severity: Severity                       # the default when the check finds something
     cost: Cost
     reads: frozenset[str]                    # tool_input fields it reads

@@ -18,6 +18,7 @@ from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Rewrite, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
+from ioguard.lib.platform import WINDOWS
 from ioguard.lib.results import Code, Layer, Severity
 
 POSIX_ROOTS = ["tmp", "usr", "dev", "etc", "home", "bin", "mnt", "proc", "opt", "var", "lib", "sbin",
@@ -48,7 +49,7 @@ def excluded(simples: tuple[shell.SimpleCommand, ...], options: Mapping[str, Any
 class WinPaths(Check):
     meta = CheckMeta(
         id="win.paths", layer=Layer.TRANSPORT, events=frozenset({HookEvent.PRE_TOOL_USE}),
-        tools=frozenset({Tool.BASH}), platforms=frozenset({"win32"}), severity=Severity.FIXED,
+        tools=frozenset({Tool.BASH}), platforms=frozenset({WINDOWS}), severity=Severity.FIXED,
         cost=Cost.CHEAP, reads=frozenset({"command"}), writes=frozenset({"command"}),
         after=frozenset({"shell.lint"}),
         config={

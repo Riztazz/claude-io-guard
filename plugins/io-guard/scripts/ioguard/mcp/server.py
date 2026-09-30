@@ -23,11 +23,11 @@ from typing import Any, BinaryIO
 from ioguard import PLUGIN_VERSION
 from ioguard.lib import bytesio, retention, snapshots, telemetry
 from ioguard.lib.context import Context, home_folder, session_file
-from ioguard.lib.heartbeat import Heartbeat
+from ioguard.lib.heartbeat import Era, Heartbeat
 from ioguard.mcp import (tools_dashboard, tools_edit, tools_format, tools_history, tools_hook, tools_read,
                          tools_run, tools_trust)
 from ioguard.mcp.progress import CancelToken
-from ioguard.mcp.protocol import INVALID_REQUEST, PARSE_ERROR, Era, Protocol, error
+from ioguard.mcp.protocol import INVALID_REQUEST, PARSE_ERROR, Protocol, error
 from ioguard.mcp.toolspec import ToolCall, ToolRegistry
 
 log = logging.getLogger("ioguard.mcp")
@@ -56,11 +56,11 @@ class Watchdog(threading.Thread):
         super().__init__(name="io-guard watchdog", daemon=True)
         now = datetime.now(timezone.utc)
         self.path, self.era, self.halt = path, era, threading.Event()
-        self.beat = Heartbeat(os.getpid(), session, era().value, now, now)
+        self.beat = Heartbeat(os.getpid(), session, era(), now, now)
 
     def run(self) -> None:
         while True:
-            self.write(self.beat.again(datetime.now(timezone.utc), self.era().value))
+            self.write(self.beat.again(datetime.now(timezone.utc), self.era()))
             if self.halt.wait(BEAT_S):
                 return
 
@@ -68,7 +68,7 @@ class Watchdog(threading.Thread):
         self.halt.set()
         self.join(BEAT_S)
         now = datetime.now(timezone.utc)
-        self.write(Heartbeat(self.beat.pid, self.beat.session, self.era().value, self.beat.started, now, now))
+        self.write(Heartbeat(self.beat.pid, self.beat.session, self.era(), self.beat.started, now, now))
 
     def write(self, beat: Heartbeat) -> None:
         try:

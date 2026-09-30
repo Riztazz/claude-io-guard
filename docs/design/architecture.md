@@ -653,7 +653,7 @@ class CheckMeta:
     layer: Layer
     events: frozenset[HookEvent]
     tools: frozenset[Tool]                   # empty means every tool
-    platforms: frozenset[str]                # {"win32", "darwin"} or a subset
+    platforms: frozenset[str]                # lib.platform.EVERY_PLATFORM, or a subset such as {WINDOWS}
     severity: Severity                       # the default when the check finds something
     cost: Cost
     reads: frozenset[str]                    # tool_input fields it reads
@@ -848,7 +848,7 @@ def carried(text: str, other: str, eol: Eol, within: Optional[Sequence[tuple[int
                                                             # meet no line of within left as text had them
 
 # indent.py, task 24, moved from conform_edit
-def style(text: str) -> str                                 # tabs, spaces, mixed or none
+def style(text: str) -> IndentKind                          # TABS, SPACES, MIXED or NONE, profile's enum
 def reindented(text: str, to: str, width: int) -> str
 def around(text: str, first: int, last: int) -> str         # three lines either side
 def fitted(new: str, near: str, width: Optional[int]) -> Optional[str]   # None when the styles agree
@@ -1010,13 +1010,15 @@ def mojibake(text: str, code_pages: Sequence[str]) -> Mojibake # U+FFFD, and UTF
 def excerpt(text: str, head: int, tail: int, marked: Sequence[ErrorLine], width: int) -> str   # numbered lines
 
 # rules.py, task 25
+class RuleVerdict(Enum): DENY, ASK, UNREAD, NONE           # what the rules say of a command, RuleMatch.decision
+class Dialect(Enum): BASH, POWERSHELL, NONE                 # the shell a wrapped string runs in, Wrapped.dialect
 def settings_files(env: Mapping[str, str], project: Path, platform: Platform) -> tuple[Path, ...]
                                                             # managed, user, project, project local
 def load(files: Sequence[Path], read: Callable[[Path], Optional[bytes]]) -> Rules   # deny and ask rules
 def match_argv(rules: Rules, argv: Sequence[str]) -> RuleMatch   # deny, then ask, then none
 def match_command(rules: Rules, argv: Sequence[str], depth: int = 0) -> RuleMatch
                               # task 83: match_argv, and each command a shell string in argv runs, NESTED (4)
-                              # deep, then "unread" for a string io-guard cannot read that names a rule's program
+                              # deep, then UNREAD for a string io-guard cannot read that names a rule's program
 def wrapped(words: Sequence[str]) -> Optional[Wrapped]      # bash -c, pwsh -Command or -EncodedCommand,
                                                             # powershell's bare command, cmd /c, python -c...
 def rule_named(rules: Rules, text: str) -> Optional[Rule]   # the rule whose program text names as a word
@@ -1112,7 +1114,8 @@ pattern that does not compile, is over 200 characters, or repeats a group that r
 `config.json` may still set one. Each other key arrives with its check. A key with a `shape`, such as `verify`,
 has its inner values checked too, and a wrong one drops the file like any other error.
 
-**The rewrite mode is the user's (D12).** For each permission mode the user layer sets `refuse`, `ask` or `allow`.
+**The rewrite mode is the user's (D12).** For each permission mode the user layer sets `refuse`, `ask` or `allow`,
+the words of `lib.decisions.RewriteMode`, and each member names the verdict the hook's answer takes.
 In `refuse` the call is refused and the reason carries the corrected command, so the model reruns it and the
 auto-mode classifier judges it. In `ask` the user sees the corrected command. In `allow` it runs at once and no
 classifier sees it. The user edits `config.json`, calls `io.config`, or uses the dashboard page, and the README
@@ -1357,13 +1360,14 @@ switch the plugin's own hooks off.
 ### The dual-era dispatcher
 
 `mcp.server` reads newline-delimited JSON-RPC from stdin as bytes, hands each message to `protocol.dispatch`
-and writes each response through one lock. `protocol` decides the era per process.
+and writes each response through one lock. `protocol` decides the era per process. `Era` lives in
+`lib.heartbeat`, since the heartbeat carries it, and the file holds its word.
 
 ```python
 class Era(Enum):
-    UNDECIDED = 0
-    LEGACY = 1      # after initialize
-    MODERN = 2      # after the first request with _meta protocolVersion
+    UNDECIDED = "undecided"
+    LEGACY = "legacy"      # after initialize
+    MODERN = "modern"      # after the first request with _meta protocolVersion
 
 class Protocol:
     def dispatch(self, message: Mapping[str, Any]) -> Optional[Mapping[str, Any]]: ...

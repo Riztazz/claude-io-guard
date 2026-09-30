@@ -17,6 +17,7 @@ from ioguard.lib.context import Context, tracked
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.git import GitError
+from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity, callable_name
 from ioguard.lib.writes import (Host, Script, Write, bash_writes, powershell_writes, resolve, script_files,
                                 targets)
@@ -42,7 +43,7 @@ def inside(path: Path, folder: Path | None) -> bool:
 class ShellWrites(Check):
     meta = CheckMeta(
         id="shell.writes", layer=Layer.TRANSPORT, events=frozenset({HookEvent.PRE_TOOL_USE}),
-        tools=frozenset({Tool.BASH, Tool.POWERSHELL}), platforms=frozenset({"win32", "darwin"}),
+        tools=frozenset({Tool.BASH, Tool.POWERSHELL}), platforms=EVERY_PLATFORM,
         severity=Severity.REFUSED, cost=Cost.EXPENSIVE, reads=frozenset({"command"}), writes=frozenset(),
         after=frozenset(), config={}, codes=frozenset({Code.SHELL_WRITE}),
         description="Refuses a shell command that writes a file git tracks, and names the tool that writes "

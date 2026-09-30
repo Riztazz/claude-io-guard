@@ -19,7 +19,7 @@ def loaded(deny=(), ask=(), **extra) -> rules.Rules:
 
 
 def decision(rule: str, argv: list[str]) -> str:
-    return rules.match_argv(loaded(deny=[rule]), argv).decision
+    return rules.match_argv(loaded(deny=[rule]), argv).decision.value
 
 
 class ARuleMeetsTheCommandItNames(unittest.TestCase):
@@ -115,7 +115,7 @@ class AShellStringIsReadAsTheCommandsItRuns(unittest.TestCase):
                  ("git", "push"): "deny"}
         for argv, decision in cases.items():
             with self.subTest(argv=argv):
-                self.assertEqual(rules.match_command(found, argv).decision, decision,
+                self.assertEqual(rules.match_command(found, argv).decision.value, decision,
                                  "a wrapped command meets the rules as if it ran on its own")
 
     def test_a_command_spelled_the_way_only_the_shell_reads_it_meets_the_rule(self):
@@ -130,7 +130,7 @@ class AShellStringIsReadAsTheCommandsItRuns(unittest.TestCase):
                  ("pwsh", "-Command", "1 | ForEach-Object { git push }"): "and a ForEach-Object block"}
         for argv, why in cases.items():
             with self.subTest(argv=argv):
-                self.assertEqual(rules.match_command(found, argv).decision, "deny", why)
+                self.assertEqual(rules.match_command(found, argv).decision.value, "deny", why)
 
     def test_a_powershell_expression_runs_nothing_and_an_assignment_runs_its_command(self):
         found = loaded(deny=["PowerShell(git push *)"])
@@ -142,14 +142,15 @@ class AShellStringIsReadAsTheCommandsItRuns(unittest.TestCase):
                  "git log; & ($name) push": "unread"}
         for text, decision in cases.items():
             with self.subTest(text=text):
-                self.assertEqual(rules.match_command(found, ("pwsh", "-Command", text)).decision, decision,
+                found_one = rules.match_command(found, ("pwsh", "-Command", text))
+                self.assertEqual(found_one.decision.value, decision,
                                  "a statement that starts with a variable is an expression or an assignment, "
                                  "and only & or . calls through one")
 
     def test_a_heredoc_that_never_ends_leaves_the_string_unread(self):
         found = loaded(deny=["Bash(git push *)"])
         argv = ("bash", "-c", "cat <<EOF\nx\ngit push origin")
-        self.assertEqual(rules.match_command(found, argv).decision, "unread",
+        self.assertEqual(rules.match_command(found, argv).decision.value, "unread",
                          "a heredoc io-guard finds no end of may end where bash reads one, so the string is "
                          "unread")
 
@@ -168,7 +169,8 @@ class AShellStringIsReadAsTheCommandsItRuns(unittest.TestCase):
         argv = ["git", "status"]
         for _ in range(rules.NESTED + 1):
             argv = ["bash", "-c", rules.command_text(argv)]
-        self.assertEqual(rules.match_command(loaded(deny=["Bash(git push *)"]), argv).decision, "unread",
+        found = rules.match_command(loaded(deny=["Bash(git push *)"]), argv)
+        self.assertEqual(found.decision.value, "unread",
                          "a string nested past NESTED shells is not followed")
 
 
@@ -176,9 +178,10 @@ class DenyOutranksAsk(unittest.TestCase):
     def test_deny_comes_first_and_names_its_rule(self):
         found = rules.match_argv(loaded(deny=["Bash(git push --force *)"], ask=["Bash(git push *)"]),
                                  ["git", "push", "--force", "origin"])
-        self.assertEqual((found.decision, found.rule.text), ("deny", "Bash(git push --force *)"),
+        self.assertEqual((found.decision.value, found.rule.text), ("deny", "Bash(git push --force *)"),
                          "a deny rule wins over an ask rule, and the match names the rule the user wrote")
-        self.assertEqual(rules.match_argv(loaded(ask=["Bash(git push *)"]), ["git", "push"]).decision, "ask",
+        asked = rules.match_argv(loaded(ask=["Bash(git push *)"]), ["git", "push"])
+        self.assertEqual(asked.decision.value, "ask",
                          "an ask rule alone asks")
 
     def test_other_tools_parameters_and_broken_files_hold_no_rule(self):

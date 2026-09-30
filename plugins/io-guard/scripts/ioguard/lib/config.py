@@ -18,6 +18,7 @@ from typing import Any
 
 from ioguard import CONFIG_SCHEMA
 from ioguard.lib import bytesio, commands, patterns
+from ioguard.lib.decisions import RewriteMode
 
 
 class Scope(IntEnum):
@@ -123,7 +124,7 @@ def at_least_one(value: int) -> str | None:
     return None if value >= 1 else "The value must be 1 or more."
 
 
-REWRITE_MODES = ("refuse", "ask", "allow")
+REWRITE_MODES = tuple(mode.value for mode in RewriteMode)
 REWRITE_DEFAULTS = {"default": "ask", "acceptEdits": "ask", "plan": "ask", "auto": "refuse",
                     "dontAsk": "refuse", "bypassPermissions": "allow"}
 GLOBAL_KEYS: dict[str, ConfigKey] = {

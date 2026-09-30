@@ -19,6 +19,7 @@ from ioguard.lib import shell
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Rewrite, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
+from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity
 
 
@@ -54,7 +55,7 @@ def size(data: bytes) -> str:
 class TransportBody(Check):
     meta = CheckMeta(
         id="transport.body", layer=Layer.TRANSPORT, events=frozenset({HookEvent.PRE_TOOL_USE}),
-        tools=frozenset({Tool.BASH}), platforms=frozenset({"win32", "darwin"}), severity=Severity.FIXED,
+        tools=frozenset({Tool.BASH}), platforms=EVERY_PLATFORM, severity=Severity.FIXED,
         cost=Cost.MEDIUM, reads=frozenset({"command"}), writes=frozenset({"command"}),
         after=frozenset({"shell.writes"}),
         config={},

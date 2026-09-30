@@ -31,6 +31,7 @@ from ioguard.lib.context import Context, ShellSnapshot, repository_root, tracked
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.git import GitError, StatusEntry
+from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.profile import profile
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity, callable_name
 from ioguard.lib.writes import Host, located, resolve
@@ -152,7 +153,7 @@ class Touched(Check):
         id="shell.touched", layer=Layer.STALE,
         events=frozenset({HookEvent.PRE_TOOL_USE, HookEvent.POST_TOOL_USE, HookEvent.POST_TOOL_USE_FAILURE}),
         tools=frozenset({Tool.BASH, Tool.POWERSHELL, Tool.EDIT, Tool.WRITE}),
-        platforms=frozenset({"win32", "darwin"}),
+        platforms=EVERY_PLATFORM,
         severity=Severity.WARNING, cost=Cost.EXPENSIVE, reads=frozenset({"command"}), writes=frozenset(),
         after=frozenset(), config={"listed": ConfigKey(int, LISTED, "The paths each part of the report names "
                                                        "before it gives the rest as a count.")},

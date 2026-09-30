@@ -18,6 +18,7 @@ from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Rewrite, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.git import GitError
+from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.profile import (Bom, Eol, Profile, convert_eol, lone_cr_lines, profile, target_profile,
                                  with_bom, with_final_newline)
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity
@@ -69,7 +70,7 @@ def conformed(content: str, target: Profile, existing: bool) -> str:
 class ConformWrite(Check):
     meta = CheckMeta(
         id="conform.write", layer=Layer.BYTES, events=frozenset({HookEvent.PRE_TOOL_USE}),
-        tools=frozenset({Tool.WRITE}), platforms=frozenset({"win32", "darwin"}), severity=Severity.FIXED,
+        tools=frozenset({Tool.WRITE}), platforms=EVERY_PLATFORM, severity=Severity.FIXED,
         cost=Cost.EXPENSIVE, reads=frozenset({"file_path", "content"}), writes=frozenset({"content"}),
         after=frozenset(), config={},
         codes=frozenset({Code.EOL_CONVERTED, Code.BOM_RESTORED, Code.EOL_MISMATCH}),

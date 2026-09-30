@@ -18,20 +18,21 @@ runs the commands in that string, so match_command matches each of them too, thr
 NESTED deep. The string is read as the shell reads it: a backslash before a newline joins the lines, (( ))
 is arithmetic, and a PowerShell script block runs its own commands. A string io-guard cannot read, such as
 one with a command substitution, an eval or a heredoc with no end, a cmd /c line or an interpreter's code
-string such as python -c, gives the decision "unread" when it names the program of a
-deny or ask rule as a word, such as git for Bash(git push *), and the caller weighs it. Code can build a
-program's name from parts, so a string that names none can still run one.
+string such as python -c, gives the decision UNREAD when it names the program of a deny or ask rule as a
+word, such as git for Bash(git push *), and the caller weighs it. Code can build a program's name from parts,
+so a string that names none can still run one.
 """
 import base64
 import json
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 from ioguard.lib import pwsh, shell, wildcard
 from ioguard.lib.context import claude_folder
-from ioguard.lib.platform import Platform
+from ioguard.lib.platform import MACOS, WINDOWS, Platform
 from ioguard.lib.program import PROGRAM_SUFFIXES, program_name
 
 RULE = re.compile(r"^(Bash|PowerShell)(?:\((.*)\))?$", re.S)
@@ -57,8 +58,8 @@ PWSH_ASSIGNMENT = re.compile(r"^\$[\w:]+(?:\+|-|\*|/|%|\?\?)?=(.*)$", re.S)   # 
 READS_TEXT = frozenset({"eval", "source", ".", "iex", "invoke-expression", "invoke-command"})
 NESTED = 4
 BLOCKS = 16                                      # script blocks inside script blocks read before unread
-MANAGED = {"win32":Path("C:/Program Files/ClaudeCode/managed-settings.json"),
-           "darwin": Path("/Library/Application Support/ClaudeCode/managed-settings.json")}
+MANAGED = {WINDOWS: Path("C:/Program Files/ClaudeCode/managed-settings.json"),
+           MACOS: Path("/Library/Application Support/ClaudeCode/managed-settings.json")}
 
 
 @dataclass(frozen=True)
@@ -76,10 +77,29 @@ class Rules:
     managed_only: bool = False       # the managed file set allowManagedPermissionRulesOnly
 
 
+class RuleVerdict(Enum):
+    """What the permission rules say of a command. UNREAD is a code body or a string io-guard cannot read that
+    names a rule's program."""
+    DENY = "deny"
+    ASK = "ask"
+    UNREAD = "unread"
+    NONE = "none"
+
+
+class Dialect(Enum):
+    """The shell a wrapped string runs in. NONE for a string io-guard cannot read."""
+    BASH = "bash"
+    POWERSHELL = "powershell"
+    NONE = ""
+
+
+STRONGEST_FIRST = (RuleVerdict.DENY, RuleVerdict.ASK, RuleVerdict.UNREAD)
+
+
 @dataclass(frozen=True)
 class RuleMatch:
-    decision: str                    # "deny", "ask", "unread" or "none"
-    rule: Rule | None                # None for "unread", and for an ask the caller makes without a rule
+    decision: RuleVerdict
+    rule: Rule | None                # None for UNREAD, and for an ask the caller makes without a rule
     command: str                     # the command text the rule met, the argv as text, or what is unread
 
 
@@ -87,7 +107,7 @@ class RuleMatch:
 class Wrapped:
     what: str                        # how the string is given, such as bash -c or python -c
     text: str | None                 # the command string a shell runs, None when io-guard cannot read it
-    dialect: str                     # "bash" or "powershell", "" for text io-guard cannot read
+    dialect: Dialect
     raw: str = ""                    # the string as given, which rule_named searches
 
 
@@ -192,12 +212,12 @@ def match_argv(rules: Rules, argv: Sequence[str]) -> RuleMatch:
     texts = [command_text(words)]
     if words:
         texts.append(command_text(named(words)))
-    for decision, listed in (("deny", rules.deny), ("ask", rules.ask)):
+    for decision, listed in ((RuleVerdict.DENY, rules.deny), (RuleVerdict.ASK, rules.ask)):
         for rule in listed:
             met = next((text for text in texts if matches(rule, text)), None)
             if met is not None:
                 return RuleMatch(decision, rule, met)
-    return RuleMatch("none", None, texts[0])
+    return RuleMatch(RuleVerdict.NONE, None, texts[0])
 
 
 def wrapped(words: Sequence[str]) -> Wrapped | None:
@@ -211,7 +231,7 @@ def wrapped(words: Sequence[str]) -> Wrapped | None:
         while rest and (rest[0].startswith(("-", "+")) and rest[0] != "--"):
             if SHELL_C.match(rest[0]):
                 text = rest[1] if len(rest) > 1 else ""
-                return Wrapped(f"{program} -c", text, "bash", text)
+                return Wrapped(f"{program} -c", text, Dialect.BASH, text)
             rest = rest[2:] if rest[0] in SHELL_VALUED else rest[1:]
         return None
     if program in POWERSHELLS:
@@ -219,24 +239,24 @@ def wrapped(words: Sequence[str]) -> Wrapped | None:
             flag = rest[0].lower()
             if flag in ("-c", "-command") or (len(flag) >= 4 and "-command".startswith(flag)):
                 text = " ".join(rest[1:])
-                return Wrapped(f"{program} -Command", text, "powershell", text)
+                return Wrapped(f"{program} -Command", text, Dialect.POWERSHELL, text)
             if flag in ("-e", "-ec", "-en") or (len(flag) >= 4 and "-encodedcommand".startswith(flag)):
                 return encoded(program, rest[1] if len(rest) > 1 else "")
             if flag in ("-f", "-file") or (len(flag) >= 3 and "-file".startswith(flag)):
                 return None
             rest = rest[2:] if flag in PWSH_VALUED else rest[1:]
         text = " ".join(rest)
-        return Wrapped(f"{program} with a command", text, "powershell", text) \
+        return Wrapped(f"{program} with a command", text, Dialect.POWERSHELL, text) \
             if rest and program == "powershell" else None
     if program == "cmd":
         at = next((index for index, word in enumerate(rest) if word.lower() in ("/c", "/k")), None)
-        return None if at is None else Wrapped("cmd /c", None, "", " ".join(rest[at + 1:]))
+        return None if at is None else Wrapped("cmd /c", None, Dialect.NONE, " ".join(rest[at + 1:]))
     flags = CODE_FLAGS.get(program, ())
     while rest and rest[0].startswith("-") and rest[0] not in flags:
         rest = rest[2:] if rest[0] in CODE_VALUED else rest[1:]
     if not rest or rest[0] not in flags:
         return None
-    return Wrapped(f"{program} {rest[0]}", None, "", " ".join(rest[1:]))
+    return Wrapped(f"{program} {rest[0]}", None, Dialect.NONE, " ".join(rest[1:]))
 
 
 def encoded(program: str, given: str) -> Wrapped:
@@ -245,8 +265,8 @@ def encoded(program: str, given: str) -> Wrapped:
     try:
         text = base64.b64decode(given, validate=True).decode("utf-16-le")
     except (ValueError, UnicodeDecodeError):
-        return Wrapped(f"{program} -EncodedCommand", None, "", given)
-    return Wrapped(f"{program} -EncodedCommand", text, "powershell", text)
+        return Wrapped(f"{program} -EncodedCommand", None, Dialect.NONE, given)
+    return Wrapped(f"{program} -EncodedCommand", text, Dialect.POWERSHELL, text)
 
 
 def rule_named(rules: Rules, text: str) -> Rule | None:
@@ -267,7 +287,7 @@ def inner(found: Wrapped) -> list[list[str]] | None:
     whose end io-guard does not find, which bash may find elsewhere."""
     if found.text is None:
         return None
-    if found.dialect == "bash":
+    if found.dialect is Dialect.BASH:
         if any(mark in found.text for mark in UNREAD_BASH):
             return None
         scanned = shell.scan(found.text)
@@ -319,16 +339,15 @@ def statement(words: list[str]) -> list[str]:
 
 def match_command(rules: Rules, argv: Sequence[str], depth: int = 0) -> RuleMatch:
     """match_argv, and each command a shell among argv is given to run, with deny first, then ask, then
-    "unread": a string io-guard cannot read that names a rule's program, with that rule."""
+    UNREAD: a string io-guard cannot read that names a rule's program, with that rule."""
     direct = match_argv(rules, argv)
     found = wrapped(unwrapped(argv))
-    if direct.decision == "deny" or found is None:
+    if direct.decision is RuleVerdict.DENY or found is None:
         return direct
     parts = inner(found) if depth < NESTED else None
     if parts is None:
         named_by = rule_named(rules, found.raw)
-        met = [direct] + ([RuleMatch("unread", named_by, found.what)] if named_by else [])
+        met = [direct] + ([RuleMatch(RuleVerdict.UNREAD, named_by, found.what)] if named_by else [])
     else:
         met = [direct] + [match_command(rules, part, depth + 1) for part in parts if part]
-    return next((each for decision in ("deny", "ask", "unread") for each in met if each.decision == decision),
-                direct)
+    return next((each for decision in STRONGEST_FIRST for each in met if each.decision is decision), direct)

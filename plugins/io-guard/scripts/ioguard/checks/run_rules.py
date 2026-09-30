@@ -14,7 +14,9 @@ from ioguard.lib import runs
 from ioguard.lib.context import Context, project_of
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
+from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.results import Code, Layer, Result, Severity, callable_name
+from ioguard.lib.rules import RuleVerdict
 
 RUN = callable_name("io.run")
 
@@ -22,7 +24,7 @@ RUN = callable_name("io.run")
 class RunRules(Check):
     meta = CheckMeta(
         id="run.rules", layer=Layer.TRANSPORT, events=frozenset({HookEvent.PRE_TOOL_USE}),
-        tools=frozenset({Tool.OTHER}), platforms=frozenset({"win32", "darwin"}), severity=Severity.REFUSED,
+        tools=frozenset({Tool.OTHER}), platforms=EVERY_PLATFORM, severity=Severity.REFUSED,
         cost=Cost.MEDIUM, reads=frozenset({"argv", "lang", "code"}), writes=frozenset(), after=frozenset(),
         config={}, codes=frozenset({Code.RULE_DENIED, Code.RULE_ASKED}),
         description="Holds io.run to the user's Bash and PowerShell deny and ask rules.")
@@ -32,11 +34,11 @@ class RunRules(Check):
             return Decision.observe(self.meta.id)
         found = runs.judge(event.tool_input, ctx.env, ctx.fs, ctx.probe, ctx.platform,
                            project_of(ctx.env, event.cwd))
-        if found.decision == "deny":
+        if found.decision is RuleVerdict.DENY:
             result = Result.of(Code.RULE_DENIED, f"io.run would run {runs.said(found)}.", event.tool_name,
                                ctx.platform.os, evidence={"rule": found.rule.text})
             return Decision(self.meta.id, Verdict.DENY, results=(result,))
-        if found.decision == "ask":
+        if found.decision is RuleVerdict.ASK:
             ctx.session.keep_ask(event.tool_use_id, runs.key(event.tool_input), ctx.clock.now())
             rule = found.rule.text if found.rule else None
             result = Result.of(Code.RULE_ASKED, f"io.run would run {runs.said(found)}.", event.tool_name,

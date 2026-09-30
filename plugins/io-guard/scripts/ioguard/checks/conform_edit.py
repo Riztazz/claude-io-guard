@@ -26,7 +26,8 @@ from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Rewrite, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
-from ioguard.lib.profile import profile
+from ioguard.lib.platform import EVERY_PLATFORM
+from ioguard.lib.profile import IndentKind, profile
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity
 from ioguard.lib.text import SHOWN, listed
 
@@ -34,7 +35,7 @@ from ioguard.lib.text import SHOWN, listed
 class ConformEdit(Check):
     meta = CheckMeta(
         id="conform.edit", layer=Layer.BYTES, events=frozenset({HookEvent.PRE_TOOL_USE}),
-        tools=frozenset({Tool.EDIT}), platforms=frozenset({"win32", "darwin"}), severity=Severity.FIXED,
+        tools=frozenset({Tool.EDIT}), platforms=EVERY_PLATFORM, severity=Severity.FIXED,
         cost=Cost.MEDIUM, reads=frozenset({"file_path", "old_string", "new_string", "replace_all"}),
         writes=frozenset({"new_string"}), after=frozenset(),
         config={
@@ -70,16 +71,16 @@ class ConformEdit(Check):
         here = indent.style(near)
         converted = indent.fitted(new, near, profile(data).indent.width)
         if converted is not None:
-            note = f"io-guard indented new_string with {here}, as the lines around the match are."
+            note = f"io-guard indented new_string with {here.value}, as the lines around the match are."
             rewrite = Rewrite(self.meta.id, frozenset({"new_string"}),
                               lambda given_input: {**given_input, "new_string": converted}, note,
                               Code.INDENT_MISMATCH)
             return Decision(self.meta.id, Verdict.ALLOW, rewrite=rewrite)
-        if indent.style(new) == "mixed" and here in ("tabs", "spaces"):
+        if indent.style(new) is IndentKind.MIXED and here in indent.BOTH:
             result = Result.of(Code.INDENT_MISMATCH,
-                               f"new_string mixes tabs and spaces, and the lines around it use {here}.",
+                               f"new_string mixes tabs and spaces, and the lines around it use {here.value}.",
                                event.tool_name, ctx.platform.os, severity=Severity.WARNING, file=path,
-                               fix=Fix("Edit", {}, f"Indent new_string with {here} only."))
+                               fix=Fix("Edit", {}, f"Indent new_string with {here.value} only."))
             return Decision(self.meta.id, Verdict.ALLOW, results=(result,))
         return Decision.observe(self.meta.id)
 

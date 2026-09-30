@@ -11,9 +11,9 @@ failure is a result with isError set, which ToolRegistry builds.
 import logging
 import threading
 from collections.abc import Callable, Mapping
-from enum import Enum
 from typing import Any
 
+from ioguard.lib.heartbeat import Era
 from ioguard.mcp.progress import CancelToken, ProgressReporter
 from ioguard.mcp.toolspec import InvalidArguments, ToolCall, ToolRegistry
 
@@ -34,12 +34,6 @@ METHOD_NOT_FOUND = -32601
 INVALID_PARAMS = -32602
 INTERNAL_ERROR = -32603
 UNSUPPORTED_VERSION = -32022
-
-
-class Era(Enum):
-    UNDECIDED = "undecided"
-    LEGACY = "legacy"          # after initialize
-    MODERN = "modern"          # after the first request with a protocol version in _meta
 
 
 class RpcError(Exception):

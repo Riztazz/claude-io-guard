@@ -10,7 +10,7 @@ from ioguard.lib.config import defaults
 from ioguard.lib.context import Context, session_file
 from ioguard.lib.events import Event, Surface
 from ioguard.lib.fakes import START, FakeClock, FakeFs
-from ioguard.lib.heartbeat import Heartbeat
+from ioguard.lib.heartbeat import Era, Heartbeat
 from ioguard.lib.platform import Platform
 from ioguard.lib.results import Code
 from tests.support import events
@@ -38,7 +38,7 @@ def context(beat_age_s: float | None, stopped: bool = False, failed_age_s: float
     files = {}
     if beat_age_s is not None:
         beat = START - timedelta(seconds=beat_age_s)
-        files[ALIVE] = Heartbeat(4242, events.SESSION_ID, "legacy", beat - timedelta(minutes=5), beat,
+        files[ALIVE] = Heartbeat(4242, events.SESSION_ID, Era.LEGACY, beat - timedelta(minutes=5), beat,
                                  beat if stopped else None).encode()
     if failed_age_s is not None:
         failed_ms = (START - timedelta(seconds=failed_age_s)).timestamp() * 1000

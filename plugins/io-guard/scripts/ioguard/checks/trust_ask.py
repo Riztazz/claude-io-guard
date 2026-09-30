@@ -15,6 +15,7 @@ from ioguard.lib import config_edit, trust, waiting
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
+from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.results import Code, Layer, Result, Severity, callable_name
 from ioguard.lib.text import quoted
 
@@ -25,7 +26,7 @@ CONFIG = callable_name("io.config")
 class TrustAsk(Check):
     meta = CheckMeta(
         id="trust.ask", layer=Layer.INTERNAL, events=frozenset({HookEvent.PRE_TOOL_USE}),
-        tools=frozenset({Tool.OTHER}), platforms=frozenset({"win32", "darwin"}), severity=Severity.WARNING,
+        tools=frozenset({Tool.OTHER}), platforms=EVERY_PLATFORM, severity=Severity.WARNING,
         cost=Cost.CHEAP, reads=frozenset(), writes=frozenset(), after=frozenset(), config={},
         codes=frozenset({Code.TRUST_ASKED, Code.CONFIG_ASKED}),
         description="Asks the user before io.trust approves a project's commands, or io.config writes a "

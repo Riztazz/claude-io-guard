@@ -13,6 +13,7 @@ from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
+from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.profile import profile
 from ioguard.lib.results import Layer, Severity
 
@@ -22,7 +23,7 @@ MAX_BYTES = 16 * 1024 * 1024
 class ReadProfile(Check):
     meta = CheckMeta(
         id="read.profile", layer=Layer.READ, events=frozenset({HookEvent.POST_TOOL_USE}),
-        tools=frozenset({Tool.READ}), platforms=frozenset({"win32", "darwin"}), severity=Severity.INFO,
+        tools=frozenset({Tool.READ}), platforms=EVERY_PLATFORM, severity=Severity.INFO,
         cost=Cost.MEDIUM, reads=frozenset({"file_path"}), writes=frozenset(), after=frozenset(),
         config={"max_bytes": ConfigKey(int, MAX_BYTES, "The largest file, in bytes, that gets a profile line "
                                        "after a Read. A larger one gets none.")},

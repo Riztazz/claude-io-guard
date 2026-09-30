@@ -14,13 +14,14 @@ from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
+from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.results import Code, Layer, Result, Severity
 
 
 class VerifyCommand(Check):
     meta = CheckMeta(
         id="verify.command", layer=Layer.BYTES, events=frozenset({HookEvent.POST_TOOL_USE}),
-        tools=frozenset({Tool.EDIT, Tool.WRITE}), platforms=frozenset({"win32", "darwin"}),
+        tools=frozenset({Tool.EDIT, Tool.WRITE}), platforms=EVERY_PLATFORM,
         severity=Severity.WARNING, cost=Cost.EXPENSIVE, reads=frozenset({"file_path"}), writes=frozenset(),
         after=frozenset({"verify.write"}),
         config={"timeout_ms": ConfigKey(int, 10_000, "Milliseconds a verify command may run before io-guard "

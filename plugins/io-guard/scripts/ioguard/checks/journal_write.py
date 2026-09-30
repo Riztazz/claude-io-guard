@@ -13,6 +13,7 @@ from ioguard.lib.compare import write_snapshot
 from ioguard.lib.context import Context, Snapshot, read_or_none
 from ioguard.lib.decisions import Decision
 from ioguard.lib.events import Event, HookEvent, Tool
+from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.results import Layer, Severity
 
 
@@ -20,7 +21,7 @@ class JournalWrite(Check):
     meta = CheckMeta(
         id="journal.write", layer=Layer.BYTES,
         events=frozenset({HookEvent.PRE_TOOL_USE, HookEvent.POST_TOOL_USE}),
-        tools=frozenset({Tool.EDIT, Tool.WRITE}), platforms=frozenset({"win32", "darwin"}),
+        tools=frozenset({Tool.EDIT, Tool.WRITE}), platforms=EVERY_PLATFORM,
         severity=Severity.INFO, cost=Cost.MEDIUM, reads=frozenset({"file_path"}), writes=frozenset(),
         after=frozenset({"conform.write", "conform.edit"}), config={}, codes=frozenset(),
         description="Records each Edit and Write in the edit journal, with the lines it changed and the "

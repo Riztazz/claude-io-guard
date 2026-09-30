@@ -170,7 +170,7 @@ def bash_writes(command: str, cwd: Path | None, host: Host, start: Path | None =
         elif name in ("cp", "mv"):
             writes += [Write(target, name, where) for target in landed(words[1:], where, host)]
         elif wrapped is not None and wrapped.text is not None and depth < rules.NESTED:
-            reader = bash_writes if wrapped.dialect == "bash" else powershell_writes
+            reader = bash_writes if wrapped.dialect is rules.Dialect.BASH else powershell_writes
             writes += reader(wrapped.text, cwd, host, where, depth + 1)
         elif wrapped is not None and wrapped.text is None and wrapped.raw:
             writes += [Write(target, "a script body", where) for target in script_targets(wrapped.raw)]

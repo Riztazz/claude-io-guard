@@ -8,6 +8,7 @@ from functools import cache
 
 WINDOWS = "win32"
 MACOS = "darwin"
+EVERY_PLATFORM = frozenset({WINDOWS, MACOS})     # the platforms io-guard is built and tested for
 
 
 @dataclass(frozen=True)

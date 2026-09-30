@@ -21,6 +21,7 @@ from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Rewrite, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
+from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.program import program_name
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity
 from ioguard.lib.rules import POWERSHELLS
@@ -250,7 +251,7 @@ def powershell(command: str, findings: Findings) -> None:
 class Lint(Check):
     meta = CheckMeta(
         id="shell.lint", layer=Layer.TRANSPORT, events=frozenset({HookEvent.PRE_TOOL_USE}),
-        tools=frozenset({Tool.BASH, Tool.POWERSHELL}), platforms=frozenset({"win32", "darwin"}),
+        tools=frozenset({Tool.BASH, Tool.POWERSHELL}), platforms=EVERY_PLATFORM,
         severity=Severity.REFUSED, cost=Cost.MEDIUM, reads=frozenset({"command"}),
         writes=frozenset({"command"}), after=frozenset({"transport.body"}),
         config={"build_commands": ConfigKey(list, BUILD_COMMANDS,

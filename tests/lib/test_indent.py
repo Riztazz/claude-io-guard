@@ -2,12 +2,13 @@
 import unittest
 
 from ioguard.lib import indent
+from ioguard.lib.profile import IndentKind
 
 
 class NewTextTakesTheIndentAroundIt(unittest.TestCase):
     def test_the_style_of_indented_lines_is_named(self):
-        for text, style in (("\ta\n\tb", "tabs"), ("    a\n  b", "spaces"), ("\ta\n    b", "mixed"),
-                            ("a\n b", "none")):
+        for text, style in (("\ta\n\tb", IndentKind.TABS), ("    a\n  b", IndentKind.SPACES),
+                            ("\ta\n    b", IndentKind.MIXED), ("a\n b", IndentKind.NONE)):
             with self.subTest(text=text):
                 self.assertEqual(indent.style(text), style, "a lone space is not an indent")
 
