@@ -31,7 +31,7 @@ from enum import Enum
 from pathlib import Path
 
 from ioguard.lib import pwsh, shell, wildcard
-from ioguard.lib.context import claude_folder
+from ioguard.lib.folders import claude_folder
 from ioguard.lib.platform import MACOS, WINDOWS, Platform
 from ioguard.lib.program import PROGRAM_SUFFIXES, program_name
 

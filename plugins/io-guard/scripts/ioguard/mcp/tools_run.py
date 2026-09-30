@@ -21,7 +21,8 @@ from datetime import timedelta
 from pathlib import Path
 
 from ioguard.lib import logcap, output, paths, proc, rules, runs
-from ioguard.lib.context import Context, newlines
+from ioguard.lib.context import Context
+from ioguard.lib.ports import newlines
 from ioguard.lib.results import Code, Fix, Result, Severity, callable_name
 from ioguard.mcp import handles
 from ioguard.mcp.toolspec import InvalidArguments, ToolCall, ToolFailure, ToolSpec, doc

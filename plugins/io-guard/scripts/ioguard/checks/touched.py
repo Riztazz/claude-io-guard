@@ -29,13 +29,15 @@ from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.lib import commit_message, paths, pwsh, shell
 from ioguard.lib.compare import Written, compare
 from ioguard.lib.config import ConfigKey
-from ioguard.lib.context import Context, ShellSnapshot, repository_root, tracked
+from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
+from ioguard.lib.folders import repository_root
 from ioguard.lib.git import GitError, StatusEntry
 from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.profile import profile
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity, callable_name
+from ioguard.lib.session import ShellSnapshot, tracked
 from ioguard.lib.writes import Host, located, resolve
 
 LISTED = 8                   # paths each part of the report names before it gives the rest as a count

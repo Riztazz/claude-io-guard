@@ -10,9 +10,10 @@ from pathlib import Path
 from types import MappingProxyType
 
 from ioguard.lib.config import Config, defaults
-from ioguard.lib.context import Context, LiveFs
+from ioguard.lib.context import Context
 from ioguard.lib.git import Git
 from ioguard.lib.platform import detect
+from ioguard.lib.ports import LiveFs
 from ioguard.lib.results import Code, Severity
 from ioguard.mcp.in_place import Place
 from ioguard.mcp.progress import CancelToken

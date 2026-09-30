@@ -6,13 +6,14 @@ from pathlib import Path
 from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import default_registry
 from ioguard.lib.config import defaults
-from ioguard.lib.context import Context, SessionState
+from ioguard.lib.context import Context
 from ioguard.lib.decisions import Verdict
 from ioguard.lib.events import Event, Surface
 from ioguard.lib.fakes import FakeFs, FakeGit
 from ioguard.lib.locks import Process
 from ioguard.lib.platform import Platform
 from ioguard.lib.results import Code
+from ioguard.lib.session import SessionState
 from tests.support import events
 
 CWD = Path("C:/game")

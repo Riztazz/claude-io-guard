@@ -5,9 +5,9 @@ import sys
 import time
 import unittest
 
-from ioguard.lib.context import first_in_file
 from ioguard.lib.locks import Process, file_lock, holders, parse_lsof, waited
 from ioguard.lib.platform import detect
+from ioguard.lib.session import first_in_file
 from tests import PLUGIN_SCRIPTS
 from tests.support.project import TemporaryProject
 

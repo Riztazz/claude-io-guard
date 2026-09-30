@@ -18,10 +18,11 @@ from pathlib import Path
 
 from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.lib import commit_message, pwsh, rules, runs, shell
-from ioguard.lib.context import Context, read_or_none
+from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.platform import EVERY_PLATFORM
+from ioguard.lib.ports import read_or_none
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity, callable_name
 from ioguard.lib.writes import Host, Write, bash_writes, located, powershell_writes, resolve, targets
 

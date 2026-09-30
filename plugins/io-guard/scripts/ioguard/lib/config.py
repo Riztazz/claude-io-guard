@@ -9,6 +9,7 @@ output. A file with any error is dropped whole, and the guard runs on the layers
 """
 import difflib
 import json
+import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import IntEnum
@@ -17,7 +18,7 @@ from types import MappingProxyType
 from typing import Any
 
 from ioguard import CONFIG_SCHEMA
-from ioguard.lib import bytesio, commands, patterns
+from ioguard.lib import bytesio, commands, patterns, trust
 from ioguard.lib.decisions import RewriteMode
 
 
@@ -334,3 +335,36 @@ def load(layers: Sequence[ConfigLayer], check_keys: Mapping[str, Mapping[str, Co
                if users is not None and value != users.get(key)}
     return LoadReport(Config(MappingProxyType(values)), tuple(errors), tuple(loaded), tuple(dropped),
                       MappingProxyType(held), MappingProxyType(changed))
+
+
+def config_layers(data_dir: Path | None, project: Path) -> tuple[ConfigLayer, ...]:
+    """The config files over the defaults, in order: the user's config.json in io-guard's folder when there is
+    one, then the project's io-guard.json and io-guard.local.json."""
+    user = () if data_dir is None else (ConfigLayer(Scope.USER, data_dir / "config.json"),)
+    return (*user, ConfigLayer(Scope.PROJECT, project / ".claude" / "io-guard.json"),
+            ConfigLayer(Scope.PROJECT_LOCAL, project / ".claude" / "io-guard.local.json"))
+
+
+def trusted(report: LoadReport, data_dir: Path | None, project: Path) -> tuple[Config, Mapping[str, Any]]:
+    """The config with the project's commands merged when the user approved exactly them, and the commands
+    still waiting, which is empty once approved."""
+    if not report.held:
+        return report.config, {}
+    if data_dir is not None and trust.approved(data_dir, project, report.held):
+        return Config(MappingProxyType(merge(dict(report.config.values), report.held))), {}
+    return report.config, report.held
+
+
+def config_stamp(data_dir: Path | None, project: Path) -> tuple:
+    """Each config file's modification time and size, and trust.json's, or None when one is missing, so a
+    change shows."""
+    stamp = []
+    files = [layer.path for layer in config_layers(data_dir, project)]
+    for path in files + ([] if data_dir is None else [data_dir / trust.TRUST_FILE]):
+        try:
+            found = os.stat(path)
+        except OSError:
+            stamp.append(None)
+        else:
+            stamp.append((found.st_mtime_ns, found.st_size))
+    return tuple(stamp)

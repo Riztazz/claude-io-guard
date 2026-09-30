@@ -7,11 +7,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ioguard.lib.context import (ASK_LIFETIME, SNAPSHOTS_KEPT, Context, LiveFs, Probe, SessionState, Snapshot,
-                                 claude_folder, home_folder, memory_file, project_root)
+from ioguard.lib.context import Context
 from ioguard.lib.fakes import FakeClock, FakeFs
+from ioguard.lib.folders import claude_folder, home_folder, memory_file, project_root
 from ioguard.lib.git import Git
 from ioguard.lib.platform import detect
+from ioguard.lib.ports import LiveFs
+from ioguard.lib.probing import Probe
+from ioguard.lib.session import ASK_LIFETIME, SNAPSHOTS_KEPT, SessionState, Snapshot
 
 
 class FakeContexts(unittest.TestCase):

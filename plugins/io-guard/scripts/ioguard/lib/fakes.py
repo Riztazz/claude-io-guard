@@ -5,9 +5,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ioguard.lib.bytesio import WriteReport
-from ioguard.lib.context import FileStat
-from ioguard.lib.locks import Process
 from ioguard.lib.git import GitStatus, LineRange
+from ioguard.lib.locks import Process
+from ioguard.lib.ports import FileStat
 
 START = datetime(2026, 9, 27, 12, 0, tzinfo=timezone.utc)
 

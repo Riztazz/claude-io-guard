@@ -12,9 +12,10 @@ from datetime import datetime
 from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.lib import heartbeat
 from ioguard.lib.config import ConfigKey
-from ioguard.lib.context import Context, claude_folder, session_file
+from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent
+from ioguard.lib.folders import claude_folder, session_file
 from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity, render
 

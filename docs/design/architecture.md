@@ -56,12 +56,16 @@ plugins/io-guard/
         proc.py                    on_path, located, run, Pump, background
         logcap.py                  the copier a background run's output goes through, capped, run by its path
         results.py                 CodeSpec, CODES, Code, Result, Fix, render, callable_name, meanings
-        config.py                  Config, SCHEMA, load, validate, merge
+        config.py                  Config, SCHEMA, load, validate, merge, config_layers, trusted, config_stamp
         config_edit.py             placed, value_at, encoded: one setting written where its file keeps it.
                                    needs_yes, config_write: the io.config write that waits for the user's yes
         events.py                  HookEvent, Tool, PermissionMode, Surface, Event, by_value
-        context.py                 Context, the ports, SessionState, Probe, ToolVersion.this_python, tracked,
-                                   project_of
+        context.py                 Context: what a check reads, built live or fake
+        ports.py                   GitPort, FsPort, Clock, LiveFs, SystemClock, FileStat, newlines, read_or_none
+        folders.py                 claude_folder, home_folder, session_file, memory_file, project_root,
+                                   project_of, repository_root: where things are
+        session.py                 SessionState, Snapshot, ShellSnapshot, first_in_file, tracked: what a session
+                                   learns, and what a PreToolUse keeps for its PostToolUse
         decisions.py               Verdict, Rewrite, Decision, compose
         telemetry.py               Telemetry, TraceContext, session_files, expire, erase
         trust.py                   fingerprint, approved, approve: the project commands the user approved
@@ -69,7 +73,8 @@ plugins/io-guard/
                                    the prompt and the notice name them
         telemetry_summary.py       Summary, files, summarise, page: every session's telemetry summed
         platform.py                Platform, detect
-        probing.py                 tool_version, claude_version, console_encoding, case_insensitive, cut_applies
+        probing.py                 Probe, ToolVersion, load_probe, tool_version, claude_version, console_encoding,
+                                   case_insensitive, cut_applies: the machine, measured and kept
         text.py                    BOM_CHAR, PRIVATE_USE, character_class, visible, quoted, snippet, head,
                                    invisible_added, listed: the characters io-guard names, and text shown to
                                    the model
@@ -1073,7 +1078,7 @@ the user's, and `LoadReport.user_message` names them, up to `CHANGES_NAMED` (8),
 give once per session and project, such as `checks.commit.policy.enabled false (yours true)`. A check turned
 off and a `pipeline.*` key come first, since those skip checks, then the rest by key (task 118).
 
-`<project>` is `lib.context.project_root` of the hook's `cwd`: the nearest folder at or above it that holds one
+`<project>` is `lib.folders.project_root` of the hook's `cwd`: the nearest folder at or above it that holds one
 of the two project files, else the nearest that holds `.git`, else `cwd` itself. The hooks keep one Context per
 session and project root, and telemetry names the project by the root. A call on a file outside the root runs
 with `Context.for_file`, whose config holds the defaults and the user layer alone (task 57), and whose `held`
@@ -1165,7 +1170,7 @@ def run_event(raw: Mapping[str, Any], surface: Surface, ctx: Optional[Context] =
 `run_event` reads `raw` with `Event.from_fields` for `Surface.MCP_HOOK` and with `Event.from_hook_json` for the
 others. Without `ctx`, it takes the live context for the event's session and working directory from
 `hooks.entry.CONTEXTS`, which loads the config and the probe once per session and project and keeps one
-`SessionState` per session. io-guard's folder comes from `lib.context.home_folder`, the same in the server
+`SessionState` per session. io-guard's folder comes from `lib.folders.home_folder`, the same in the server
 and in a command hook. Without `registry`, it runs `default_registry()`. An event it cannot read answers
 `{}`. A bug past the pipeline's own fail-open answers `{}`, logs `GUARD_ERROR`, and warns the session once.
 The config's one message, when a file was dropped, goes out with the session's first answer in that project.

@@ -13,10 +13,12 @@ from pathlib import Path
 
 from ioguard.checks.registry import default_registry
 from ioguard.lib.compare import Written, ascii_kept, compare
-from ioguard.lib.context import Context, GitPort, home_folder
+from ioguard.lib.context import Context
 from ioguard.lib.drift import text_of
+from ioguard.lib.folders import home_folder
 from ioguard.lib.git import Git, GitError
 from ioguard.lib.platform import Platform
+from ioguard.lib.ports import GitPort
 from ioguard.lib.profile import profile
 from ioguard.lib.results import Result
 

@@ -7,9 +7,10 @@ from pathlib import Path
 from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import default_registry
 from ioguard.lib.config import defaults
-from ioguard.lib.context import Context, session_file
+from ioguard.lib.context import Context
 from ioguard.lib.events import Event, Surface
 from ioguard.lib.fakes import START, FakeClock, FakeFs
+from ioguard.lib.folders import session_file
 from ioguard.lib.heartbeat import Era, Heartbeat
 from ioguard.lib.platform import Platform
 from ioguard.lib.results import Code

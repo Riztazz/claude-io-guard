@@ -22,7 +22,8 @@ from typing import Any, BinaryIO
 
 from ioguard import PLUGIN_VERSION
 from ioguard.lib import bytesio, retention, snapshots, telemetry
-from ioguard.lib.context import Context, home_folder, session_file
+from ioguard.lib.context import Context
+from ioguard.lib.folders import home_folder, session_file
 from ioguard.lib.heartbeat import Era, Heartbeat
 from ioguard.mcp import (tools_dashboard, tools_edit, tools_format, tools_history, tools_hook, tools_read,
                          tools_run, tools_trust)

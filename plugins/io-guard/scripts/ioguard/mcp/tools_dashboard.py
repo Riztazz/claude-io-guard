@@ -22,7 +22,9 @@ from ioguard import CONFIG_SCHEMA
 from ioguard.checks.registry import default_registry
 from ioguard.lib import config_edit, locks, telemetry, telemetry_summary
 from ioguard.lib.config import FILE_LIMIT, ConfigKey, Scope, all_keys, load, validate
-from ioguard.lib.context import Context, config_layers, project_root, trusted
+from ioguard.lib.config import config_layers, trusted
+from ioguard.lib.context import Context
+from ioguard.lib.folders import project_root
 from ioguard.lib.results import Code, Fix, Result, callable_name
 from ioguard.mcp.dashboard_http import Dashboard, Rejected
 from ioguard.mcp.toolspec import ToolCall, ToolFailure, ToolSpec, doc, structured

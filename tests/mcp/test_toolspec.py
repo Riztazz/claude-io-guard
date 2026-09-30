@@ -7,8 +7,9 @@ import unittest
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from ioguard.lib.context import Context, LiveFs
+from ioguard.lib.context import Context
 from ioguard.lib.platform import detect
+from ioguard.lib.ports import LiveFs
 from ioguard.lib.results import Code
 from ioguard.lib.telemetry import Telemetry, trace_from
 from ioguard.mcp.progress import CancelToken

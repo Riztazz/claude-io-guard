@@ -98,6 +98,21 @@ class PackageLayers(unittest.TestCase):
                         self.assertLessEqual(node.end_lineno - node.lineno + 1, SHORT,
                                              "a function that does several jobs is split into one per job")
 
+    def test_the_context_module_holds_the_context_alone(self):
+        source = (PACKAGE / "lib" / "context.py").read_bytes()
+        classes = [node.name for node in ast.parse(source).body if isinstance(node, ast.ClassDef)]
+        self.assertEqual((classes, source.count(b"\n") < 120), (["Context"], True),
+                         "the ports, the session, the probe and the folders each have a module of their own")
+        repository = PLUGIN_SCRIPTS.parents[2]
+        for folder in (PLUGIN_SCRIPTS, repository / "tests", repository / "tools"):
+            for path in sorted(folder.rglob("*.py")):
+                tree = ast.parse(path.read_bytes())
+                taken = {alias.name for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+                         and node.module == "ioguard.lib.context" for alias in node.names}
+                with self.subTest(module=path.name):
+                    self.assertLessEqual(taken, {"Context"},
+                                         "a helper is imported from the module it lives in")
+
     def test_the_scan_sees_the_packages_it_guards(self):
         self.assertTrue(modules("lib") and modules("checks") and modules("hooks"),
                         "the layer test reads real modules, so it cannot pass on an empty tree")

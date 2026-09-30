@@ -4,8 +4,8 @@ import unittest
 from pathlib import Path, PureWindowsPath
 
 from ioguard.lib import runs
-from ioguard.lib.context import Probe, ToolVersion
 from ioguard.lib.platform import Platform, detect
+from ioguard.lib.probing import Probe, ToolVersion
 
 WINDOWS = Platform("win32", True)
 PROBE = Probe.unprobed(WINDOWS)

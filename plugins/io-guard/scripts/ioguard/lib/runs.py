@@ -9,8 +9,9 @@ from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from ioguard.lib import proc, rules
-from ioguard.lib.context import FsPort, Probe, read_or_none
 from ioguard.lib.platform import Platform
+from ioguard.lib.ports import FsPort, read_or_none
+from ioguard.lib.probing import Probe
 from ioguard.lib.rules import RuleVerdict
 
 SUFFIXES = {"python": ".py", "bash": ".sh", "powershell": ".ps1", "node": ".js"}

@@ -11,11 +11,12 @@ from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import Registry
 from ioguard.checks.restore_ask import RestoreAsk
 from ioguard.lib.config import Config, defaults
-from ioguard.lib.context import Context, LiveFs
+from ioguard.lib.context import Context
 from ioguard.lib.decisions import Verdict
 from ioguard.lib.events import Event, Surface
 from ioguard.lib.fakes import FakeFs
 from ioguard.lib.platform import Platform, detect
+from ioguard.lib.ports import LiveFs
 from ioguard.lib.results import Code, callable_name
 from ioguard.mcp.progress import CancelToken
 from ioguard.mcp.tools_history import (CompareInput, RestoreInput, SnapshotInput, compare, restore,

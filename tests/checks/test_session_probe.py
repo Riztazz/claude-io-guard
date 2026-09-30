@@ -10,11 +10,13 @@ from ioguard.checks.registry import Registry
 from ioguard.checks.session_probe import SessionProbe
 from ioguard.lib.config import Config, Scope, all_keys, defaults, validate
 from ioguard.lib import bytesio, probing
-from ioguard.lib.context import Context, Probe, SessionState, ToolVersion
+from ioguard.lib.context import Context
 from ioguard.lib.events import Event, Surface
 from ioguard.lib.fakes import FakeFs, FakeGit
 from ioguard.lib.git import GitError, GitStatus, StatusEntry
 from ioguard.lib.platform import Platform
+from ioguard.lib.probing import Probe, ToolVersion
+from ioguard.lib.session import SessionState
 from tests.support import events
 
 ROOT = Path("C:/project")

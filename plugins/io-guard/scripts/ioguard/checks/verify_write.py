@@ -16,14 +16,17 @@ only for what that command did.
 from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.lib.compare import Written, ascii_kept, compare, write_snapshot
 from ioguard.lib.config import ConfigKey
-from ioguard.lib.context import Context, Snapshot, memory_file, read_or_none
+from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.drift import Edited, drift, edited, frontmatter_end, restored, text_of
 from ioguard.lib.events import Event, HookEvent, Tool
+from ioguard.lib.folders import memory_file
 from ioguard.lib.locks import file_lock, lock_folder
 from ioguard.lib.platform import EVERY_PLATFORM
+from ioguard.lib.ports import read_or_none
 from ioguard.lib.profile import Bom, profile
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity
+from ioguard.lib.session import Snapshot
 
 SNAPSHOT_BYTES = 2 * 1024 * 1024
 MAX_BYTES = 16 * 1024 * 1024

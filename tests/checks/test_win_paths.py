@@ -6,10 +6,11 @@ from pathlib import Path
 from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import default_registry
 from ioguard.lib.config import defaults
-from ioguard.lib.context import Context, Probe
+from ioguard.lib.context import Context
 from ioguard.lib.decisions import Verdict
 from ioguard.lib.events import Event, Surface
 from ioguard.lib.platform import Platform
+from ioguard.lib.probing import Probe
 from ioguard.lib.results import Code
 from tests.support import events
 

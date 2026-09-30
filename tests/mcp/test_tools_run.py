@@ -16,8 +16,10 @@ from unittest import mock
 from ioguard.checks.registry import default_registry
 from ioguard.lib import runs
 from ioguard.lib.config import Config, defaults
-from ioguard.lib.context import Context, LiveFs, ToolVersion
+from ioguard.lib.context import Context
 from ioguard.lib.platform import detect
+from ioguard.lib.ports import LiveFs
+from ioguard.lib.probing import ToolVersion
 from ioguard.lib.results import Code, Severity
 from ioguard.mcp import handles
 from ioguard.mcp.progress import CancelToken, ProgressReporter

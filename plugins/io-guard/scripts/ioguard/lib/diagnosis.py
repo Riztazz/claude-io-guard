@@ -21,9 +21,9 @@ from pathlib import Path
 from typing import Any
 
 from ioguard.lib import anchors, paths, text
-from ioguard.lib.context import FsPort, GitPort, newlines
 from ioguard.lib.git import GitError
 from ioguard.lib.platform import Platform
+from ioguard.lib.ports import FsPort, GitPort, newlines
 from ioguard.lib.profile import profile
 from ioguard.lib.results import Code, Fix, Result, Severity
 

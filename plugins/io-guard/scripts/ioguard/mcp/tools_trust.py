@@ -8,7 +8,7 @@ nothing and the model cannot approve for the user.
 from dataclasses import dataclass
 
 from ioguard.lib import trust, waiting
-from ioguard.lib.context import project_root
+from ioguard.lib.folders import project_root
 from ioguard.lib.results import Code
 from ioguard.mcp.in_place import refused
 from ioguard.mcp.toolspec import ToolCall, ToolSpec, doc

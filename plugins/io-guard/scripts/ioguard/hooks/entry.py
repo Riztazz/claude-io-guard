@@ -14,9 +14,12 @@ from typing import Any
 from ioguard.checks.pipeline import Outcome, Pipeline
 from ioguard.checks.registry import Registry, default_registry
 from ioguard.hooks.answer import answer
-from ioguard.lib.context import Context, SessionState, config_stamp, home_folder, project_root
+from ioguard.lib.config import config_stamp
+from ioguard.lib.context import Context
 from ioguard.lib.events import Event, PermissionMode, Surface
+from ioguard.lib.folders import home_folder, project_root
 from ioguard.lib.results import Code, Result, render
+from ioguard.lib.session import SessionState
 from ioguard.lib.telemetry import debug_log
 
 log = logging.getLogger("ioguard.hooks")

@@ -7,10 +7,11 @@ from pathlib import Path
 from ioguard.checks.pipeline import Pipeline
 from ioguard.checks.registry import default_registry
 from ioguard.lib.config import Config, defaults
-from ioguard.lib.context import Context, Probe, ToolVersion
+from ioguard.lib.context import Context
 from ioguard.lib.decisions import Verdict
 from ioguard.lib.events import Event, Surface
 from ioguard.lib.platform import Platform
+from ioguard.lib.probing import Probe, ToolVersion
 from ioguard.lib.probing import WINDOWS_CUT
 from ioguard.lib.results import Code, Severity
 from tests.support import events

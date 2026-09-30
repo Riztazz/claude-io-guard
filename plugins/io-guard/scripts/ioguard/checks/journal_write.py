@@ -10,11 +10,13 @@ A journal line that cannot be written is logged, and the call goes on.
 from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.lib import journal
 from ioguard.lib.compare import write_snapshot
-from ioguard.lib.context import Context, Snapshot, read_or_none
+from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.platform import EVERY_PLATFORM
+from ioguard.lib.ports import read_or_none
 from ioguard.lib.results import Layer, Severity
+from ioguard.lib.session import Snapshot
 
 
 class JournalWrite(Check):

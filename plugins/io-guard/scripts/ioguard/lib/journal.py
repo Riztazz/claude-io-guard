@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from ioguard.lib.context import project_root
+from ioguard.lib.folders import project_root
 
 log = logging.getLogger("ioguard.journal")
 

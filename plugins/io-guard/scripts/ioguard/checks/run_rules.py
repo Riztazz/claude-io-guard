@@ -11,9 +11,10 @@ when it names the program of a deny or ask rule, since no rule can see what the 
 """
 from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.lib import runs
-from ioguard.lib.context import Context, project_of
+from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
+from ioguard.lib.folders import project_of
 from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.results import Code, Layer, Result, Severity, callable_name
 from ioguard.lib.rules import RuleVerdict

@@ -14,10 +14,11 @@ from ioguard.checks.registry import Registry
 from ioguard.checks.verify_write import VerifyWrite
 from ioguard.lib import journal
 from ioguard.lib.config import Config, defaults
-from ioguard.lib.context import Context, SessionState, Snapshot
+from ioguard.lib.context import Context
 from ioguard.lib.events import Event, Surface
 from ioguard.lib.platform import Platform
 from ioguard.lib.profile import profile
+from ioguard.lib.session import SessionState, Snapshot
 from tests.support import events
 
 PROJECT = Path("C:/project")

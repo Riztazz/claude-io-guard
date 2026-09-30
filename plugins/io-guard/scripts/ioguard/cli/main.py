@@ -21,8 +21,8 @@ from pathlib import Path
 from ioguard.checks.registry import default_registry
 from ioguard.cli import check, corpus, measure, precommit, replay, report
 from ioguard.lib import telemetry_summary
-from ioguard.lib.context import home_folder
 from ioguard.lib.decisions import Verdict
+from ioguard.lib.folders import home_folder
 
 
 def source(text: str) -> tuple[str, Path]:

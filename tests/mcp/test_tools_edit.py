@@ -14,10 +14,11 @@ from unittest import mock
 
 from ioguard.lib import journal
 from ioguard.lib.config import Config, defaults
-from ioguard.lib.context import Context, LiveFs
+from ioguard.lib.context import Context
 from ioguard.lib.fakes import FakeFs
 from ioguard.lib.locks import Process
 from ioguard.lib.platform import Platform, detect
+from ioguard.lib.ports import LiveFs
 from ioguard.lib.results import Code, Severity, callable_name
 from ioguard.mcp.in_place import NOTE
 from ioguard.mcp.progress import CancelToken

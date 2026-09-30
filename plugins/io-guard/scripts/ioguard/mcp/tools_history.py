@@ -15,9 +15,10 @@ from functools import partial
 from pathlib import Path, PurePosixPath
 
 from ioguard.lib import code_tokens, hunks, journal, paths, snapshots
-from ioguard.lib.context import Context, read_or_none
+from ioguard.lib.context import Context
 from ioguard.lib.git import GitError
 from ioguard.lib.journal import text_of
+from ioguard.lib.ports import read_or_none
 from ioguard.lib.results import Code, Fix, callable_name
 from ioguard.mcp.in_place import NOTE, Place, held, places_shown, refused, write_refused
 from ioguard.mcp.toolspec import InvalidArguments, ToolCall, ToolSpec, doc

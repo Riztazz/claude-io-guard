@@ -22,10 +22,12 @@ from ioguard.checks.registry import Registry, default_registry
 from ioguard.checks.trust_ask import TrustAsk
 from ioguard.hooks import entry
 from ioguard.lib.config import all_keys
-from ioguard.lib.context import Context, LiveFs, project_root
+from ioguard.lib.context import Context
 from ioguard.lib.decisions import Verdict
 from ioguard.lib.events import Event, Surface
+from ioguard.lib.folders import project_root
 from ioguard.lib.platform import detect
+from ioguard.lib.ports import LiveFs
 from ioguard.lib.results import Code
 from ioguard.lib.telemetry import Telemetry, TelemetryEvent
 from ioguard.mcp import dashboard_http

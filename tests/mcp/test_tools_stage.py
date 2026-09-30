@@ -7,10 +7,12 @@ import unittest
 from pathlib import Path
 
 from ioguard.lib import journal
-from ioguard.lib.context import Context, LiveFs, SessionState
+from ioguard.lib.context import Context
 from ioguard.lib.git import Git
 from ioguard.lib.platform import detect
+from ioguard.lib.ports import LiveFs
 from ioguard.lib.results import Code
+from ioguard.lib.session import SessionState
 from ioguard.mcp.in_place import Place
 from ioguard.mcp.progress import CancelToken
 from ioguard.mcp.tools_edit import EditInput, EditPair, edit

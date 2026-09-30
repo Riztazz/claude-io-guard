@@ -24,13 +24,15 @@ from ioguard.cli.corpus import Record
 from ioguard.cli.labels import SHELLS
 from ioguard.lib import bytesio, output
 from ioguard.lib.config import all_keys, defaults
-from ioguard.lib.context import Context, Probe, SessionState
+from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, EventError, Surface
 from ioguard.lib.git import Git, GitError, GitStatus
 from ioguard.lib.platform import Platform, detect
+from ioguard.lib.probing import Probe
 from ioguard.lib.probing import WINDOWS_CUT, cut_applies
 from ioguard.lib.results import render_many
+from ioguard.lib.session import SessionState
 from ioguard.lib.telemetry import Telemetry
 
 REPORT_SCHEMA = 1

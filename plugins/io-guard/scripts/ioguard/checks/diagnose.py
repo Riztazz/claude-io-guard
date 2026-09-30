@@ -12,10 +12,11 @@ from pathlib import Path
 from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.lib import paths, transcript
 from ioguard.lib.config import ConfigKey
-from ioguard.lib.context import Context, claude_folder
+from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.diagnosis import FIND_LIMIT, PART_BYTES, Diagnosis, Failed
 from ioguard.lib.events import Event, HookEvent, Tool
+from ioguard.lib.folders import claude_folder
 from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.results import Code, Layer, Result, Severity
 

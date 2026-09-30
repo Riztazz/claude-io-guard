@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from ioguard.lib import commands, paths
-from ioguard.lib.context import FsPort
 from ioguard.lib.platform import Platform
+from ioguard.lib.ports import FsPort
 from ioguard.lib.results import Code, Result
 from ioguard.lib.text import quoted
 from ioguard.lib.trust import fingerprint

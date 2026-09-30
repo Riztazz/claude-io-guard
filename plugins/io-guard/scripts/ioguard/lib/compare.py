@@ -11,7 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ioguard.lib.context import FsPort, Snapshot, read_or_none
+from ioguard.lib.ports import FsPort, read_or_none
+from ioguard.lib.session import Snapshot
 from ioguard.lib.drift import (CONTROL, NON_ASCII, REPLACEMENT, Edited, changed_lines, drift, lines,
                                lines_holding, text_of, would_collapse)
 from ioguard.lib.profile import Bom, IndentKind, Profile, profile

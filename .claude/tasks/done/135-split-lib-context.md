@@ -3,7 +3,7 @@ title: Split lib.context into the modules it holds
 stage: I
 area: runtime
 created: 2026-09-29
-status: open
+status: done
 depends-on: []
 findings: []
 platforms: [windows, macos]
@@ -50,3 +50,43 @@ the whole config loader to type a `ToolVersion`.
 
 - `lib/context.py` is under 120 lines and holds `Context` alone.
 - The suite passes, `tests/test_layout.py` included.
+
+## What changed
+
+Validated on 2026-09-30 before building: the six kinds of thing were there, and the file had grown to 588
+lines with what tasks 129 and 131 put in it, `tracked`, `project_of`, `file_stamp`, `ToolVersion.this_python`
+and the `keys` field.
+
+`test_the_context_module_holds_the_context_alone` in `tests/test_layout.py` came first and failed on 12
+classes and 588 lines. It holds that `lib/context.py` declares `Context` alone, in under 120 lines, and that
+no module of the package, the tests or the tools imports anything else from it.
+
+Where each piece went:
+
+- `lib/ports.py`, new: `FileStat`, the `GitPort`, `FsPort` and `Clock` protocols, `LiveFs`, `SystemClock`,
+  `newlines` and `read_or_none`.
+- `lib/folders.py`, new: `claude_folder`, `home_folder`, `session_file`, `memory_file`, `project_root`,
+  `project_of` and `repository_root`.
+- `lib/session.py`, new: `SessionState`, `Snapshot`, `ShellSnapshot`, `SNAPSHOTS_KEPT`, `ASK_LIFETIME`,
+  `first_in_file` and `tracked`.
+- `lib/probing.py`: `ToolVersion`, `Probe`, `file_stamp` and `load_probe`, beside the measuring that fills
+  them. The task offered `lib/probe.py` or `lib/probing.py`, and one module per job reads better than two
+  names a letter apart.
+- `lib/config.py`: `config_layers`, `trusted` and `config_stamp`.
+- `lib/context.py`: `Context` alone, 81 lines.
+
+The new modules were written with the Write tool, which is the only tool that creates a file, and the moved
+code was copied as it stood. The 50 importers were repointed by one script through io.run, which rewrote only
+the `from ioguard.lib.context import` statements and wrote each file through `lib.bytesio.write_atomic`.
+
+Docs: `docs/design/architecture.md` section 1 lists the four modules and what moved into `probing` and
+`config`, and the two places in the text that named `lib.context.project_root` and `home_folder` name
+`lib.folders`.
+
+Evidence, on Windows on 2026-09-30:
+
+- The suite: 1,095 tests, 1,094 before, OK with 2 skipped.
+- A replay over the corpus with HEAD's code and with this change: 7 checks, 0 differences.
+- Live, Claude Code 2.1.283, from this checkout: `live-empty`, `live-server`, `live-conform`,
+  `live-read-profile`, `live-touched`, `live-verify`, `live-trust` and `live-config` pass, 41 seconds for
+  the eight.

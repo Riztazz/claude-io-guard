@@ -21,11 +21,14 @@ from pathlib import Path
 from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.lib import probing, proc
 from ioguard.lib.config import ConfigKey
-from ioguard.lib.context import Context, FsPort, GitPort, Probe, ToolVersion, session_file
+from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent
+from ioguard.lib.folders import session_file
 from ioguard.lib.git import GitError
 from ioguard.lib.platform import EVERY_PLATFORM
+from ioguard.lib.ports import FsPort, GitPort
+from ioguard.lib.probing import Probe, ToolVersion
 from ioguard.lib.results import Layer, Severity
 
 log = logging.getLogger("ioguard.checks.session_probe")

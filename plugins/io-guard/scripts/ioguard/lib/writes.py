@@ -17,8 +17,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ioguard.lib import paths, pwsh, rules, shell
-from ioguard.lib.context import Context, FsPort
+from ioguard.lib.context import Context
 from ioguard.lib.platform import Platform
+from ioguard.lib.ports import FsPort
 from ioguard.lib.program import program_name
 
 DEVICES = {"/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty", "nul", "$null", "con"}

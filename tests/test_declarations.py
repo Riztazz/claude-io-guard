@@ -5,9 +5,9 @@ import unittest
 
 from ioguard.checks import lint
 from ioguard.lib import anchors, diagnosis, drift, events, output, profile, rules, text
-from ioguard.lib.context import Probe, ToolVersion
 from ioguard.lib.events import PermissionMode, Tool
 from ioguard.lib.platform import detect
+from ioguard.lib.probing import Probe, ToolVersion
 from tests import PLUGIN_SCRIPTS
 
 PACKAGE = PLUGIN_SCRIPTS / "ioguard"

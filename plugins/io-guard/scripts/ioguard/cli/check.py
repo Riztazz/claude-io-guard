@@ -11,9 +11,12 @@ from pathlib import Path
 from ioguard.checks.pipeline import Outcome, Pipeline
 from ioguard.checks.registry import default_registry
 from ioguard.lib import bytesio
-from ioguard.lib.context import Context, LiveFs, SessionState, home_folder, project_root
+from ioguard.lib.context import Context
 from ioguard.lib.events import Event, Surface
+from ioguard.lib.folders import home_folder, project_root
+from ioguard.lib.ports import LiveFs
 from ioguard.lib.profile import profile
+from ioguard.lib.session import SessionState
 from ioguard.lib.telemetry import Telemetry
 
 SESSION = "offline-check"

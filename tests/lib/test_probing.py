@@ -6,8 +6,8 @@ import unittest
 from pathlib import Path
 
 from ioguard.lib import probing
-from ioguard.lib.context import ToolVersion, file_stamp
 from ioguard.lib.platform import detect
+from ioguard.lib.probing import ToolVersion, file_stamp
 from ioguard.lib.proc import RunResult
 from tests.support.project import TemporaryProject
 

@@ -11,10 +11,12 @@ from functools import partial
 
 from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.lib import paths, snapshots
-from ioguard.lib.context import Context, project_of, read_or_none
+from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
+from ioguard.lib.folders import project_of
 from ioguard.lib.platform import EVERY_PLATFORM
+from ioguard.lib.ports import read_or_none
 from ioguard.lib.results import Code, Layer, Result, Severity, callable_name
 
 RESTORE = callable_name("io.restore")
