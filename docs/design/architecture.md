@@ -1488,7 +1488,8 @@ so a new tool or code ships with its row (task 27).
 `mcp/tools_run.py` holds `io.run`, `io.status` and `io.read_log` (task 25).
 
 ```python
-io.run(argv = [], lang = "", code = "", cwd = "", env = {}, timeout_s = 0, background = False)
+io.run(description = "", argv = [], lang = "", code = "", cwd = "", env = {}, timeout_s = 0,
+       background = False)      # description is for the user's transcript, and io.run reads none of it
 io.status(handle)
 -> RunOutput(command, state, exit, ok, meaning, duration_s, log_path, log_bytes, errors, tail, handle, note)
 io.read_log(path, since_line = None) -> LogOutput(path, first_line, last_line, text, dropped, more, note)

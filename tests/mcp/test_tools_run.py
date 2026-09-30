@@ -24,7 +24,7 @@ from ioguard.lib.results import Code, Severity
 from ioguard.mcp import handles
 from ioguard.mcp.progress import CancelToken, ProgressReporter
 from ioguard.mcp.tools_run import SPECS, HandleInput, LogInput, RunInput, environment, read_log, run, status
-from ioguard.mcp.toolspec import InvalidArguments, ToolCall, ToolFailure
+from ioguard.mcp.toolspec import InvalidArguments, ToolCall, ToolFailure, schema
 from tests.support import shells
 from tests import PLUGIN_SCRIPTS
 from tests.support.events import TOOL_USE_ID
@@ -82,6 +82,14 @@ class AProgramRunsWithNoShell(RunTest):
         self.assertEqual((body, found.exit, found.tail), (BACKSLASHES.encode("utf-8"), 0,
                                                           ['3 C:\\temp\\new say "hi"']),
                          "SHW-2: the backslashes and quotes reach the file and the program as written")
+
+    def test_a_run_takes_a_description_for_the_user_to_read(self):
+        found = self.call(run, RunInput(description="Print one line", lang="python", code="print(1)"),
+                          self.context())
+        said = schema(RunInput, False)["properties"]["description"]
+        first = next(iter(schema(RunInput, False)["properties"]))
+        self.assertEqual((found.exit, found.tail, said["type"], first), (0, ["1"], "string", "description"),
+                         "the run takes what it does in words, first in its input, and runs the same")
 
     def test_an_exit_code_is_labelled_and_error_lines_are_named(self):
         (self.project / "a.txt").write_text("a\n")

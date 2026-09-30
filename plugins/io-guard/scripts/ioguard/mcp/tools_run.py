@@ -34,6 +34,8 @@ BOM = b"\xef\xbb\xbf"
 
 @dataclass(frozen=True)
 class RunInput:
+    description: str = doc("What this run does, in 5 to 10 plain words, as for the Bash tool. The user "
+                           "reads it in the transcript, and io-guard does nothing with it.", default="")
     argv: list[str] = doc("The program and its arguments, one item each, run with no shell. Leave it empty "
                           "to run code instead.", default_factory=list)
     lang: str = doc("The language of code: python, bash, powershell or node.", default="")
