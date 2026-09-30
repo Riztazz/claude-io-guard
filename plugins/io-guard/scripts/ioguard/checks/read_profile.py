@@ -6,13 +6,15 @@ one line, such as io-guard: CRLF, BOM, UTF-8, tabs, 1,284 lines, and one more wh
 It keeps the profile of the whole file in the session, also after a Read of a few lines, for the checks that
 compare a later change with what the agent saw, such as shell.touched. A binary file, such as an image the
 Read tool shows as a picture, gets its profile kept and no line. A file past max_bytes gets neither, because
-the check would profile only the part of it that fits.
+the check would profile only the part of it that fits. A background task's output file gets neither as well:
+Claude Code writes it, and no write has a convention of it to keep.
 """
 from ioguard.checks.base import Check, CheckMeta, Cost
 from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
+from ioguard.lib.output import is_task_output
 from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.profile import profile
 from ioguard.lib.results import Layer, Severity
@@ -31,7 +33,7 @@ class ReadProfile(Check):
         description="Adds the file's endings, BOM, encoding and indent after each Read.")
 
     def run(self, event: Event, ctx: Context) -> Decision:
-        if event.file_path is None:
+        if event.file_path is None or is_task_output(event.file_path, event.session_id):
             return Decision.observe(self.meta.id)
         limit = self.options["max_bytes"]
         try:

@@ -2,6 +2,7 @@
 saved."""
 import re
 import unittest
+from pathlib import Path
 
 from ioguard.lib import output
 
@@ -29,6 +30,19 @@ class TheExitCodeAndTheSavedFile(unittest.TestCase):
 
     def test_an_output_shown_whole_names_no_file(self):
         self.assertIsNone(output.saved_path({"stdout": "all of it"}), "nothing was saved")
+
+
+class ABackgroundTasksOutputFileIsToldByItsPath(unittest.TestCase):
+    def test_only_an_output_file_in_the_sessions_tasks_folder_is_one(self):
+        home = "C:/Temp/claude/C--project/"
+        for path, expected in ((f"{home}S-1/tasks/b1.output", True), (f"{home}s-1/tasks/b1.output", True),
+                               (f"{home}S-2/tasks/b1.output", False), (f"{home}S-1/tasks/b1.txt", False),
+                               (f"{home}S-1/scratchpad/b1.output", False),
+                               ("C:/project/tasks/b1.output", False)):
+            with self.subTest(path=path):
+                self.assertEqual(output.is_task_output(Path(path), "S-1"), expected,
+                                 "an .output file in the tasks folder of this session's own folder, and "
+                                 "no other file")
 
 
 class ErrorLinesMatchFromTheStartOfALine(unittest.TestCase):

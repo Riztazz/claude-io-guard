@@ -19,8 +19,8 @@ WINDOWS = Platform("win32", True)
 REGISTRY = default_registry()
 
 
-def read(data: bytes | None, name: str = "a.txt", **config):
-    raw = events.post_tool_use("Read", {"file_path": f"C:/project/{name}"}, {"type": "text"}, CWD)
+def read(data: bytes | None, path: str = "C:/project/a.txt", **config):
+    raw = events.post_tool_use("Read", {"file_path": path}, {"type": "text"}, CWD)
     event = Event.from_hook_json(raw, Surface.MCP_HOOK, WINDOWS)
     values = {**defaults(REGISTRY.keys()).values, **{f"checks.read.profile.{key}": value
                                                       for key, value in config.items()}}
@@ -39,6 +39,16 @@ class TheProfileLine(unittest.TestCase):
         outcome, _, _ = read(b"one\r\ntwo\nthree\r\n")
         self.assertEqual(len(outcome.context), 2, "a profile line, then one warning line")
         self.assertIn("mixes line endings", outcome.context[1], "the warning names the hazard")
+
+    def test_a_background_tasks_output_file_gets_no_line_and_a_project_file_still_does(self):
+        mixed = b"one\r\ntwo\r\n[exited with code 0]\n"
+        task = f"C:/Temp/claude/C--project/{events.SESSION_ID}/tasks/b1.output"
+        outcome, ctx, event = read(mixed, task)
+        self.assertEqual((outcome.context, event.file_path in ctx.session.read_profiles), ((), False),
+                         "nobody edits Claude Code's own output file, so it gets no line and no profile")
+        outcome, _, _ = read(mixed, "C:/project/tasks/b1.output")
+        self.assertEqual(["mixes line endings" in line for line in outcome.context], [False, True],
+                         "a project's file that mixes endings keeps its line and its warning")
 
     def test_a_binary_a_missing_or_a_too_large_file_gets_no_line(self):
         for data, config in ((b"\x89PNG\r\n\x1a\n\x00\x00", {}), (None, {}), (b"a\n" * 10, {"max_bytes": 5})):

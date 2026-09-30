@@ -69,6 +69,16 @@ def in_tool_results(path: str, claude: Path, session_id: str) -> bool:
     return len(parts) >= 4 and parts[1].casefold() == session_id.casefold() and "tool-results" in parts[2:-1]
 
 
+def is_task_output(path: Path, session_id: str) -> bool:
+    """Whether path is the file Claude Code writes a background task's output to, <session>/tasks/<id>.output
+    in the session's own folder, beside its scratchpad. The program's lines keep their endings and Claude
+    Code adds its own LF lines, such as [exited with code 0], so the file's profile says nothing about a
+    project's files."""
+    folder = path.parent
+    return (path.suffix == ".output" and folder.name == "tasks"
+            and folder.parent.name.casefold() == session_id.casefold())
+
+
 def compiled(value: Mapping[str, Sequence[str]]) -> dict[str, re.Pattern]:
     """One multiline pattern per group of error patterns, each matching any pattern of its group."""
     return {name: re.compile("|".join(f"(?:{item})" for item in listed), re.M)

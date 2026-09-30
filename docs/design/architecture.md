@@ -123,7 +123,8 @@ plugins/io-guard/
         verify_command.py          verify.command: the user's verify command on the written file
         touched.py                 shell.touched: TOUCHED_BY_SHELL, the files a shell command changed, made or
                                    moved, and nothing for a move the command names (task 91)
-        read_profile.py            read.profile: the profile line after Read, and the profile in read_profiles
+        read_profile.py            read.profile: the profile line after Read, and the profile in read_profiles,
+                                   and neither for a background task's output file (task 154)
         diagnose.py                diagnose.failure after a failed call, diagnose.refused at the next hook
         command_results.py         shell.results: EXIT_BENIGN, ERRORS_IN_OUTPUT, OUTPUT_SAVED, MOJIBAKE,
                                    STALE_BINARY, PIPE_HIDES_EXIT after the run unless an echo of $?
@@ -1029,6 +1030,8 @@ def exit_code(error: str) -> Optional[int]                     # from a failed c
 def saved_path(response: Mapping[str, Any]) -> Optional[str]   # persistedOutputPath, or the path its notice names
 def in_tool_results(path: str, claude: Path, session_id: str) -> bool   # task 98: in this session's
                                                             # tool-results folder, after .. and links
+def is_task_output(path: Path, session_id: str) -> bool        # task 154: <session>/tasks/<id>.output, which
+                                                            # Claude Code writes for a background task
 def error_lines(text: str, patterns: Mapping[str, Pattern]) -> tuple[ErrorLine, ...]   # matched from line start
 def mojibake(text: str, code_pages: Sequence[str]) -> Mojibake # U+FFFD, and UTF-8 a console read in a code page
 def excerpt(text: str, head: int, tail: int, marked: Sequence[ErrorLine], width: int) -> str   # numbered lines
