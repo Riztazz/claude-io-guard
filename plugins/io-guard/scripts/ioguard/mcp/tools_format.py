@@ -18,10 +18,11 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 
-from ioguard.lib import commands, edits, paths, proc, text, trust
+from ioguard.lib import commands, edits, paths, proc, text
 from ioguard.lib.context import Context
 from ioguard.lib.git import GitError
 from ioguard.lib.results import Code, Fix, callable_name, render
+from ioguard.lib.waiting import untrusted
 from ioguard.mcp.in_place import (Loaded, Place, Written, encoded, held, load, places_shown, refused,
                                   write)
 from ioguard.mcp.toolspec import InvalidArguments, ToolCall, ToolFailure, ToolSpec, cancelled, doc
@@ -113,8 +114,8 @@ def format_files(given: FormatInput, call: ToolCall) -> FormatOutput:
         path = paths.normalise(raw, call.cwd, ctx.platform)
         targets.setdefault(paths.resolved(path), path)
     named = lines_by_file(given, call, targets)
-    notices = (trust.untrusted(ctx.for_file(path).held, "format", path, TOOL, ctx.platform,
-                               ctx.session.first_time) for path in targets.values())
+    notices = (untrusted(ctx.for_file(path).held, "format", path, TOOL, ctx.platform, ctx.session.first_time)
+               for path in targets.values())
     found = next(filter(None, notices), None)
     waiting = "" if found is None else render(found)
     with ExitStack() as stack:

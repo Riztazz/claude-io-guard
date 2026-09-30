@@ -52,7 +52,7 @@ def run_messages(event: Event, ctx: Context) -> list[Message]:
             return bash_messages(str(given["code"]), event, cwd, ctx)
         case "powershell":
             return powershell_messages(str(given["code"]), event, cwd, ctx)
-    argv = runs.argv_of(given, ctx.probe, ctx.platform) or ()
+    argv = runs.argv_of(given, ctx.probe, ctx.platform, ctx.env) or ()
     found = commit_message.sources(argv)
     if found is not None:
         return [message(found, (), cwd, {}, ctx)]

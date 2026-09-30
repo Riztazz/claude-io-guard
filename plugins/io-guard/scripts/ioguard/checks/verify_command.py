@@ -9,7 +9,7 @@ the head of its output reach the agent as VERIFY_OUTPUT, and so does a timeout o
 so the telemetry counts each one.
 """
 from ioguard.checks.base import Check, CheckMeta, Cost
-from ioguard.lib import commands, proc, text, trust
+from ioguard.lib import commands, proc, text, waiting
 from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
@@ -38,11 +38,11 @@ class VerifyCommand(Check):
     def run(self, event: Event, ctx: Context) -> Decision:
         if event.file_path is None:
             return Decision.observe(self.meta.id)
-        waiting = trust.untrusted(ctx.held, "verify", event.file_path, event.tool_name, ctx.platform,
-                                  ctx.session.first_time)
+        notice = waiting.untrusted(ctx.held, "verify", event.file_path, event.tool_name, ctx.platform,
+                                   ctx.session.first_time)
         named = commands.command_for(ctx.config.get("verify"), event.file_path, ctx.platform)
         if named is None:
-            return self.said(waiting)
+            return self.said(notice)
         command = commands.filled(named, event.file_path)
         timeout_ms = self.options["timeout_ms"]
         done = proc.run(command, event.cwd, ctx.env, timeout_ms / 1000)
@@ -55,11 +55,11 @@ class VerifyCommand(Check):
             lines = (f"io-guard stopped the verify command {shown} after {timeout_ms:,} ms, before it "
                      f"finished.",)
         elif done.ok and not output:
-            return self.said(waiting)
+            return self.said(notice)
         else:
             lines = (f"io-guard ran {shown} after this {event.tool_name}, and it exited {done.exit_code}:",
                      output)
         message = "\n".join(line for line in lines if line)
         result = Result.of(Code.VERIFY_OUTPUT, message, event.tool_name, ctx.platform.os,
                            file=event.file_path, evidence={"command": shown, "exit_code": done.exit_code})
-        return self.said(result, waiting)
+        return self.said(result, notice)

@@ -3,7 +3,6 @@ the body is written to. The PreToolUse hook on the call and the tool itself both
 so a rule the hook asked about is the rule the tool finds.
 """
 import hashlib
-import os
 from collections.abc import Mapping
 from functools import partial
 from pathlib import Path, PureWindowsPath
@@ -17,21 +16,23 @@ SUFFIXES = {"python": ".py", "bash": ".sh", "powershell": ".ps1", "node": ".js"}
 BODY = "io-run-body"
 
 
-def interpreter(lang: str, probe: Probe, platform: Platform) -> tuple[str, ...] | None:
+def interpreter(lang: str, probe: Probe, platform: Platform,
+                env: Mapping[str, str]) -> tuple[str, ...] | None:
     """The argv that runs a file of lang, before the file's path, or None when this machine has no
-    interpreter for it. PowerShell is pwsh, or Windows PowerShell where pwsh is missing."""
+    interpreter for it: the probe's, else the first on env's PATH. PowerShell is pwsh, or Windows PowerShell
+    where pwsh is missing."""
     match lang:
         case "python":
             return (probe.python.path,)
         case "bash":
-            found = probe.bash.path if probe.bash else proc.on_path("bash", os.environ)
+            found = probe.bash.path if probe.bash else proc.on_path("bash", env)
             return None if found is None else (found,)
         case "powershell":
-            found = probe.pwsh.path if probe.pwsh else proc.on_path("pwsh", os.environ)
-            found = found or (proc.on_path("powershell", os.environ) if platform.windows else None)
+            found = probe.pwsh.path if probe.pwsh else proc.on_path("pwsh", env)
+            found = found or (proc.on_path("powershell", env) if platform.windows else None)
             return None if found is None else (found, "-NoProfile", "-NonInteractive", "-File")
         case "node":
-            found = proc.on_path("node", os.environ)
+            found = proc.on_path("node", env)
             return None if found is None else (found,)
     return None
 
@@ -61,14 +62,14 @@ def with_git_tools(env: Mapping[str, str], program: str) -> dict[str, str]:
     return {**env, key: ";".join((*folders, *rest)), "MSYSTEM": env.get("MSYSTEM") or "MINGW64"}
 
 
-def argv_of(given: Mapping[str, Any], probe: Probe, platform: Platform, body: str | None = None
-            ) -> tuple[str, ...] | None:
+def argv_of(given: Mapping[str, Any], probe: Probe, platform: Platform, env: Mapping[str, str],
+            body: str | None = None) -> tuple[str, ...] | None:
     """The argv a call runs: its argv, or its body's interpreter and the body's file, named body or a
     stand-in name before the file exists. None for a language with no interpreter here."""
     if given.get("argv"):
         return tuple(str(word) for word in given["argv"])
     lang = str(given.get("lang") or "")
-    found = interpreter(lang, probe, platform)
+    found = interpreter(lang, probe, platform, env)
     if found is None:
         return None
     return (*found, body or BODY + SUFFIXES.get(lang, ""))
@@ -89,7 +90,7 @@ def judge(given: Mapping[str, Any], env: Mapping[str, str], fs: FsPort, probe: P
     body, or a string io-guard cannot read, that names a rule's program asks, whether the rule denies or
     asks, since the rule cannot see what the code does."""
     found = rules.load(rules.settings_files(env, project, platform), partial(read_or_none, fs))
-    argv = argv_of(given, probe, platform)
+    argv = argv_of(given, probe, platform, env)
     if argv is None:
         return rules.RuleMatch("none", None, "")
     met = rules.match_command(found, argv)

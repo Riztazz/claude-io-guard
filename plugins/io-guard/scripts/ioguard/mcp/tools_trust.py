@@ -7,7 +7,7 @@ nothing and the model cannot approve for the user.
 """
 from dataclasses import dataclass
 
-from ioguard.lib import trust
+from ioguard.lib import trust, waiting
 from ioguard.lib.context import project_root
 from ioguard.lib.results import Code
 from ioguard.mcp.in_place import refused
@@ -43,7 +43,7 @@ def approve(given: TrustInput, call: ToolCall) -> TrustOutput:
                       f"put the project's commands to the user.", NAME, root / ".claude" / "io-guard.json",
                       ctx)
     trust.approve(ctx.data_dir, root, ctx.held, ctx.clock.now())
-    return TrustOutput(root.as_posix(), trust.listed(ctx.held), True)
+    return TrustOutput(root.as_posix(), waiting.listed(ctx.held), True)
 
 
 SPECS = (ToolSpec(NAME, "Ask the user to approve a project's commands",

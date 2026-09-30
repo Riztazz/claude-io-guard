@@ -44,5 +44,5 @@ class JournalWrite(Check):
         if after is not None:
             journal.record_write(ctx.data_dir, kept.path, event.tool_name, kept.data, after,
                                  when=ctx.clock.now(), session=ctx.session.session_id or "unknown",
-                                 project=ctx.env.get("CLAUDE_PROJECT_DIR") or "", tag=ctx.session.tag)
+                                 tag=ctx.session.tag)
         return Decision.observe(self.meta.id)

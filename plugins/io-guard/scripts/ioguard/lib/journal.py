@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from ioguard.lib.context import project_root
+
 log = logging.getLogger("ioguard.journal")
 
 LOCK = threading.Lock()
@@ -95,13 +97,16 @@ def file_of(home: Path, session: str, when: datetime) -> Path:
 
 
 def record_write(home: Path, path: Path, tool: str, before: bytes | None, after: bytes, *, when: datetime,
-                 session: str, project: str, tag: str | None) -> None:
+                 session: str, tag: str | None) -> None:
     """One journal line for a write that took path from before to after, where before is None for a new
-    file. A line that cannot be written is logged, and the write goes on."""
+    file. The line names the written file's own project, found from its folder as the config's is (D31), so
+    a session that works in two repositories names each. A line that cannot be written is logged, and the
+    write goes on."""
     if before == after:
         return
     try:
         found = changed(None if before is None else text_of(before), text_of(after))
+        project = project_root(path.parent).as_posix()
         record(home, Entry(when, session, project, path.as_posix(), tool, tag, found))
     except OSError:
         log.exception("io-guard could not add the %s of %s to the journal.", tool, path)

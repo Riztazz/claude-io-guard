@@ -183,8 +183,7 @@ def journaled(ctx: Context, path: Path, tool: str, before: bytes | None, after: 
     if ctx.data_dir is None or not ctx.config.check_options("journal.write").get("enabled", True):
         return
     journal.record_write(ctx.data_dir, path, tool, before, after, when=ctx.clock.now(),
-                         session=ctx.session.session_id or "unknown",
-                         project=ctx.env.get("CLAUDE_PROJECT_DIR") or "", tag=ctx.session.tag)
+                         session=ctx.session.session_id or "unknown", tag=ctx.session.tag)
 
 
 def write(loaded: Loaded, data: bytes, ctx: Context, tool: str) -> Written:

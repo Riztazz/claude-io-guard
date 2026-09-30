@@ -205,7 +205,7 @@ def run(given: RunInput, call: ToolCall) -> RunOutput:
     fields = checked(given, call)
     folder = runs_folder(ctx) / uuid.uuid4().hex
     body = folder / f"body{runs.SUFFIXES.get(given.lang, '')}"
-    argv = runs.argv_of(fields, ctx.probe, ctx.platform, str(body))
+    argv = runs.argv_of(fields, ctx.probe, ctx.platform, ctx.env, str(body))
     if argv is None:
         raise failure(Code.PATH_NOT_FOUND, f"This machine has no interpreter for {given.lang}.", tool, ctx,
                       Fix(callable_name(tool), {}, "Run the program through argv with its interpreter's full "

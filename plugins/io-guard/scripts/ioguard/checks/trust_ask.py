@@ -11,7 +11,7 @@ a hook that failed open approves nothing.
 import json
 
 from ioguard.checks.base import Check, CheckMeta, Cost
-from ioguard.lib import config_edit, trust
+from ioguard.lib import config_edit, trust, waiting
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
@@ -37,13 +37,14 @@ class TrustAsk(Check):
         if event.tool_name != TRUST or not ctx.held or ctx.project is None:
             return Decision.observe(self.meta.id)
         ctx.session.keep_ask(event.tool_use_id, trust.fingerprint(ctx.held), ctx.clock.now())
-        scripts = trust.inside(ctx.held, ctx.project)
+        scripts = waiting.inside(ctx.held, ctx.project, ctx.fs, ctx.platform)
         names = ", ".join(map(quoted, scripts))
         changes = (f" It runs {names} from inside the project, which a pull can change without "
                    f"asking again." if scripts else "")
         result = Result.of(Code.TRUST_ASKED, f"io.trust would let io-guard start these commands from "
                            f"{ctx.project.as_posix()}/.claude/io-guard.json: "
-                           f"{'; '.join(trust.listed(ctx.held))}.{changes}", event.tool_name, ctx.platform.os)
+                           f"{'; '.join(waiting.listed(ctx.held))}.{changes}", event.tool_name,
+                           ctx.platform.os)
         return Decision(self.meta.id, Verdict.ASK, results=(result,))
 
     def config(self, event: Event, ctx: Context) -> Decision:

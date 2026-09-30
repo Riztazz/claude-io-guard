@@ -64,8 +64,9 @@ plugins/io-guard/
                                    project_of
         decisions.py               Verdict, Rewrite, Decision, compose
         telemetry.py               Telemetry, TraceContext, session_files, expire, erase
-        trust.py                   fingerprint, approved, approve, listed, untrusted: the project commands the
-                                   user approved, and the ones that wait
+        trust.py                   fingerprint, approved, approve: the project commands the user approved
+        waiting.py                 listed, inside, untrusted: the project commands that wait for approval, as
+                                   the prompt and the notice name them
         telemetry_summary.py       Summary, files, summarise, page: every session's telemetry summed
         platform.py                Platform, detect
         probing.py                 tool_version, claude_version, console_encoding, case_insensitive, cut_applies
@@ -1663,7 +1664,8 @@ io.stage(path, lines = [], tag = "") -> StageOutput(path, staged, left, mixed)
 
 `lib.journal` keeps one line per write in `journal/<YYYY-MM>/<session>.jsonl` in io-guard's folder: the
 time, the session, the project, the file, the tool, the session's task tag, which the last `io.snapshot`
-set, and the lines the write changed (GIT-4). It keeps no text. Each line the write added or removed is
+set, and the lines the write changed (GIT-4). The project is the written file's own root, found from its
+folder by D31's rule, so a session that works in two repositories names each. It keeps no text. Each line the write added or removed is
 the first 12 hex digits of its SHA-1 without its line ending, from bytes read as UTF-8 with any other byte
 kept, so a line keys the same from the file and from `git diff`, and `io.stage` finds the hunk it landed
 in whatever moved around it. `changed` trims the common head and tail and compares the rest line by line,

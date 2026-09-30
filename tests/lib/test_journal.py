@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 from ioguard.lib import journal
+from tests.support.project import TemporaryProject
 
 NOW = datetime(2026, 9, 28, 12, 0, tzinfo=timezone.utc)
 k = journal.key
@@ -66,6 +67,16 @@ class TheJournalFileReadsBack(unittest.TestCase):
             journal.record(self.home, each)
         self.assertEqual(sorted(journal.entries(self.home), key=lambda entry: entry.session), written,
                          "each session's file holds its entries, tag, lines and keys included")
+
+    def test_a_write_names_the_project_of_the_file_it_wrote(self):
+        with TemporaryProject({"a.py": b"a\n"}, git=True) as first, TemporaryProject({"b.py": b"b\n"},
+                                                                                    git=True) as second:
+            for path in (first / "a.py", second / "b.py"):
+                journal.record_write(self.home, path, "Edit", b"x\n", b"y\n", when=NOW, session="s1",
+                                     tag=None)
+            named = {Path(entry.path).name: entry.project for entry in journal.entries(self.home)}
+        self.assertEqual(named, {"a.py": first.as_posix(), "b.py": second.as_posix()},
+                         "a session that works in two repositories names each write's own project")
 
     def test_a_line_that_cannot_be_read_is_skipped(self):
         journal.record(self.home, self.entry("s1", "pass"))
