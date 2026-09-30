@@ -111,13 +111,14 @@ class GitBashGetsItsOwnTools(unittest.TestCase):
 
 class EveryProgramIsFoundAsTheBashToolFindsIt(unittest.TestCase):
     def test_the_tool_folders_are_the_probes_bash_s_that_exist_on_windows(self):
-        with tempfile.TemporaryDirectory(prefix="ioguard-tools-") as root:
-            usr = Path(root) / "Git" / "usr" / "bin"
-            usr.mkdir(parents=True)
-            probe = PROBE.__class__(**{**PROBE.__dict__, "bash": ToolVersion(str(usr / "bash.exe"), "5.2")})
-            found = runs.tool_folders(probe, WINDOWS, Path.is_dir)
-            elsewhere = runs.tool_folders(probe, Platform("darwin", True), Path.is_dir)
-        self.assertEqual((found, elsewhere), ((str(usr),), ()),
+        usr = "C:\\Program Files\\Git\\usr\\bin"
+        probe = PROBE.__class__(**{**PROBE.__dict__, "bash": ToolVersion(usr + "\\bash.exe", "5.2")})
+
+        def on_disk(folder: Path) -> bool:
+            return str(folder) == usr
+        found = runs.tool_folders(probe, WINDOWS, on_disk)
+        elsewhere = runs.tool_folders(probe, Platform("darwin", True), on_disk)
+        self.assertEqual((found, elsewhere), ((usr,), ()),
                          "only the folders the bash's layout has and the disk holds, and none off Windows")
 
     def test_git_is_found_on_path_then_in_the_tool_folders_then_the_probes(self):
