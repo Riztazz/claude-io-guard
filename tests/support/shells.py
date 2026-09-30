@@ -8,7 +8,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from ioguard.checks.session_probe import NOT_BASH
+from ioguard.lib.runs import NOT_BASH
 from ioguard.lib import proc
 
 

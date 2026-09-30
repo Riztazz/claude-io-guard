@@ -1,4 +1,5 @@
 """io.run's call reads the same in the hook and in the tool: the argv it runs and the key the hook records."""
+import os
 import tempfile
 import unittest
 from pathlib import Path, PureWindowsPath
@@ -48,7 +49,8 @@ class GitBashGetsItsOwnTools(unittest.TestCase):
             with self.subTest(program=program):
                 self.assertEqual(runs.git_tools(program), self.TOOLS,
                                  "the folders Git's own login shell puts first, in its order")
-        for program in ("C:/Python314/python.exe", "/bin/bash", "C:/Windows/System32/bash.exe"):
+        for program in ("C:/Python314/python.exe", "/bin/bash", "C:/Windows/System32/bash.exe",
+                        "/usr/local/bin/bash", "/opt/homebrew/bin/bash"):
             with self.subTest(program=program):
                 self.assertEqual(runs.git_tools(program), (), "any other program changes nothing")
 
@@ -64,6 +66,47 @@ class GitBashGetsItsOwnTools(unittest.TestCase):
         same = {"PATH": "C:\\a"}
         self.assertEqual(runs.with_git_tools(same, "C:/Python314/python.exe"), same,
                          "another program's run is left as it is")
+
+    def test_a_program_path_lacks_starts_from_git_s_folders_by_its_full_path(self):
+        with tempfile.TemporaryDirectory(prefix="ioguard-git-") as folder:
+            for name in ("tool", "tool.exe"):
+                (Path(folder) / name).write_bytes(b"")
+                (Path(folder) / name).chmod(0o755)
+            found = runs.start(("tool", "-v"), {"PATH": "", "PATHEXT": ".EXE"}, (folder,))
+            missing = runs.start(("absent",), {"PATH": "", "PATHEXT": ".EXE"}, (folder,))
+        (argv, env) = found
+        self.assertEqual((Path(argv[0]).parent, argv[1:], env["PATH"].split(";")[0], missing),
+                         (Path(folder), ("-v",), folder, None),
+                         "a program only Git's folders hold runs by its full path with them first on PATH, "
+                         "and one they lack too starts nowhere")
+
+    def test_git_s_folders_come_before_path_as_in_the_bash_tool(self):
+        with tempfile.TemporaryDirectory(prefix="ioguard-order-") as root:
+            windows, git = Path(root) / "System32", Path(root) / "git"
+            for folder in (windows, git):
+                folder.mkdir()
+                for name in ("find", "find.exe"):
+                    (folder / name).write_bytes(b"")
+                    (folder / name).chmod(0o755)
+            env = {"PATH": str(windows), "PATHEXT": ".EXE"}
+            found = runs.start(("find", "--version"), env, (str(git),))
+            given = runs.start((str(windows / "find.exe"),), env, (str(git),))
+        self.assertEqual((Path(found[0][0]).parent, given[0][0]), (git, str(windows / "find.exe")),
+                         "a bare name is Git's find before Windows' own, as the Bash tool's shell finds it, "
+                         "and a program named by its path runs as named")
+
+    def test_a_body_s_bash_is_never_wsl_s(self):
+        with tempfile.TemporaryDirectory(prefix="ioguard-bash-") as root:
+            wsl, git = Path(root) / "Windows" / "System32", Path(root) / "Git" / "usr" / "bin"
+            for folder in (wsl, git):
+                folder.mkdir(parents=True)
+                for name in ("bash", "bash.exe"):
+                    (folder / name).write_bytes(b"")
+                    (folder / name).chmod(0o755)
+            env = {"PATH": os.pathsep.join((str(wsl), str(git))), "PATHEXT": ".EXE"}
+            found = runs.interpreter("bash", PROBE, WINDOWS, env)
+        self.assertEqual(Path(found[0]).parent, git, "with no probed bash, System32's bash.exe, WSL's, is "
+                                                     "passed over, as the session probe passes it over")
 
 
 if __name__ == "__main__":

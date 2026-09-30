@@ -222,6 +222,9 @@ RUN_BODY = (
     "whether all four arrive, so write both of each pair. Then quote the last line of its result word for "
     "word.")
 RUN_PRINTED = "250 C:\\\\dir\\\\250"
+RUN_TOOLS = (f"Do these in order. 1. {LOAD_RUN} 2. Call {IO_RUN} with argv [\"grep\", \"--version\"]. "
+             f"3. Call {IO_RUN} with argv [\"find\", \"--version\"]. Then quote the first line of each "
+             f"result word for word, and reply DONE.")
 RUN_SLOW = (f"1. {LOAD_RUN} 2. Call {IO_RUN} with lang python, background true, and this code: import time\n"
             "for minute in range(15):\n    print('minute', minute, flush=True)\n    time.sleep(60)\n"
             f"3. Call {IO_STATUS} with the handle it returned. Then quote its state and reply DONE.",
@@ -557,6 +560,7 @@ PROBES = {
     "live-edit-parallel": Probe(0, "", guard="", allowed=("Agent", "Task", "ToolSearch", IO_EDIT),
                                 prompt=PARALLEL_EDITS, check=("counters.txt",), max_turns=12,
                                 setup={"counters.txt": COUNTERS}),
+    "live-run-tools": Probe(0, "", guard="", allowed=("ToolSearch", IO_RUN, IO_STATUS), prompt=RUN_TOOLS),
     "live-run-body": Probe(0, "", guard="", allowed=("ToolSearch", IO_RUN, IO_STATUS), prompt=RUN_BODY,
                            env={"CLAUDE_CODE_MAX_OUTPUT_TOKENS": "64000"}),
     "live-run-background": Probe(0, "", guard="", allowed=("ToolSearch", IO_RUN, IO_STATUS), prompt="",
@@ -1091,6 +1095,12 @@ def structured(summary: dict) -> list[dict]:
     return found
 
 
+def tools_ran(summary: dict) -> bool:
+    """io.run started GNU grep and GNU find by their bare names, as the Bash tool does."""
+    lines = [line for value in structured(summary) for line in value.get("tail", [])]
+    return all(any(mark in line for line in lines) for mark in ("GNU grep", "GNU findutils"))
+
+
 def body_ran(summary: dict, name: str) -> bool:
     """A body of 20,000 bytes or more reached its file byte for byte, and Python printed each pair of
     backslashes whole."""
@@ -1404,6 +1414,7 @@ VERDICTS = {
     "live-server-down": down_named,
     "live-edit-parallel": edits_interleaved,
     "live-run-body": body_ran,
+    "live-run-tools": lambda s, n: tools_ran(s),
     "live-run-background": ran_in_background,
     "live-run-denied": lambda s, n: "RULE_DENIED: io.run would run git push origin main" in seen(s),
     "live-run-asked": run_asked,

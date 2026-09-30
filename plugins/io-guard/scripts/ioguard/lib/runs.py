@@ -3,6 +3,7 @@ the body is written to. The PreToolUse hook on the call and the tool itself both
 so a rule the hook asked about is the rule the tool finds.
 """
 import hashlib
+import os
 from collections.abc import Mapping
 from functools import partial
 from pathlib import Path, PureWindowsPath
@@ -15,6 +16,7 @@ from ioguard.lib.probing import Probe
 from ioguard.lib.rules import RuleVerdict
 
 SUFFIXES = {"python": ".py", "bash": ".sh", "powershell": ".ps1", "node": ".js"}
+NOT_BASH = ("system32", "windowsapps")      # WSL's bash.exe and its store alias are not the Bash tool's shell
 BODY = "io-run-body"
 
 
@@ -27,7 +29,8 @@ def interpreter(lang: str, probe: Probe, platform: Platform,
         case "python":
             return (probe.python.path,)
         case "bash":
-            found = probe.bash.path if probe.bash else proc.on_path("bash", env)
+            found = probe.bash.path if probe.bash else proc.on_path("bash", env,
+                                                                     NOT_BASH if platform.windows else ())
             return None if found is None else (found,)
         case "powershell":
             found = probe.pwsh.path if probe.pwsh else proc.on_path("pwsh", env)
@@ -45,7 +48,7 @@ def git_tools(program: str) -> tuple[str, ...]:
     program. bash started straight, as io.run starts it, keeps the Windows PATH as it is, which holds none of
     Git's tools, so tr, diff or sed are not found where the Bash tool finds them."""
     path = PureWindowsPath(program)
-    if path.stem.lower() != "bash" or path.parent.name.lower() != "bin":
+    if not path.drive or path.stem.lower() != "bash" or path.parent.name.lower() != "bin":
         return ()
     root = path.parents[2] if path.parents[1].name.lower() == "usr" else path.parents[1]
     if not root.name:
@@ -56,12 +59,32 @@ def git_tools(program: str) -> tuple[str, ...]:
 def with_git_tools(env: Mapping[str, str], program: str) -> dict[str, str]:
     """env with git_tools(program) first on its PATH, whatever case its key is spelled in, and MSYSTEM set to
     MINGW64 as the Bash tool sets it, unless env names one. env as it is for any other program."""
-    folders = git_tools(program)
+    return with_folders(env, git_tools(program))
+
+
+def with_folders(env: Mapping[str, str], folders: tuple[str, ...]) -> dict[str, str]:
+    """env with Git's tool folders first on its PATH and MSYSTEM set, as with_git_tools says, or env as it is
+    when folders is empty."""
     if not folders:
         return dict(env)
     key = next((name for name in env if name.upper() == "PATH"), "PATH")
     rest = [env[key]] if env.get(key) else []
     return {**env, key: ";".join((*folders, *rest)), "MSYSTEM": env.get("MSYSTEM") or "MINGW64"}
+
+
+def start(argv: tuple[str, ...], env: Mapping[str, str],
+          git_folders: tuple[str, ...]) -> tuple[tuple[str, ...], dict[str, str]] | None:
+    """argv and env to start, with the program where the Bash tool's shell finds it: a bare name in
+    git_folders, the tool folders of the Bash tool's bash, named by its full path, before env's PATH, so find
+    and sort are Git's and not Windows' own. A program from those folders, or that bash, gets them first on
+    PATH, as the Bash tool's shell has them. None when neither holds it."""
+    name = argv[0]
+    found = proc.on_path(name, {**env, "PATH": os.pathsep.join(git_folders)}) \
+        if git_folders and Path(name).name == name else None
+    if found is not None:
+        return (found, *argv[1:]), with_folders(env, git_folders)
+    program = proc.located(argv, env)
+    return None if program is None else (argv, with_git_tools(env, program[0]))
 
 
 def argv_of(given: Mapping[str, Any], probe: Probe, platform: Platform, env: Mapping[str, str],

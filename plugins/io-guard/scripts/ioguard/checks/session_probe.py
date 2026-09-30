@@ -31,6 +31,7 @@ from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.ports import FsPort, GitPort
 from ioguard.lib.probing import Probe, ToolVersion
 from ioguard.lib.results import Layer, Severity
+from ioguard.lib.runs import NOT_BASH
 
 log = logging.getLogger("ioguard.checks.session_probe")
 
@@ -39,7 +40,6 @@ VERSIONS = {
     "pwsh": re.compile(r"PowerShell (\d+\.\d+\.\d+)"),
     "git": re.compile(r"git version (\S+)"),
 }
-NOT_BASH = ("system32", "windowsapps")      # WSL's bash.exe and its store alias are not the Bash tool's shell
 NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 ENV = {"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
 ENV_WINDOWS = {"DOTNET_CLI_UI_LANGUAGE": "en", "VSLANG": "1033"}

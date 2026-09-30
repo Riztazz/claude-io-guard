@@ -17,13 +17,13 @@ from ioguard.checks.registry import default_registry
 from ioguard.lib import runs
 from ioguard.lib.config import Config, defaults
 from ioguard.lib.context import Context
-from ioguard.lib.platform import detect
+from ioguard.lib.platform import Platform, detect
 from ioguard.lib.ports import LiveFs
 from ioguard.lib.probing import ToolVersion
 from ioguard.lib.results import Code, Severity
 from ioguard.mcp import handles
 from ioguard.mcp.progress import CancelToken, ProgressReporter
-from ioguard.mcp.tools_run import HandleInput, LogInput, RunInput, read_log, run, status
+from ioguard.mcp.tools_run import HandleInput, LogInput, RunInput, environment, read_log, run, status
 from ioguard.mcp.toolspec import InvalidArguments, ToolCall, ToolFailure
 from tests.support import shells
 from tests.support.events import TOOL_USE_ID
@@ -62,6 +62,16 @@ class RunTest(unittest.TestCase):
              progress: ProgressReporter | None = None, tool_use_id: str | None = TOOL_USE_ID):
         return handler(given, ToolCall(lambda: ctx, cancel or CancelToken(), self.project, None, progress,
                                        tool_use_id=tool_use_id))
+
+    def with_git_bash_only(self, ctx: Context) -> Context:
+        """ctx with Git's bash as the probe's, and PATH as Windows gives it, with no Git tool folder."""
+        git = shells.git_folder()
+        key = next(name for name in ctx.env if name.upper() == "PATH")
+        inside = str(git).lower()
+        windows_only = ";".join(entry for entry in ctx.env[key].split(";")
+                                if not entry.lower().startswith(inside) or entry.lower().endswith("cmd"))
+        bash = ToolVersion(str(git / "usr" / "bin" / "bash.exe"), "5.2")
+        return replace(ctx, env={**ctx.env, key: windows_only}, probe=replace(ctx.probe, bash=bash))
 
     def refusal(self, handler, given, ctx: Context, tool_use_id: str | None = TOOL_USE_ID):
         with self.assertRaises(ToolFailure) as failure:
@@ -104,14 +114,8 @@ class AProgramRunsWithNoShell(RunTest):
 
     @unittest.skipUnless(sys.platform == "win32" and shells.git_folder(), "Git Bash runs on Windows only")
     def test_a_bash_body_finds_git_s_own_tools_and_runs_in_its_folder(self):
-        git = shells.git_folder()
-        ctx = self.context()
-        key = next(name for name in ctx.env if name.upper() == "PATH")
-        inside = str(git).lower()
-        windows_only = ";".join(entry for entry in ctx.env[key].split(";")
-                                if not entry.lower().startswith(inside) or entry.lower().endswith("cmd"))
-        bash = ToolVersion(str(git / "usr" / "bin" / "bash.exe"), "5.2")
-        ctx = replace(ctx, env={**ctx.env, key: windows_only}, probe=replace(ctx.probe, bash=bash))
+        ctx = self.with_git_bash_only(self.context())
+        bash = ctx.probe.bash
         body = ("printf 'a\\n' | tr a b\ndiff <(echo x) <(echo x) && echo SAME\n"
                 "printf '1\\n2\\n' | tail -1\necho s | sed s/s/t/\necho g | grep -c g\npwd -W\n")
         found = self.call(run, RunInput(lang="bash", code=body), ctx)
@@ -122,6 +126,48 @@ class AProgramRunsWithNoShell(RunTest):
         direct = self.call(run, RunInput(argv=[bash.path, "-c", "echo s | sed s/s/t/"]), ctx)
         self.assertEqual((direct.exit, direct.tail), (0, ["t"]),
                          "an argv that starts Git's bash gets the same")
+
+    @unittest.skipUnless(sys.platform == "win32" and shells.git_folder(), "Git Bash runs on Windows only")
+    def test_a_program_only_git_bash_finds_runs_from_git_s_tools(self):
+        ctx = self.with_git_bash_only(self.context())
+        grep = shells.git_folder() / "usr" / "bin" / "grep.exe"
+        (self.project / "a.txt").write_bytes(b"a\nb\n")
+        found = self.call(run, RunInput(argv=["grep", "-c", "b", "a.txt"]), ctx)
+        self.assertEqual((found.exit, found.tail, found.note.lower()),
+                         (0, ["1"], f"io-guard ran grep as {grep.as_posix()}, where the bash tool's shell "
+                                    f"finds it.".lower()),
+                         "a program the Bash tool finds in Git's usr/bin runs, and the note says from where")
+
+    @unittest.skipUnless(sys.platform == "win32" and shells.git_folder(), "Git Bash runs on Windows only")
+    def test_a_name_windows_also_ships_is_git_s_program(self):
+        found = self.call(run, RunInput(argv=["find", "--version"]), self.with_git_bash_only(self.context()))
+        self.assertEqual((found.exit, "GNU findutils" in " ".join(found.tail)), (0, True),
+                         "find is Git's GNU find, as in the Bash tool, never System32's FIND")
+
+    def test_a_call_s_path_spelled_another_way_replaces_the_session_s(self):
+        ctx = replace(self.context(), platform=Platform("win32", True), env={"PATH": "C:\\session", "X": "1"})
+        found = environment(RunInput(argv=["x"], env={"Path": "C:\\given"}), ctx)
+        self.assertEqual([(name, value) for name, value in found.items() if name.upper() == "PATH"],
+                         [("PATH", "C:\\given")],
+                         "Windows reads variable names without case, so the call's Path is the one PATH")
+
+    @unittest.skipUnless(sys.platform == "win32", "a bash's tool folders exist on Windows only")
+    def test_a_refusal_names_only_the_tool_folders_that_exist(self):
+        cygwin = self.root / "cygwin64" / "bin"
+        cygwin.mkdir(parents=True)
+        (self.root / "cygwin64" / "usr" / "bin").mkdir(parents=True)
+        ctx = self.context()
+        ctx = replace(ctx, probe=replace(ctx.probe, bash=ToolVersion(str(cygwin / "bash.exe"), "5.2")))
+        result = self.refusal(run, RunInput(argv=["io-guard-no-such-program"]), ctx)
+        self.assertEqual(("usr/bin" in result.message, "mingw64" in result.message), (True, False),
+                         "a folder a bash's layout would have and this one lacks is never named")
+
+    def test_a_program_found_nowhere_names_where_io_guard_looked(self):
+        result = self.refusal(run, RunInput(argv=["io-guard-no-such-program", "-v"]), self.context())
+        self.assertEqual((result.code, result.message.count(".."), result.message.endswith(".")),
+                         (Code.PATH_NOT_FOUND, 0, True), "one refusal sentence, ended by one dot")
+        self.assertIn("io-guard-no-such-program is in no folder on PATH", result.message,
+                      "the refusal says where io-guard looked, not that the install is broken")
 
     def test_the_utf8_defaults_reach_the_program(self):
         program = "import os; print(os.environ['PYTHONUTF8'], os.environ['X'])"

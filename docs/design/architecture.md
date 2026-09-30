@@ -955,8 +955,11 @@ def interpreter(lang: str, probe: Probe, platform: Platform) -> Optional[tuple[s
 def argv_of(given: Mapping[str, Any], probe: Probe, platform: Platform, body: Optional[str] = None)
     -> Optional[tuple[str, ...]]                            # argv, or the interpreter and the body's file
 def key(given: Mapping[str, Any]) -> str                    # one per command, which run.rules records
-def git_tools(program: str) -> tuple[str, ...]              # task 142: Git's tool folders for its bash
+def git_tools(program: str) -> tuple[str, ...]              # task 142: Git's tool folders for its bash, on
+                                                            # Windows alone
 def with_git_tools(env: Mapping[str, str], program: str) -> dict[str, str]   # those first on PATH
+def start(argv: tuple[str, ...], env: Mapping[str, str], git_folders: tuple[str, ...])
+    -> Optional[tuple[tuple[str, ...], dict[str, str]]]     # task 149: a bare name in git_folders before PATH
 
 # patterns.py, task 25
 def problem(pattern: str) -> Optional[str]                  # does not compile, over 200 characters, nested,
@@ -1497,7 +1500,11 @@ io.read_log(path, since_line = None) -> LogOutput(path, first_line, last_line, t
   `env` over both, an empty stdin, and stdout and stderr in `runs/<id>/output.log`. On Windows, a run of Git's
   bash, a `lang: bash` body or an argv that starts it, gets `mingw64/bin`, `usr/local/bin` and `usr/bin` of
   that Git first on PATH, and `MSYSTEM=MINGW64` unless set, as the Bash tool's bash has them. bash started
-  straight keeps the Windows PATH, which holds none of Git's tools (task 142). The output reaches the
+  straight keeps the Windows PATH, which holds none of Git's tools (task 142). An argv's program named
+  without a folder is looked for in the probe's bash's tool folders that exist before PATH, as the Bash
+  tool's shell looks, so `grep` runs and `find` and `sort` are Git's, not `System32`'s. It runs by its full
+  path, with those folders first on PATH, and the result's note names the path. A program neither holds is
+  refused with `PATH_NOT_FOUND`, naming the folders looked in (task 149). The output reaches the
   log through `lib.logcap`, a copier in its own process, which stops the log at `io.run.log_max_bytes`,
   64 MB, a user setting, with one line that says so, and lets the program go on. The result's `log_cut` says
   when that happened (task 124).

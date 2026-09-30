@@ -131,10 +131,17 @@ def runs_folder(ctx: Context) -> Path:
 
 
 def environment(given: RunInput, ctx: Context) -> dict[str, str]:
-    """The session's variables, task 10's UTF-8 ones over them, and the call's own over both."""
+    """The session's variables, task 10's UTF-8 ones over them, and the call's own over both. On Windows a
+    name replaces the one spelled in another case, since Windows reads names without case."""
     options = ctx.config.check_options("session.probe")
     platform_env = options["env_windows"] if ctx.platform.windows else {}
-    return {**ctx.env, **options["env"], **platform_env, **given.env}
+    merged: dict[str, str] = {}
+    for layer in (ctx.env, options["env"], platform_env, given.env):
+        for name, value in layer.items():
+            same = next((key for key in merged if key.upper() == name.upper()), None) \
+                if ctx.platform.windows else None
+            merged[same or name] = value
+    return merged
 
 
 def meaning_of(argv: tuple[str, ...], exit_code: int | None, ctx: Context) -> str:
@@ -229,23 +236,36 @@ def run(given: RunInput, call: ToolCall) -> RunOutput:
         data = given.code.encode("utf-8")
         ctx.fs.write_atomic(body, BOM + data if given.lang == "powershell" else data)
     command = rules.command_text(argv)
-    env = environment(given, ctx)
-    if ctx.platform.windows:
-        program = proc.located(argv, env)
-        env = env if program is None else runs.with_git_tools(env, program[0])
+    known = runs.git_tools(ctx.probe.bash.path) if ctx.platform.windows and ctx.probe.bash else ()
+    folders = tuple(found for found in known if ctx.fs.is_dir(Path(found)))
+    found = runs.start(argv, environment(given, ctx), folders)
+    fix = Fix(callable_name(tool), {}, "Name the program by its full path, or check that it is installed.")
+    if found is None:
+        raise failure(Code.PATH_NOT_FOUND, f"io.run could not start {argv[0]}: {unfound(argv[0], folders)}",
+                      tool, ctx, fix)
+    program, env = found
+    where = "" if program[0] == argv[0] else (f"io-guard ran {argv[0]} as {Path(program[0]).as_posix()}, "
+                                            f"where the Bash tool's shell finds it.")
     try:
-        pump = proc.background(argv, cwd, env, folder / "output.log",
+        pump = proc.background(program, cwd, env, folder / "output.log",
                                cap=ctx.config.get("io.run.log_max_bytes"))
     except OSError as error:
-        raise failure(Code.PATH_NOT_FOUND, f"io.run could not start {argv[0]}: {error.strerror or error}.",
-                      tool, ctx, Fix(callable_name(tool), {}, "Name the program by its full path, or check "
-                                                              "that it is installed.")) from None
+        said = str(error.strerror or error).rstrip(".")
+        raise failure(Code.PATH_NOT_FOUND, f"io.run could not start {argv[0]}: {said}.", tool, ctx,
+                      fix) from None
     if given.background:
-        return started(pump, command, ctx)
-    return waited(pump, command, given.timeout_s or ctx.config.get("io.run.timeout_s"), call)
+        return started(pump, command, ctx, where)
+    return waited(pump, command, given.timeout_s or ctx.config.get("io.run.timeout_s"), call, where)
 
 
-def started(pump: proc.Pump, command: str, ctx: Context) -> RunOutput:
+def unfound(name: str, folders: tuple[str, ...]) -> str:
+    """Where io.run looked for a program it did not find, as the end of a sentence."""
+    shown = ", ".join(Path(found).as_posix() for found in folders)
+    git = f", nor in the folders the Bash tool's shell adds, {shown}" if folders else ""
+    return f"{name} is in no folder on PATH{git}, so io-guard did not start it."
+
+
+def started(pump: proc.Pump, command: str, ctx: Context, where: str) -> RunOutput:
     handle = handles.STORE.create("run", {"pump": pump, "command": command})
     ttl = timedelta(seconds=ctx.config.get("io.run.handle_ttl_s"))
     pump.when_done(lambda: handles.STORE.settle(handle.id, ttl))
@@ -253,10 +273,10 @@ def started(pump: proc.Pump, command: str, ctx: Context) -> RunOutput:
     note = (f"Call {callable_name('io.status')} with this handle for its state, and "
             f"{callable_name('io.read_log')} with log_path for its output. The handle lasts {minutes:g} "
             f"minutes past the program's end.")
-    return reading(pump, RunState.RUNNING, command, handle.id, note, ctx)
+    return reading(pump, RunState.RUNNING, command, handle.id, " ".join(filter(None, (where, note))), ctx)
 
 
-def waited(pump: proc.Pump, command: str, timeout_s: float, call: ToolCall) -> RunOutput:
+def waited(pump: proc.Pump, command: str, timeout_s: float, call: ToolCall, where: str) -> RunOutput:
     """The run once it ends, or once io-guard stops it past timeout_s or on the client's cancel."""
     deadline = time.monotonic() + timeout_s
     state = RunState.ENDED
@@ -273,8 +293,8 @@ def waited(pump: proc.Pump, command: str, timeout_s: float, call: ToolCall) -> R
         call.progress.report(round(pump.seconds(), 1),
                              f"{0 if found is None else found.size:,} bytes of output after "
                              f"{pump.seconds():,.0f} s")
-    note = f"io-guard stopped it after {timeout_s:g} seconds." if state is RunState.TIMED_OUT else ""
-    return reading(pump, state, command, "", note, call.context)
+    stopped = f"io-guard stopped it after {timeout_s:g} seconds." if state is RunState.TIMED_OUT else ""
+    return reading(pump, state, command, "", " ".join(filter(None, (where, stopped))), call.context)
 
 
 def status(given: HandleInput, call: ToolCall) -> RunOutput:
