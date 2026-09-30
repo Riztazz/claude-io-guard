@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from ioguard.lib import bytesio
 from ioguard.lib.program import program_name
 from ioguard.lib.results import meanings
 from ioguard.lib.telemetry import session_files
@@ -70,7 +71,7 @@ def summarise(paths: Iterable[Path], since: datetime, project: str | None = None
     """Every readable line from since on, of one project's calls when project names one."""
     summary = Summary()
     for path in paths:
-        for raw in path.read_bytes().splitlines():
+        for raw in bytesio.read_bytes(path).splitlines():
             try:
                 line = json.loads(raw)
                 when = stamp(line["ts"])

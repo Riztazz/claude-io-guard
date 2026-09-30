@@ -21,6 +21,8 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from ioguard.lib import bytesio
+
 
 @dataclass(frozen=True)
 class RunResult:
@@ -171,7 +173,7 @@ def background(argv: Sequence[str], cwd: Path, env: Mapping[str, str], log: Path
     if resolved is None:
         raise FileNotFoundError(not_on_path(argv[0]))
     log.parent.mkdir(parents=True, exist_ok=True)
-    log.write_bytes(b"")
+    bytesio.write_atomic(log, b"")
     group = {} if sys.platform == "win32" else {"start_new_session": True}
     copier = subprocess.Popen([sys.executable, str(LOGCAP), str(log), str(cap)], cwd=log.parent,
                               stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,

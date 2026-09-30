@@ -13,6 +13,7 @@ BRIDGE = (("mcp", "tools_hook"), "ioguard.hooks.bridge")   # the one import betw
 FRAMEWORK = {"base", "pipeline", "registry"}         # the checks modules that hold no check
 RUNNERS = {"ioguard.checks.pipeline", "ioguard.checks.registry"}   # what a surface takes from checks
 SHORT = 40                                           # the most lines a function of the split modules has
+OWN_OPENS = {"bytesio", "locks", "logcap"}          # bytesio, a lock's descriptor, a copier run by path
 
 
 def imports_of(path: Path) -> set[str]:
@@ -112,6 +113,20 @@ class PackageLayers(unittest.TestCase):
                 with self.subTest(module=path.name):
                     self.assertLessEqual(taken, {"Context"},
                                          "a helper is imported from the module it lives in")
+
+    def test_lib_opens_a_file_only_through_bytesio(self):
+        opens = {"open", "read_text", "write_text", "write_bytes"}
+        for path in modules("lib"):
+            if path.stem in OWN_OPENS:
+                continue
+            for node in ast.walk(ast.parse(path.read_bytes())):
+                if not isinstance(node, ast.Call):
+                    continue
+                name = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", "")
+                bare_read = name == "read_bytes" and not node.args
+                with self.subTest(module=path.name, line=node.lineno):
+                    self.assertFalse(name in opens or bare_read,
+                                     "a file is read and written through lib.bytesio, which refuses a device")
 
     def test_the_scan_sees_the_packages_it_guards(self):
         self.assertTrue(modules("lib") and modules("checks") and modules("hooks"),

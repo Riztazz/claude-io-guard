@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from ioguard.lib import bytesio
 from ioguard.lib.folders import project_root
 
 log = logging.getLogger("ioguard.journal")
@@ -121,8 +122,7 @@ def record(home: Path, entry: Entry) -> None:
     path = file_of(home, entry.session, entry.ts)
     with LOCK:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8", newline="\n") as out:
-            out.write(json.dumps(line) + "\n")
+        bytesio.append(path, (json.dumps(line) + "\n").encode("utf-8"))
 
 
 def keys_for(home: Path, tag: str, path: Path, case_insensitive: bool) -> tuple[set[str], set[str]]:
@@ -140,7 +140,7 @@ def keys_for(home: Path, tag: str, path: Path, case_insensitive: bool) -> tuple[
 def entries(home: Path) -> Iterator[Entry]:
     """Every journal line in io-guard's folder, file by file, skipping a line that cannot be read."""
     for path in sorted((home / "journal").glob("*/*.jsonl")):
-        for raw in path.read_text(encoding="utf-8").splitlines():
+        for raw in bytesio.read_bytes(path).decode("utf-8").splitlines():
             try:
                 line = json.loads(raw)
                 spans = tuple((first, last) for first, last in line["lines"])

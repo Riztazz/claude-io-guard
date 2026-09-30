@@ -78,6 +78,14 @@ class TheJournalFileReadsBack(unittest.TestCase):
         self.assertEqual(named, {"a.py": first.as_posix(), "b.py": second.as_posix()},
                          "a session that works in two repositories names each write's own project")
 
+    def test_a_line_is_one_json_object_and_a_newline(self):
+        journal.record(self.home, self.entry("s1", "pass"))
+        data = journal.file_of(self.home, "s1", NOW).read_bytes()
+        line = (b'{"ts": "2026-09-28T12:00:00+00:00", "session": "s1", "project": "C:/project", '
+                b'"path": "C:/project/a.py", "tool": "Edit", "tag": "pass", "lines": [[1, 1]], '
+                b'"added": ["' + k("b").encode() + b'"], "removed": ["' + k("a").encode() + b'"]}\n')
+        self.assertEqual(data, line, "the journal's bytes are its JSON line and an LF, whatever writes them")
+
     def test_a_line_that_cannot_be_read_is_skipped(self):
         journal.record(self.home, self.entry("s1", "pass"))
         path = journal.file_of(self.home, "s1", NOW)

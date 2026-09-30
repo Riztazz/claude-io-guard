@@ -114,8 +114,7 @@ class Telemetry:
                 return
             path = self.path_for(event)
             path.parent.mkdir(parents=True, exist_ok=True)
-            with path.open("ab") as out:
-                out.write(line)
+            bytesio.append(path, line)
 
     def flush(self) -> None:
         """Each record is written and closed at once, so nothing waits here."""
@@ -147,7 +146,7 @@ def shrink_heads(data_dir: Path, days: int, now: datetime) -> list[Path]:
         stat = path.stat()
         if stat.st_mtime >= cutoff:
             continue
-        lines = path.read_bytes().split(b"\n")
+        lines = bytesio.read_bytes(path).split(b"\n")
         shrunk = [shrunk_line(line) for line in lines]
         if shrunk != lines:
             bytesio.write_atomic(path, b"\n".join(shrunk))

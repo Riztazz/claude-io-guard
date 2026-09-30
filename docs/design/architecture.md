@@ -26,7 +26,7 @@ plugins/io-guard/
     ioguard/
       __init__.py                  PLUGIN_VERSION, CONFIG_SCHEMA, CHECK_API, TELEMETRY_SCHEMA
       lib/                         mechanism, functions and frozen dataclasses only
-        bytesio.py                 read_bytes, write_atomic, size guard
+        bytesio.py                 read_bytes, write_atomic, append, size guard: every open of a file in lib
         profile.py                 Profile, profile, target_profile, convert_eol, with_bom, with_final_newline
         editorconfig.py            parse, matches, properties: the .editorconfig properties for one file
         drift.py                   drift, edited, changed_lines, restored: what a write changed in a file's bytes
@@ -788,6 +788,9 @@ Each module lists its public functions. Every one takes values and returns value
 def regular(path: Path) -> Path                             # task 106: OSError for a device, a pipe or a folder
 def read_bytes(path: Path, limit: Optional[int] = None) -> bytes   # every read goes through regular first
 def read_tail(path: Path, limit: int) -> bytes               # task 20: from the first line break it holds
+def read_from(path: Path, offset: int, limit: int) -> bytes  # task 25, for io.read_log
+def append(path: Path, data: bytes) -> None                 # task 137: the journal, telemetry, first_in_file
+                                                            # and CLAUDE_ENV_FILE add their lines through it
 def write_atomic(path: Path, data: bytes, retries: int = 5) -> WriteReport   # task 104: through a symlink
                                                             # to its file, and on macOS with the old mode
 

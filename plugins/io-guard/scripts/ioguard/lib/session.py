@@ -167,11 +167,10 @@ def first_in_file(path: Path, data_dir: Path, key: str) -> bool:
     keeps two processes from both finding the key new."""
     line = json.dumps(key) + "\n"
     with locks.file_lock(path, data_dir, wait_s=1.0):
-        if path.is_file() and line in path.read_text(encoding="utf-8").splitlines(keepends=True):
+        if path.is_file() and line in bytesio.read_bytes(path).decode("utf-8").splitlines(keepends=True):
             return False
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8", newline="\n") as out:
-            out.write(line)
+        bytesio.append(path, line.encode("utf-8"))
     return True
 
 
