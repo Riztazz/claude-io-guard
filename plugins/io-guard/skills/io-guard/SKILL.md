@@ -15,7 +15,7 @@ instead.
 | **Never route around a refusal through the shell or a script.** | A shell write skips every check, and SHELL_WRITE refuses it too. |
 | **Load an io tool with ToolSearch before its first call**, with the query `select:` and the name the table gives. | The io tools stay behind tool search until loaded. |
 | **After an io tool changes a file, Read the file before the next Edit of it.** | Claude Code tracks only its own tools' writes. |
-| **Wait for a long run with `io.run` in the background and `io.status`**, never with a chain of sleep commands. | Claude Code blocks sleep chains. |
+| **Wait for a long run with the Bash tool's `run_in_background`**, never with a chain of sleep commands. | Claude Code tells the session when it ends, and blocks sleep chains. |
 | **A note that io-guard fixed a call asks for nothing.** | The call ran as the note says. |
 
 ## Pick the tool
@@ -61,10 +61,13 @@ it. In `allow`, the default in bypassPermissions, it runs at once.
 
 ## Wait for a long run
 
-1. Call `io.run` with `background` true. It answers at once with a handle and the run's `log_path`.
-2. Do other work, then call `io.status` with the handle. It answers `running`, or `ended` with the exit code,
-   the error lines and the last lines of the log.
-3. Call `io.read_log` with the `log_path` for the lines the log gained since the last call.
+1. Run the command with the Bash tool and `run_in_background` true. Claude Code tells the session when it
+   ends, so nothing needs polling.
+2. When the command needs a body byte for byte, with backslashes or quotes the Bash tool would change, call
+   `io.run` with `background` true instead. Nothing tells the session when that run ends, so call `io.status`
+   with its handle later. It answers `running`, or `ended` with the exit code, the error lines and the last
+   lines of the log.
+3. Call `io.read_log` with a log's path for the lines it gained since the last call.
 
 A run to its end waits up to `timeout_s`, 120 seconds unless the call or the config says otherwise, and
 io-guard stops it past that.

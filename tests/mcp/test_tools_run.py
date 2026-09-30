@@ -23,9 +23,10 @@ from ioguard.lib.probing import ToolVersion
 from ioguard.lib.results import Code, Severity
 from ioguard.mcp import handles
 from ioguard.mcp.progress import CancelToken, ProgressReporter
-from ioguard.mcp.tools_run import HandleInput, LogInput, RunInput, environment, read_log, run, status
+from ioguard.mcp.tools_run import SPECS, HandleInput, LogInput, RunInput, environment, read_log, run, status
 from ioguard.mcp.toolspec import InvalidArguments, ToolCall, ToolFailure
 from tests.support import shells
+from tests import PLUGIN_SCRIPTS
 from tests.support.events import TOOL_USE_ID
 
 BACKSLASHES = "print(len(r'\\\\n'), 'C:\\\\temp\\\\new', \"say \\\"hi\\\"\")\n"
@@ -194,6 +195,18 @@ class AProgramRunsWithNoShell(RunTest):
             with self.subTest(given=given):
                 with self.assertRaises(InvalidArguments, msg="argv, or lang and code, one of them"):
                     self.call(run, given, self.context())
+
+
+class ALongWaitGoesToTheBashTool(unittest.TestCase):
+    def test_io_run_and_the_skill_send_a_long_wait_to_run_in_background(self):
+        spec = next(spec for spec in SPECS if spec.name == "io.run")
+        skill = (PLUGIN_SCRIPTS.parent / "skills" / "io-guard" / "SKILL.md").read_bytes().decode()
+        wait = skill.split("## Wait for a long run", 1)[1].split("\n## ", 1)[0]
+        self.assertEqual(("run_in_background" in spec.description, "or a long run" in spec.description,
+                          "run_in_background" in wait, wait.lstrip().startswith("1. Call `io.run`")),
+                         (True, False, True, False),
+                         "Claude Code tells the session when a Bash background run ends, and nothing tells "
+                         "it when an io.run one does, so a run to wait on for minutes goes to the Bash tool")
 
 
 class TheUsersRulesHold(RunTest):

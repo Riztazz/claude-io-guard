@@ -1519,7 +1519,9 @@ io.read_log(path, since_line = None) -> LogOutput(path, first_line, last_line, t
 - **To its end, or in the background.** A run to its end waits up to `timeout_s`, or `io.run.timeout_s`,
   sends `notifications/progress` when the request carried a `progressToken`, and is stopped, its whole
   process tree, past the timeout or on the client's cancel. A background run answers at once with a handle,
-  which `io.status` reads. Either result is labelled by `shell.results`' options: a nonzero exit that
+  which `io.status` reads. Nothing tells the session when a background run ends, as Claude Code does for a
+  Bash call with `run_in_background`, so the tool description and the skill send a run to wait on to Bash
+  and keep `io.run` for byte-exact bodies (task 150). Either result is labelled by `shell.results`' options: a nonzero exit that
   `benign_exits` names is `ok` with its meaning, `error_patterns` pick the error lines, and the log's last
   `tail_lines` follow.
 - **`io.read_log`** returns the whole lines a log gained since the last call, from the line and byte the

@@ -45,7 +45,9 @@ class RunInput:
                               default_factory=dict)
     timeout_s: int = doc("Seconds a run to its end may take before io-guard stops it. 0 takes the config's "
                          "io.run.timeout_s, 120 unless set.", default=0)
-    background: bool = doc("Start the program and answer at once with a handle for io.status.", default=False)
+    background: bool = doc("Start the program and answer at once with a handle for io.status. Nothing tells "
+                           "the session when it ends, which the Bash tool's run_in_background does.",
+                           default=False)
 
 
 @dataclass(frozen=True)
@@ -364,8 +366,9 @@ SPECS = (
     ToolSpec("io.run", "Run a program without a shell",
              "Runs a program from an argument list, or a python, bash, powershell or node body written to a "
              "file byte for byte, with no shell to mangle quotes or backslashes, under the user's Bash and "
-             "PowerShell permission rules. Use it for a script body with backslashes or quotes, or a long "
-             "run: background returns a handle that lasts one hour past the program's end.",
+             "PowerShell permission rules. Use it for a script body or an argument with backslashes or "
+             "quotes, and send a run to wait on for minutes to the Bash tool with run_in_background, which "
+             "Claude Code tells the session about when it ends.",
              RunInput, RunOutput, read_only=False, destructive=True, idempotent=False, handler=run,
              open_world=True),
     ToolSpec("io.status", "Check a background run",

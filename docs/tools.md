@@ -45,6 +45,11 @@ program, such as `git` for `Bash(git push *)`, also brings up the prompt, since 
 with it. A background run's handle lasts an hour past the program's end. A run's log keeps its first 64 MB,
 then stops growing while the program goes on, and the result says `log_cut`.
 
+Nothing tells the session when a background `io.run` ends, so the agent has to ask `io.status`. Claude Code
+does tell it when a Bash call with `run_in_background` ends, and shows that call under Background tasks. So
+the skill sends a run you'll wait on for minutes to Bash, and keeps `io.run` for bodies whose backslashes or
+quotes the Bash tool would change.
+
 ## Undoing a task
 
 `io.snapshot` keeps its copies in io-guard's folder, up to 5,000 files and 512 MB each, and deletes them after
