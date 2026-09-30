@@ -55,6 +55,7 @@ class SessionState:
     budget_override: int | None = None                            # learned from an EOF failure
     first_cut: int | None = None                  # the shortest cut command's bytes, where no cut is known
     tracked: dict[Path, bool] = field(default_factory=dict)       # git's answer per path, asked once
+    ignored: dict[Path, bool] = field(default_factory=dict)       # git check-ignore's, the same way
     last_failed_build: str | None = None                          # the words of the build that last failed
     asked: dict[str, tuple[str, datetime]] = field(default_factory=dict)   # by tool_use_id: what, when
     tag: str | None = None                                        # the task the last io.snapshot named
@@ -72,6 +73,12 @@ class SessionState:
         """A session state whose warned keys every io-guard process of the session shares, the server and
         each command hook alike, through a file in io-guard's folder."""
         return cls(data_dir=data_dir, session_id=session_id if data_dir is not None else None)
+
+    def forget_git(self) -> None:
+        """Drop git's cached answers, after a command that runs git and so may change them."""
+        with self.lock:
+            self.tracked.clear()
+            self.ignored.clear()
 
     def first_time(self, key: str) -> bool:
         """True the first time a key is seen this session, in any of its processes, so a warning goes out
@@ -186,4 +193,19 @@ def tracked(path: Path, git: GitPort, session: SessionState) -> bool | None:
         return None
     with session.lock:
         session.tracked[path] = answer
+    return answer
+
+
+def ignored(path: Path, git: GitPort, session: SessionState) -> bool | None:
+    """Whether git ignores path, asked once per session until the session runs a git command. None when git
+    cannot say."""
+    with session.lock:
+        if path in session.ignored:
+            return session.ignored[path]
+    try:
+        answer = git.is_ignored(path)
+    except GitError:
+        return None
+    with session.lock:
+        session.ignored[path] = answer
     return answer

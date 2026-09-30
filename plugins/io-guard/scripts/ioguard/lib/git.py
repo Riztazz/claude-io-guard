@@ -3,7 +3,8 @@ stored bytes and one file's unstaged diff, all read-only, and one write, a patch
 
 Every call passes -c core.quotepath=false, so a non-ASCII path comes back as UTF-8, and
 -c core.fsmonitor=false, so no program a repository's own config names runs. It passes
---literal-pathspecs, so a file name such as [id].tsx is never a pattern. It uses -z wherever it parses
+--literal-pathspecs, so a file name such as [id].tsx is never a pattern, save to check-ignore, which takes
+paths and refuses the flag. It uses -z wherever it parses
 paths, and has a timeout. A call that fails raises GitError, so a caller never mistakes a failure for
 an answer. A path that is not UTF-8 decodes with its bytes kept as surrogates, which the file system takes
 back on macOS, so one odd file name never stops a check.
@@ -17,7 +18,8 @@ from pathlib import Path
 from ioguard.lib import proc
 
 PATHS = "surrogateescape"
-FLAGS = ("-c", "core.quotepath=false", "-c", "core.fsmonitor=false", "--literal-pathspecs")
+CONFIG = ("-c", "core.quotepath=false", "-c", "core.fsmonitor=false")
+FLAGS = (*CONFIG, "--literal-pathspecs")
 
 
 class GitError(Exception):
@@ -118,7 +120,8 @@ class Git:
 
     @staticmethod
     def folder(path: Path) -> Path:
-        return path if path.is_dir() else path.parent
+        """The nearest folder at or above path that exists, where git can run for a path not made yet."""
+        return next((each for each in (path, *path.parents) if each.is_dir()), path.parent)
 
     def root(self, path: Path) -> Path | None:
         """The repository root holding path, or None when path is outside every repository."""
@@ -128,6 +131,14 @@ class Git:
         if b"not a git repository" in result.stderr:
             return None
         raise GitError(f"git rev-parse in {path} failed: {reason(result)}")
+
+    def is_ignored(self, path: Path) -> bool:
+        """Whether git ignores path, which need not exist yet."""
+        result = proc.run([self.program, *CONFIG, "check-ignore", "-q", "--", str(path)],
+                          cwd=self.folder(path), timeout_s=self.time_left(("check-ignore",)))
+        if result.exit_code not in (0, 1):
+            raise GitError(f"git check-ignore of {path} failed: {reason(result)}")
+        return result.exit_code == 0
 
     def is_tracked(self, path: Path) -> bool:
         result = self.run(path.parent, "ls-files", "--error-unmatch", "--", path.name)

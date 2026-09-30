@@ -7,7 +7,8 @@ write to the scratchpad, to a device, or outside any repository passes. A target
 named after a cd the check cannot follow, passes too. Git's answer for a path holds for the session until a
 command names git, which can add or remove a file. A script file that writes to a path it does not spell
 out, given a tracked file, gets a warning that names io.edit, or io.format when it runs a formatter. A script
-file the shell creates inside a repository gets a warning that points at the scratchpad (GIT-1).
+file the shell creates inside a repository, where git neither tracks nor ignores it, gets a warning that
+points at the scratchpad (GIT-1).
 """
 import re
 from pathlib import Path
@@ -19,7 +20,7 @@ from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.git import GitError
 from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity, callable_name
-from ioguard.lib.session import tracked
+from ioguard.lib.session import ignored, tracked
 from ioguard.lib.writes import (Host, Script, Write, bash_writes, powershell_writes, resolve, script_files,
                                 targets)
 
@@ -53,8 +54,7 @@ class ShellWrites(Check):
     def run(self, event: Event, ctx: Context) -> Decision:
         command, host = event.command or "", Host.of(ctx)
         if RUNS_GIT.search(command):
-            with ctx.session.lock:
-                ctx.session.tracked.clear()
+            ctx.session.forget_git()
         bash = event.tool is not Tool.POWERSHELL
         scripts = script_files(command, event.cwd, host) if bash else []
         found = (bash_writes(command, event.cwd, host, scripts=scripts) if bash
@@ -68,7 +68,7 @@ class ShellWrites(Check):
                 if state:
                     refusals.append(self.refusal(write, path, event, ctx))
                 elif (state is False and path.suffix.lower() in SCRIPT_SUFFIXES
-                      and self.in_repository(path, ctx)):
+                      and self.in_repository(path, ctx) and not ignored(path, ctx.git, ctx.session)):
                     warnings.append(self.warning(path, event, ctx))
         warnings += [warning for script in scripts if (warning := self.given(script, event, ctx)) is not None]
         if refusals:

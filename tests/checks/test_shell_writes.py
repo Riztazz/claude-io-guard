@@ -228,6 +228,13 @@ class TheRefusalAndTheWarning(unittest.TestCase):
                          "GIT-1: a scratch script in the repository runs, with a warning")
         self.assertIn(SCRATCH.as_posix(), result.render(), "the warning points at the scratchpad")
 
+    def test_a_script_created_in_an_ignored_folder_is_no_warning(self):
+        git = CountingGit(root=ROOT, tracked=TRACKED, ignored=frozenset({ROOT / "workbench" / "try.py"}))
+        ignored, _ = run("cat > workbench/try.py <<'EOF'\nprint(1)\nEOF\n", git=git)
+        seen, _ = run("cat > tools/try.py <<'EOF'\nprint(1)\nEOF\n", git=git)
+        self.assertEqual((ignored.verdict, seen.verdict), (Verdict.OBSERVE, Verdict.ALLOW),
+                         "git never lists an ignored file as new, so only the script it would see is named")
+
     def test_git_is_asked_once_per_path_in_a_session(self):
         git = CountingGit(root=ROOT, tracked=TRACKED)
         ctx = Context.fake(platform=WINDOWS, git=git)
@@ -253,6 +260,22 @@ class TheRefusalAndTheWarning(unittest.TestCase):
         verdict("git add new.py && git commit -m new")
         self.assertIs(verdict("sed -i 's/x/y/' new.py"), Verdict.DENY,
                       "after a git command, git is asked again, and new.py is tracked now")
+
+    def test_a_git_command_drops_the_cached_ignore_answers_too(self):
+        git = CountingGit(root=ROOT, tracked=TRACKED)
+        ctx = Context.fake(platform=WINDOWS, git=git)
+        registry = Registry()
+        registry.register(ShellWrites)
+
+        def verdict(command: str) -> Verdict:
+            event = Event.from_hook_json(events.bash(command, ROOT), Surface.MCP_HOOK, WINDOWS)
+            return Pipeline(registry).run(event, ctx).verdict
+
+        self.assertIs(verdict("echo x > out/try.py"), Verdict.ALLOW, "out/ is not ignored at first")
+        git.ignored = frozenset({ROOT / "out" / "try.py"})
+        verdict("git status")
+        self.assertIs(verdict("echo x > out/try.py"), Verdict.OBSERVE,
+                      "after a git command, such as one that wrote .gitignore, git is asked again")
 
 
 WRITES_ITS_ARGUMENT = b"import sys\nwith open(sys.argv[1], 'w') as out:\n    out.write('x')\n"

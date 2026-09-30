@@ -65,8 +65,8 @@ plugins/io-guard/
         fakes.py                   FakeFs, FakeGit: the in-memory ports Context.fake builds, for tests
         folders.py                 claude_folder, home_folder, session_file, memory_file, project_root,
                                    project_of, repository_root: where things are
-        session.py                 SessionState, Snapshot, ShellSnapshot, first_in_file, tracked: what a session
-                                   learns, and what a PreToolUse keeps for its PostToolUse
+        session.py                 SessionState, Snapshot, ShellSnapshot, first_in_file, tracked, ignored: what
+                                   a session learns, and what a PreToolUse keeps for its PostToolUse
         decisions.py               Verdict, Rewrite, Decision, compose
         telemetry.py               Telemetry, TraceContext, session_files, expire, erase
         retention.py               newest, older, delete: the entries of io-guard's folders past io.saved_days
@@ -108,8 +108,9 @@ plugins/io-guard/
         location.py                write.location: RESERVED_NAME, READ_ONLY, LINKED_PATH, dirty files.
                                    write.locks: FILE_LOCKED after a failed write
         transport_body.py          BODY_MOVED_TO_FILE, TRANSPORT_BUDGET, BACKSLASH_TRANSPORT
-        shell_writes.py            SHELL_WRITE for a tracked file lib.writes finds, the scratch script warning,
-                                   and a script file given a tracked file
+        shell_writes.py            SHELL_WRITE for a tracked file lib.writes finds, the scratch script warning
+                                   for a script git neither tracks nor ignores, and a script file given a
+                                   tracked file
         lint.py                    shell.lint: quoting, escapes, dialect, Python 3 bodies, PIPE_HIDES_EXIT once,
                                    STOPS_BY_MATCH. A cmdlet is Verb-Noun as PowerShell writes it, or a
                                    common one in any case, and a Python 2 body is never compiled (task 108)
@@ -268,6 +269,7 @@ come flat. `tool_input` and `tool_response` come whole, as the compact JSON text
 class GitPort(Protocol):
     def root(self, path: Path) -> Optional[Path]: ...
     def is_tracked(self, path: Path) -> bool: ...
+    def is_ignored(self, path: Path) -> bool: ...          # task 144: check-ignore, of a path not made yet too
     def status(self, root: Path) -> GitStatus: ...
     def ls_files(self, root: Path) -> tuple[Path, ...]: ...
     def changed_ranges(self, path: Path) -> Optional[tuple[LineRange, ...]]: ...   # since HEAD, task 26.

@@ -109,8 +109,10 @@ class FakeGit:
                  ranges: Mapping[Path, tuple[LineRange, ...]] | None = None,
                  attributes: Mapping[Path, Mapping[str, str]] | None = None,
                  staged_paths: tuple[str, ...] = (), blobs: Mapping[str, bytes] | None = None,
-                 other_roots: tuple[Path, ...] = (), diffs: Mapping[Path, bytes] | None = None) -> None:
+                 other_roots: tuple[Path, ...] = (), diffs: Mapping[Path, bytes] | None = None,
+                 ignored: frozenset[Path] = frozenset()) -> None:
         self.repo_root = root
+        self.ignored = ignored
         self.diffs = dict(diffs or {})             # each path's unstaged diff
         self.patches: list[bytes] = []             # every patch staged, in order
         self.other_roots = other_roots             # more repositories, each the root of the paths under it
@@ -130,6 +132,9 @@ class FakeGit:
 
     def is_tracked(self, path: Path) -> bool:
         return path in self.tracked
+
+    def is_ignored(self, path: Path) -> bool:
+        return path in self.ignored
 
     def status(self, root: Path) -> GitStatus:
         return self.current_status

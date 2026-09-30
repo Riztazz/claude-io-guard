@@ -57,6 +57,14 @@ class GitOutputParses(unittest.TestCase):
         self.assertEqual((root, missing.ok), (project, False),
                          "a git named by its full path answers, and a budgeted copy keeps the same program")
 
+    def test_an_ignored_path_is_ignored_even_before_it_exists(self):
+        with TemporaryProject({".gitignore": b"/build/\n", "a.txt": b"a\n"}, git=True) as project:
+            git = Git()
+            found = (git.is_ignored(project / "build" / "new" / "x.py"), git.is_ignored(project / "a.txt"),
+                     git.is_ignored(project / "tools" / "y.py"))
+        self.assertEqual(found, (True, False, False),
+                         "check-ignore answers for a path under an ignored folder that does not exist yet")
+
     def test_attributes_read_as_name_to_value(self):
         raw = b"a.txt\0text\0auto\0a.txt\0eol\0lf\0"
         self.assertEqual(parse_attributes(raw), {"text": "auto", "eol": "lf"},

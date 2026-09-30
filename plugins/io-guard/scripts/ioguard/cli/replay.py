@@ -43,12 +43,14 @@ REPLAY_DATA = Path("replay-data")      # a data folder that exists only in the i
 
 
 class SnapshotGit:
-    """A git port for replay that answers from each repository's tracked files as they are now. It runs one
-    read-only git ls-files per repository and nothing else, and finds a repository by its .git entry."""
+    """A git port for replay that answers from each repository's tracked and ignored files as they are now.
+    It runs one read-only git ls-files per repository and one check-ignore per path asked about, and nothing
+    else, and finds a repository by its .git entry."""
 
     def __init__(self) -> None:
         self.roots: dict[Path, Path | None] = {}
         self.files: dict[Path, frozenset[str]] = {}
+        self.ignored: dict[Path, bool] = {}
 
     def within(self, seconds: float) -> SnapshotGit:
         return self
@@ -77,6 +79,16 @@ class SnapshotGit:
             except GitError:
                 self.files[root] = frozenset()
         return self.key(path) in self.files[root]
+
+    def is_ignored(self, path: Path) -> bool:
+        if self.root(path) is None:
+            return False
+        if path not in self.ignored:
+            try:
+                self.ignored[path] = Git().is_ignored(path)
+            except GitError:
+                self.ignored[path] = False
+        return self.ignored[path]
 
     def status(self, root: Path) -> GitStatus:
         return GitStatus(())
