@@ -590,7 +590,8 @@ function renderStats() {
     table(["Check", "Fixed", "Warned", "Refused"], checks.map(([check, counts]) =>
       make("tr", {}, make("td", {text: check}), ...severityCells(counts)))));
   const latency = [["One hook call", stats.latency.hook], ["One io tool call", stats.latency.io],
-                   ["One tool use, all its hooks", stats.latency.use]];
+                   ["One tool use, all its hooks", stats.latency.use],
+                   ["One io.run, the program's own time", stats.latency.run]];
   parts.push(make("h2", {text: "Time taken"}),
     table(["Milliseconds", "p50", "p90", "p99", "Max", "Calls"], latency.map(([name, spread]) =>
       make("tr", {}, make("td", {text: name}), ...["p50", "p90", "p99", "max"].map(at =>

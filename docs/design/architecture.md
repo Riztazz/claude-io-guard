@@ -1827,7 +1827,8 @@ from it. A background run keeps running when its call is cancelled, because its 
 - **The stats.** A switch at the top shows Stats instead of Settings: the last 1, 7 or 30 days, of this project
   or of all projects. It shows the totals fixed, warned and refused, a bar per day, and every code with its
   counts. A code opens to its meaning, its fix and its last 20 lines, with the command head of each. Then the
-  checks, the time of a hook call, an io tool call and one tool use, and the projects when all are shown. The
+  checks, the time of a hook call, an io tool call and one tool use, an `io.run`'s program time on a row of
+  its own (task 155), and the projects when all are shown. The
   command heads reach only the page, never a tool result, since a tool result lands in the model's context.
 - **Resetting the stats.** Start from now saves the time, and the page counts only the lines after it, until
   Show everything clears it. It deletes nothing, and `tools/report.py` and `tools/measure.py` never read the
@@ -1943,7 +1944,8 @@ events. `tools/report.py` groups by `trace_id` to show what one tool use cost en
 the days asked, from io-guard's folder unless `--data` names others. The probes keep their own folder,
 `workbench/io-guard-home`, through `IOGUARD_HOME`. It prints one screen: the calls by event, tool, project and
 platform, the codes split into fixed, warned and refused, the time of a hook call, an io tool call and one tool
-use across its trace as p50, p90, p99 and max, the command shapes behind refusals, and each kind of
+use across its trace as p50, p90, p99 and max, an `io.run`'s time on a line of its own, since that time is
+the program's and not io-guard's (task 155), the command shapes behind refusals, and each kind of
 `GUARD_ERROR` with its count. It holds command shapes and error hashes, so it prints to a terminal, and
 `--html` writes the dashboard page's stats into one file instead. `lib.telemetry_summary` does the summing for
 both. `Summary.counts()` is what a tool result may carry: counts and percentiles, and no command, path, project

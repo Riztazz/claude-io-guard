@@ -54,6 +54,7 @@ def render(summary: Summary, days: int) -> str:
         out.append(fitted(f"and {len(ranked) - SHOWN_CODES} more codes:",
                           [code for code, _ in ranked[SHOWN_CODES:]]))
     out += ["", f"Hook call: {shown(summary.hook_ms)}", f"io tool call: {shown(summary.io_ms)}",
+            f"io.run, the program's own time: {shown(summary.run_ms)}",
             f"One tool use, all its hooks: {shown(uses(summary.traces))}"]
     if summary.shapes:
         out += ["", counted("Refused most:", summary.shapes, SHOWN_SHAPES)]

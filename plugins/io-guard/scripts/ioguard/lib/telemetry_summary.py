@@ -22,6 +22,7 @@ from ioguard.lib.telemetry import session_files
 
 SEVERITIES = ("fixed", "warning", "refused", "info")
 TOOL_CALL = "tools/call"
+RUN = "io.run"              # its time is the program's, so it stays out of io-guard's own
 RECENT = 20                  # the latest lines kept per code
 
 
@@ -40,7 +41,8 @@ class Summary:
     projects: Counter = field(default_factory=Counter)
     platforms: Counter = field(default_factory=Counter)
     hook_ms: list[float] = field(default_factory=list)            # one per hook call
-    io_ms: list[float] = field(default_factory=list)              # one per io tool call
+    io_ms: list[float] = field(default_factory=list)              # one per io tool call but io.run's
+    run_ms: list[float] = field(default_factory=list)             # one per io.run: the program's own time
     traces: dict[str, list[tuple[str, float]]] = field(default_factory=lambda: defaultdict(list))
     shapes: Counter = field(default_factory=Counter)             # command shapes behind refusals
     errors: Counter = field(default_factory=Counter)             # (where, error) of each GUARD_ERROR
@@ -51,7 +53,8 @@ class Summary:
         return {"sessions": len(self.sessions), "lines": self.lines, "events": dict(self.events),
                 "codes": {code: dict(by) for code, by in self.codes.items()}, "tools": dict(self.tools),
                 "platforms": dict(self.platforms), "hook_ms": spread(self.hook_ms),
-                "io_ms": spread(self.io_ms), "use_ms": spread(uses(self.traces))}
+                "io_ms": spread(self.io_ms), "run_ms": spread(self.run_ms),
+                "use_ms": spread(uses(self.traces))}
 
 
 def files(folders: Iterable[Path], since: datetime) -> list[Path]:
@@ -110,6 +113,9 @@ def add(summary: Summary, line: Mapping, when: datetime) -> None:
     summary.platforms[line.get("platform") or "none"] += 1
     took = line.get("latency_ms")
     if isinstance(took, (int, float)):
+        if event == TOOL_CALL and line.get("tool") == RUN:
+            summary.run_ms.append(float(took))
+            return
         (summary.io_ms if event == TOOL_CALL else summary.hook_ms).append(float(took))
         trace = (line.get("trace") or {}).get("trace_id")
         if trace:
@@ -140,7 +146,8 @@ def shape(command: str) -> str:
 
 
 def uses(traces: Mapping[str, list[tuple[str, float]]]) -> list[float]:
-    """The time of each tool use whose hooks ran more than once: its PreToolUse, PostToolUse and io call."""
+    """The time of each tool use whose hooks ran more than once: its PreToolUse, PostToolUse and io call.
+    An io.run's call is left out, since that time is the program's."""
     return [sum(took for _, took in calls) for calls in traces.values() if len(calls) > 1]
 
 
@@ -168,6 +175,7 @@ def page_data(summary: Summary, since: datetime, until: datetime) -> dict:
             "checks": {check: dict(by) for check, by in summary.checks.items()},
             "projects": dict(summary.projects), "tools": dict(summary.tools), "events": dict(summary.events),
             "latency": {"hook": spread(summary.hook_ms), "io": spread(summary.io_ms),
+                        "run": spread(summary.run_ms),
                         "use": spread(uses(summary.traces))},
             "recent": {code: list(lines)[::-1] for code, lines in summary.recent.items()}}
 

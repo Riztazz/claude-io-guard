@@ -180,6 +180,28 @@ class ALineIsReadAsWritten(unittest.TestCase):
                          ([0, 0, 0, 1], {"TOUCHED_BY_SHELL": {"warning": 1}}),
                          "each day from since on, the empty ones too, and one project's line alone")
 
+    def test_an_io_run_s_time_is_the_program_s_and_stays_out_of_the_io_tools_time(self):
+        folder = Path(tempfile.mkdtemp(prefix="ioguard-report-"))
+        self.addCleanup(shutil.rmtree, folder, True)
+        telemetry = Telemetry(folder)
+        trace = TraceContext("a" * 32, "0" * 16, None)
+        base = dict(ts=NOW, session="s", platform="win32", project="game")
+        telemetry.record(TelemetryEvent(event="PreToolUse", surface="mcp_hook", tool="io.run", trace=trace,
+                                        latency_ms=1.0, **base))
+        for tool, took, traced in (("io.run", 180_000.0, trace), ("io.edit", 6.0, None)):
+            telemetry.record(TelemetryEvent(event="tools/call", surface="mcp_tool", tool=tool, trace=traced,
+                                            latency_ms=took, **base))
+        since = NOW - timedelta(days=1)
+        found = telemetry_summary.summarise(telemetry_summary.files([folder], since), since)
+        latency = telemetry_summary.page_data(found, since, NOW)["latency"]
+        self.assertEqual((found.io_ms, found.run_ms, telemetry_summary.uses(found.traces)),
+                         ([6.0], [180_000.0], []),
+                         "a program's three minutes are its own, and neither an io tool's nor a hook's")
+        self.assertEqual((latency["io"]["max"], latency["run"]["max"], found.counts()["run_ms"]["n"]),
+                         (6.0, 180_000.0, 1), "the page and the counts carry the two apart")
+        self.assertIn("io.run, the program's own time: p50 180000 ms", report.render(found, 1),
+                      "the report names the program's time on a line of its own")
+
     def test_a_command_shape_is_its_program_and_its_option_or_subcommand(self):
         for command, expected in (("sed -i 's/a/b/' x", "sed -i"), ("git status --short", "git status"),
                                   ("C:/tools/python.exe script.py", "python.exe"), ("", "")):
