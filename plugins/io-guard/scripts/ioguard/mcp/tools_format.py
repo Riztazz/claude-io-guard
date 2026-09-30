@@ -19,7 +19,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 
-from ioguard.lib import commands, edits, paths, proc, text
+from ioguard.lib import commands, edits, paths, proc, runs, text
 from ioguard.lib.context import Context
 from ioguard.lib.git import GitError
 from ioguard.lib.results import Code, Fix, callable_name, render
@@ -218,7 +218,9 @@ def formatted(loaded: Loaded, command: tuple[str, ...], ctx: Context) -> str:
     path, name = loaded.path, Path(command[0]).stem
     timeout_s = ctx.config.get("io.format.timeout_s")
     source = loaded.text.replace("\r\n", "\n").encode("utf-8")
-    done = proc.run(command, path.parent, ctx.env, timeout_s, stdin=source)
+    folders = runs.tool_folders(ctx.probe, ctx.platform, ctx.fs.is_dir)
+    program, env = runs.start(command, ctx.env, folders) or (command, dict(ctx.env))
+    done = proc.run(program, path.parent, env, timeout_s, stdin=source)
     said = text.head(done.stderr.decode("utf-8", "replace").strip(), MESSAGE_CHARS)
     again = retry(f"Fix what {name} says, then call {CALLABLE} again.")
     if done.start_error:

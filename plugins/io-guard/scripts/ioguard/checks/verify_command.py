@@ -9,7 +9,7 @@ the head of its output reach the agent as VERIFY_OUTPUT, and so does a timeout o
 so the telemetry counts each one.
 """
 from ioguard.checks.base import Check, CheckMeta, Cost
-from ioguard.lib import commands, proc, text, waiting
+from ioguard.lib import commands, proc, runs, text, waiting
 from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
@@ -46,7 +46,9 @@ class VerifyCommand(Check):
             return self.said(notice)
         command = commands.filled(named, event.file_path)
         timeout_ms = self.options["timeout_ms"]
-        done = proc.run(command, event.cwd, ctx.env, timeout_ms / 1000)
+        folders = runs.tool_folders(ctx.probe, ctx.platform, ctx.fs.is_dir)
+        program, env = runs.start(command, ctx.env, folders) or (command, dict(ctx.env))
+        done = proc.run(program, event.cwd, env, timeout_ms / 1000)
         shown = " ".join(command)
         output = text.head((done.stdout + done.stderr).decode("utf-8", "replace").strip(),
                            self.options["output_chars"])

@@ -236,8 +236,7 @@ def run(given: RunInput, call: ToolCall) -> RunOutput:
         data = given.code.encode("utf-8")
         ctx.fs.write_atomic(body, BOM + data if given.lang == "powershell" else data)
     command = rules.command_text(argv)
-    known = runs.git_tools(ctx.probe.bash.path) if ctx.platform.windows and ctx.probe.bash else ()
-    folders = tuple(found for found in known if ctx.fs.is_dir(Path(found)))
+    folders = runs.tool_folders(ctx.probe, ctx.platform, ctx.fs.is_dir)
     found = runs.start(argv, environment(given, ctx), folders)
     fix = Fix(callable_name(tool), {}, "Name the program by its full path, or check that it is installed.")
     if found is None:

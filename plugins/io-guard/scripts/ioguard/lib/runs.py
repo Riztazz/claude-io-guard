@@ -4,7 +4,7 @@ so a rule the hook asked about is the rule the tool finds.
 """
 import hashlib
 import os
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from functools import partial
 from pathlib import Path, PureWindowsPath
 from typing import Any
@@ -54,6 +54,23 @@ def git_tools(program: str) -> tuple[str, ...]:
     if not root.name:
         return ()
     return (str(root / "mingw64" / "bin"), str(root / "usr" / "local" / "bin"), str(root / "usr" / "bin"))
+
+
+def tool_folders(probe: Probe, platform: Platform, is_dir: Callable[[Path], bool]) -> tuple[str, ...]:
+    """The tool folders of the probe's bash that exist, which the Bash tool's shell puts first on PATH. Empty
+    off Windows, where the Bash tool's PATH is the system's own."""
+    if not platform.windows or probe.bash is None:
+        return ()
+    return tuple(folder for folder in git_tools(probe.bash.path) if is_dir(Path(folder)))
+
+
+def git_program(probe: Probe, env: Mapping[str, str], folders: tuple[str, ...]) -> str:
+    """git as io-guard starts it: by name when env's PATH holds it, else from folders, the Bash tool's tool
+    folders, else the probe's git, else by name, so its start error names it."""
+    if proc.on_path("git", env):
+        return "git"
+    found = proc.on_path("git", {**env, "PATH": os.pathsep.join(folders)}) if folders else None
+    return found or (probe.git.path if probe.git else "git")
 
 
 def with_git_tools(env: Mapping[str, str], program: str) -> dict[str, str]:

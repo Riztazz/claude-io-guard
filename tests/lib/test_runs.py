@@ -109,5 +109,31 @@ class GitBashGetsItsOwnTools(unittest.TestCase):
                                                      "passed over, as the session probe passes it over")
 
 
+class EveryProgramIsFoundAsTheBashToolFindsIt(unittest.TestCase):
+    def test_the_tool_folders_are_the_probes_bash_s_that_exist_on_windows(self):
+        with tempfile.TemporaryDirectory(prefix="ioguard-tools-") as root:
+            usr = Path(root) / "Git" / "usr" / "bin"
+            usr.mkdir(parents=True)
+            probe = PROBE.__class__(**{**PROBE.__dict__, "bash": ToolVersion(str(usr / "bash.exe"), "5.2")})
+            found = runs.tool_folders(probe, WINDOWS, Path.is_dir)
+            elsewhere = runs.tool_folders(probe, Platform("darwin", True), Path.is_dir)
+        self.assertEqual((found, elsewhere), ((str(usr),), ()),
+                         "only the folders the bash's layout has and the disk holds, and none off Windows")
+
+    def test_git_is_found_on_path_then_in_the_tool_folders_then_the_probes(self):
+        with tempfile.TemporaryDirectory(prefix="ioguard-git-") as folder:
+            for name in ("git", "git.exe"):
+                (Path(folder) / name).write_bytes(b"")
+                (Path(folder) / name).chmod(0o755)
+            probed = PROBE.__class__(**{**PROBE.__dict__, "git": ToolVersion("C:/probed/git.exe", "2.49")})
+            none = {"PATH": "", "PATHEXT": ".EXE"}
+            found = (runs.git_program(PROBE, {"PATH": folder, "PATHEXT": ".EXE"}, ()),
+                     Path(runs.git_program(PROBE, none, (folder,))).parent,
+                     runs.git_program(probed, none, ()), runs.git_program(PROBE, none, ()))
+        self.assertEqual(found, ("git", Path(folder), "C:/probed/git.exe", "git"),
+                         "PATH's git first, then the Bash tool's folders, then the probe's, and git by name "
+                         "when nothing holds it, so the start error says so")
+
+
 if __name__ == "__main__":
     unittest.main()

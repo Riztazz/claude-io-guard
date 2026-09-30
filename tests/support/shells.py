@@ -6,10 +6,12 @@ test run from PowerShell or cmd.exe has no Git Bash on its PATH, so the one besi
 import os
 import shutil
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
-from ioguard.lib.runs import NOT_BASH
 from ioguard.lib import proc
+from ioguard.lib.probing import ToolVersion
+from ioguard.lib.runs import NOT_BASH
 
 
 def git_folder() -> Path | None:
@@ -20,6 +22,21 @@ def git_folder() -> Path | None:
         return None
     folder = Path(git).resolve().parents[1]
     return folder.parent if folder.name.lower() == "mingw64" else folder
+
+
+def without_git_tools(env: Mapping[str, str]) -> dict[str, str]:
+    """env with every folder of Git's install taken off PATH but its cmd folder, as the Windows PATH Claude
+    Code gives io-guard's server has it."""
+    key = next(name for name in env if name.upper() == "PATH")
+    inside = str(git_folder()).lower()
+    kept = [entry for entry in env[key].split(";")
+            if not entry.lower().startswith(inside) or entry.lower().endswith("cmd")]
+    return {**env, key: ";".join(kept)}
+
+
+def git_bash() -> ToolVersion:
+    """Git's own bash, as the session probe saves it."""
+    return ToolVersion(str(git_folder() / "usr" / "bin" / "bash.exe"), "5.2")
 
 
 def windows_shell(name: str) -> str | None:

@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import unittest
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from types import MappingProxyType
@@ -18,9 +19,10 @@ from ioguard.lib.context import Context
 from ioguard.lib.decisions import Verdict
 from ioguard.lib.events import Event, Surface
 from ioguard.lib.platform import detect
+from ioguard.lib.ports import LiveFs
 from ioguard.lib.proc import RunResult
 from ioguard.lib.results import Code, Severity
-from tests.support import events
+from tests.support import events, shells
 from tests.support.project import TemporaryProject
 
 REGISTRY = default_registry()
@@ -64,6 +66,17 @@ class TheCommandRuns(unittest.TestCase):
         with TemporaryProject({"good.py": b"x = 1\n"}) as project:
             outcome = after_write(project, "good.py", {".py": COMPILE})
         self.assertEqual(lines(outcome), (), "a pass with no output says nothing")
+
+    @unittest.skipUnless(sys.platform == "win32" and shells.git_folder(), "Git Bash runs on Windows only")
+    def test_a_command_the_bash_tool_finds_in_git_s_folders_runs(self):
+        values = {**defaults(REGISTRY.keys()).values, "verify": {".txt": ["grep", "-c", "x", "{file}"]}}
+        ctx = Context.fake(config=Config(MappingProxyType(values)), platform=detect(), fs=LiveFs(),
+                           env=shells.without_git_tools(os.environ))
+        ctx = replace(ctx, probe=replace(ctx.probe, bash=shells.git_bash()))
+        with TemporaryProject({"a.txt": b"x\n"}) as project:
+            found = lines(after_write(project, "a.txt", {}, ctx))
+        self.assertEqual(("could not start" in found[0], found[1:]), (False, ("1",)),
+                         "grep, which the Bash tool finds in Git's usr/bin, runs as a verify command")
 
     def test_no_command_for_the_extension_runs_nothing(self):
         with TemporaryProject({"a.txt": b"x\n"}) as project:

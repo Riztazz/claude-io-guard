@@ -12,6 +12,7 @@ from typing import Any
 
 from ioguard.lib.config import (Config, ConfigKey, LoadReport, Scope, all_keys, config_layers, defaults, load,
                                 trusted)
+from ioguard.lib import runs
 from ioguard.lib.git import Git
 from ioguard.lib.platform import Platform, detect
 from ioguard.lib.ports import Clock, FsPort, GitPort, LiveFs, SystemClock
@@ -49,10 +50,12 @@ class Context:
         user = tuple(layer for layer in layers if layer.scope is Scope.USER)
         report = load(layers, check_keys or {})
         config, held = trusted(report, data_dir, project)
-        return cls(config=config, probe=load_probe(data_dir, platform), platform=platform, git=Git(),
+        probe, env = load_probe(data_dir, platform), MappingProxyType(dict(os.environ))
+        git = Git(runs.git_program(probe, env, runs.tool_folders(probe, platform, Path.is_dir)))
+        return cls(config=config, probe=probe, platform=platform, git=git,
                    fs=LiveFs(), clock=SystemClock(), session=SessionState(),
                    telemetry=Telemetry(data_dir, enabled=config.get("telemetry.enabled")),
-                   config_report=report, env=MappingProxyType(dict(os.environ)), data_dir=data_dir,
+                   config_report=report, env=env, data_dir=data_dir,
                    project=project, outside=load(user, check_keys or {}).config, held=held,
                    keys=all_keys(check_keys or {}))
 

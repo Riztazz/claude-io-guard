@@ -18,6 +18,7 @@ from ioguard.lib.config import config_stamp
 from ioguard.lib.context import Context
 from ioguard.lib.events import Event, PermissionMode, Surface
 from ioguard.lib.folders import home_folder, project_root
+from ioguard.lib.probing import file_stamp
 from ioguard.lib.results import Code, Result, render
 from ioguard.lib.session import SessionState
 from ioguard.lib.telemetry import debug_log
@@ -28,8 +29,9 @@ log = logging.getLogger("ioguard.hooks")
 class LiveContexts:
     """The live Context for each session and project this process serves, built on first use.
 
-    The context is built again when a config file changed since, by its time and size, so a setting written
-    from io.config or the dashboard applies from the next call. A session keeps one SessionState across its
+    The context is built again when a config file or probe.json changed since, by its time and size, so a
+    setting written from io.config or the dashboard, or the probe a first session's SessionStart writes,
+    applies from the next call. A session keeps one SessionState across its
     projects and rebuilds, and shares its warned keys with the session's other io-guard processes, so a
     once-per-session warning goes out once.
     """
@@ -45,7 +47,7 @@ class LiveContexts:
         """The context for the project cwd belongs to, so a session working in a subfolder keeps the
         project's config."""
         data, root = home_folder(os.environ), project_root(cwd)
-        stamp = config_stamp(data, root)
+        stamp = (config_stamp(data, root), file_stamp(str(data / "probe.json")))
         with self.lock:
             key = (data, session_id, root)
             if key not in self.contexts or self.stamps[key] != stamp:

@@ -65,13 +65,8 @@ class RunTest(unittest.TestCase):
 
     def with_git_bash_only(self, ctx: Context) -> Context:
         """ctx with Git's bash as the probe's, and PATH as Windows gives it, with no Git tool folder."""
-        git = shells.git_folder()
-        key = next(name for name in ctx.env if name.upper() == "PATH")
-        inside = str(git).lower()
-        windows_only = ";".join(entry for entry in ctx.env[key].split(";")
-                                if not entry.lower().startswith(inside) or entry.lower().endswith("cmd"))
-        bash = ToolVersion(str(git / "usr" / "bin" / "bash.exe"), "5.2")
-        return replace(ctx, env={**ctx.env, key: windows_only}, probe=replace(ctx.probe, bash=bash))
+        probe = replace(ctx.probe, bash=shells.git_bash())
+        return replace(ctx, env=shells.without_git_tools(ctx.env), probe=probe)
 
     def refusal(self, handler, given, ctx: Context, tool_use_id: str | None = TOOL_USE_ID):
         with self.assertRaises(ToolFailure) as failure:

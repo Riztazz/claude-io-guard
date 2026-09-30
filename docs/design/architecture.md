@@ -418,6 +418,8 @@ below the cut, `transport.budget_bytes`, is task 11's key. A well-formed command
 own bash reads as ending inside a quote, `bash: -c: line N: unexpected EOF`, sets the session's
 `budget_override` below its length (task 22). A script's `<file>: line N:` or an `eval:` line sets nothing.
 On macOS, where no cut is known, the first such command only warns, and the second sets the budget (task 109).
+The hooks' context is built again when `probe.json` changes, as when a config file does, so the first
+session on a machine has the probe's bash and git from its next hook call on (task 151).
 A budget learned that way applies on a platform whose probe found no cut. The halving takes half the backslashes of a run
 that a double quote does not follow: 4 become 2 and 3 become 2, while a run before `"` arrives whole
 (`context.md`, row 25). `shell.scan` flags a pair as a hazard only where that changes what bash reads, and
@@ -922,7 +924,8 @@ class LockTable: lock(path) -> threading.Lock               # task 24: one per r
 # git.py
 class Git(GitPort): ...                                     # every call: -c core.quotepath=false,
                                                             # -c core.fsmonitor=false, --literal-pathspecs,
-                                                            # -z, timeout (task 110)
+                                                            # -z, timeout (task 110). Git(program) starts
+                                                            # runs.git_program's git (task 151)
     def within(self, seconds: float) -> Git                 # task 87: every call ends by then
                                                             # paths decode with surrogateescape, never raise
 def parse_status(raw: bytes) -> GitStatus
@@ -959,7 +962,12 @@ def git_tools(program: str) -> tuple[str, ...]              # task 142: Git's to
                                                             # Windows alone
 def with_git_tools(env: Mapping[str, str], program: str) -> dict[str, str]   # those first on PATH
 def start(argv: tuple[str, ...], env: Mapping[str, str], git_folders: tuple[str, ...])
-    -> Optional[tuple[tuple[str, ...], dict[str, str]]]     # task 149: a bare name in git_folders before PATH
+    -> Optional[tuple[tuple[str, ...], dict[str, str]]]     # task 149: a bare name in git_folders before PATH.
+                                                            # io.run, verify.command and io.format use it
+def tool_folders(probe: Probe, platform: Platform, is_dir: Callable[[Path], bool]) -> tuple[str, ...]
+                                                            # task 151: the probe's bash's that exist
+def git_program(probe: Probe, env: Mapping[str, str], folders: tuple[str, ...]) -> str
+                                                            # task 151: PATH, then folders, then the probe
 
 # patterns.py, task 25
 def problem(pattern: str) -> Optional[str]                  # does not compile, over 200 characters, nested,

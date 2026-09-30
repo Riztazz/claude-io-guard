@@ -1,7 +1,10 @@
 """Git's output parses into typed values, and the live Git port answers from a real repository."""
+import os
 import sys
 import unittest
 from pathlib import Path
+
+from ioguard.lib import proc
 
 from ioguard.lib.git import (Git, GitError, LineRange, StatusEntry, parse_attributes, parse_ranges,
                              parse_status)
@@ -45,6 +48,14 @@ class GitOutputParses(unittest.TestCase):
                       "a check's git call past the hook's budget raises and names why")
         self.assertLessEqual(Git().within(0.5).time_left(("status",)), 0.5,
                              "a call within the budget gets at most what is left of it")
+
+    def test_git_runs_the_program_it_was_given_within_a_budget_too(self):
+        program = proc.on_path("git", os.environ)
+        with TemporaryProject({"a.txt": b"a\n"}, git=True) as project:
+            root = Git(program).within(5.0).root(project / "a.txt")
+        missing = Git("io-guard-no-such-git").run(Path.cwd(), "--version")
+        self.assertEqual((root, missing.ok), (project, False),
+                         "a git named by its full path answers, and a budgeted copy keeps the same program")
 
     def test_attributes_read_as_name_to_value(self):
         raw = b"a.txt\0text\0auto\0a.txt\0eol\0lf\0"

@@ -13,6 +13,8 @@ from ioguard.hooks import entry
 from ioguard.lib.config import Config, ConfigError, LoadReport, defaults
 from ioguard.lib.context import Context
 from ioguard.lib.events import Event, Surface
+from ioguard.lib.platform import detect
+from ioguard.lib.probing import Probe, ToolVersion
 from tests.support import events, injected
 from tests.support.fixtures import FIXTURES_DIR
 from tests.support.project import TemporaryProject
@@ -133,6 +135,18 @@ class LiveContextsKeepOneSessionState(unittest.TestCase):
                          "a setting written while the server runs applies from the next call")
         self.assertEqual((after.session is before.session, same is after), (True, True),
                          "the session's state survives the rebuild, and an unchanged file builds nothing")
+
+    def test_a_probe_written_after_the_first_call_reaches_the_next(self):
+        contexts, bash = entry.LiveContexts(), ToolVersion("C:/Git/usr/bin/bash.exe", "5.2")
+        with TemporaryProject() as data, TemporaryProject() as project, \
+                mock.patch.dict(os.environ, {"IOGUARD_HOME": str(data)}):
+            before = contexts.get("s1", project, Registry())
+            probe = replace(Probe.unprobed(detect()), bash=bash)
+            (data / "probe.json").write_bytes(json.dumps(probe.to_json()).encode("ascii"))
+            after = contexts.get("s1", project, Registry())
+        self.assertEqual((before.probe.bash, after.probe.bash, after.session is before.session),
+                         (None, bash, True),
+                         "the first session's probe, written at its SessionStart, reaches its next hook call")
 
     def test_a_warning_goes_out_once_across_the_sessions_processes(self):
         with TemporaryProject() as data, TemporaryProject() as project, \

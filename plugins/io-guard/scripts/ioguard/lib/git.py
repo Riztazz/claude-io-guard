@@ -17,7 +17,7 @@ from pathlib import Path
 from ioguard.lib import proc
 
 PATHS = "surrogateescape"
-GIT = ("git", "-c", "core.quotepath=false", "-c", "core.fsmonitor=false", "--literal-pathspecs")
+FLAGS = ("-c", "core.quotepath=false", "-c", "core.fsmonitor=false", "--literal-pathspecs")
 
 
 class GitError(Exception):
@@ -86,15 +86,17 @@ def reason(result: proc.RunResult) -> str:
 
 
 class Git:
-    """The GitPort io-guard uses in a live session."""
+    """The GitPort io-guard uses in a live session. program is git by its name or its full path, which
+    runs.git_program picks."""
 
-    def __init__(self, timeout_s: float = 10.0, deadline: float | None = None) -> None:
+    def __init__(self, program: str = "git", timeout_s: float = 10.0, deadline: float | None = None) -> None:
+        self.program = program
         self.timeout_s = timeout_s
         self.deadline = deadline         # a time.monotonic() no call runs past, None for none
 
     def within(self, seconds: float) -> Git:
         """This git with every call ending by seconds from now, so a hook's git calls share its budget."""
-        return Git(self.timeout_s, time.monotonic() + seconds)
+        return Git(self.program, self.timeout_s, time.monotonic() + seconds)
 
     def time_left(self, args: tuple[str, ...]) -> float:
         """The seconds a call may take, GitError when the deadline has passed."""
@@ -106,7 +108,7 @@ class Git:
         return min(self.timeout_s, left)
 
     def run(self, cwd: Path, *args: str) -> proc.RunResult:
-        return proc.run([*GIT, *args], cwd=cwd, timeout_s=self.time_left(args))
+        return proc.run([self.program, *FLAGS, *args], cwd=cwd, timeout_s=self.time_left(args))
 
     def checked(self, cwd: Path, *args: str) -> bytes:
         result = self.run(cwd, *args)
@@ -171,8 +173,8 @@ class Git:
     def stage_patch(self, root: Path, patch: bytes) -> None:
         """Apply patch to the index only, as git apply --cached, which a -U0 patch needs --unidiff-zero for.
         GitError carries git's own reason when it refuses."""
-        result = proc.run([*GIT, "apply", "--cached", "--unidiff-zero", "--recount", "-"], cwd=root,
-                          timeout_s=self.time_left(("apply",)), stdin=patch)
+        result = proc.run([self.program, *FLAGS, "apply", "--cached", "--unidiff-zero", "--recount", "-"],
+                          cwd=root, timeout_s=self.time_left(("apply",)), stdin=patch)
         if not result.ok:
             raise GitError(f"git apply --cached in {root} failed: {reason(result)}")
 

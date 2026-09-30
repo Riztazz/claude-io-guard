@@ -19,6 +19,7 @@ from ioguard.mcp.in_place import Place
 from ioguard.mcp.progress import CancelToken
 from ioguard.mcp.tools_format import FormatInput, format_files
 from ioguard.mcp.toolspec import InvalidArguments, ToolCall, ToolFailure
+from tests.support import shells
 from tests.support.project import TemporaryProject
 
 FORMATTER = """
@@ -88,6 +89,16 @@ class OnlyTheChangedLinesAreFormatted(FormatTest):
             self.assertEqual(((root / "a.cpp").read_bytes(), found.reason),
                              (b"X\nY\n", "the whole file, which git has no commit of"),
                              "an untracked file counts as changed whole, and keeps its LF")
+
+    @unittest.skipUnless(sys.platform == "win32" and shells.git_folder(), "Git Bash runs on Windows only")
+    def test_a_formatter_the_bash_tool_finds_in_git_s_folders_runs(self):
+        ctx = self.context(**{".cpp": ["tr", "a-z", "A-Z"]})
+        probe = replace(ctx.probe, bash=shells.git_bash())
+        ctx = replace(ctx, env=shells.without_git_tools(ctx.env), probe=probe)
+        with TemporaryProject({"a.cpp": b"x\ny\n"}) as root:
+            self.call(root, FormatInput([str(root / "a.cpp")]), ctx)
+            self.assertEqual((root / "a.cpp").read_bytes(), b"X\nY\n",
+                             "tr, which the Bash tool finds in Git's usr/bin, runs as the format command")
 
     def test_the_lines_a_call_names_are_formatted_instead(self):
         with TemporaryProject({"a.cpp": b"a\nb\nc\n"}, git=True) as root:
