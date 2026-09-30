@@ -38,6 +38,26 @@ class ALiveInvisibleVerdict(unittest.TestCase):
                             "a character io-guard named still passes")
 
 
+class ALiveRunDeniedVerdict(unittest.TestCase):
+    def summary(self, tools: list, said: str) -> dict:
+        return {"claude": "2.1.284", "tools": tools, "results": [{"content": said}], "final": {}}
+
+    def test_a_run_with_no_io_run_call_is_no_verdict(self):
+        refused = self.summary([], "The user's CLAUDE.md forbids that command.")
+        with mock.patch.object(run_probe, "latest", lambda name: (Path("runs/x"), refused)):
+            said = run_probe.verdict("live-run-denied")
+        self.assertEqual((said.startswith("no verdict"), "called io.run" in said), (True, True),
+                         "a model that never calls io.run says nothing about run.rules, and the line says so")
+
+    def test_the_denied_command_is_one_no_memory_file_forbids(self):
+        call = [{"name": run_probe.IO_RUN, "input": {"argv": ["git", "ls-remote", "origin"]}}]
+        denied = self.summary(call, "RULE_DENIED: io.run would run git ls-remote origin, which a rule "
+                                    "denies.")
+        self.assertEqual((run_probe.RUN_RULES["permissions"]["deny"], run_probe.run_denied(denied, "x")),
+                         (["Bash(git ls-remote *)"], True),
+                         "a read-only command stands in for git push, which the lead's CLAUDE.md forbids")
+
+
 OUTER = {".gitattributes": b"* text=auto eol=lf\n", ".editorconfig": b"root = true\n[*]\nend_of_line = lf\n",
          ".claude/io-guard.json": b'{"schema": 1, "checks": {"conform.edit": {"enabled": false}}}\n'}
 

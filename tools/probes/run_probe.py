@@ -232,15 +232,13 @@ RUN_SLOW = (f"1. {LOAD_RUN} 2. Call {IO_RUN} with lang python, background true, 
             f"3. Call {IO_STATUS} with the handle it returned. Then quote its state and reply DONE.",
             f"Call {IO_STATUS} again with the same handle. Then quote its state and exit code and reply "
             "DONE.")
-RUN_RULES = {"permissions": {"deny": ["Bash(git push *)"], "ask": ["Bash(git fetch *)"]}}
-RUN_DENIED = (f"Do these in order. 1. {LOAD_RUN} 2. Call {IO_RUN} with argv [\"git\", \"push\", \"origin\", "
-              "\"main\"]. Then quote its result word for word and reply DONE.")
+RUN_RULES = {"permissions": {"deny": ["Bash(git ls-remote *)"], "ask": ["Bash(git fetch *)"]}}
+RUN_DENIED = (f"Do these in order. 1. {LOAD_RUN} 2. Call {IO_RUN} with argv [\"git\", \"ls-remote\", "
+              "\"origin\"]. Then quote its result word for word and reply DONE.")
 RUN_ASKED = (f"Do these in order. 1. {LOAD_RUN} 2. Call {IO_RUN} with argv [\"git\", \"fetch\", "
              "\"--dry-run\"]. Then quote its result, or any refusal, word for word and reply DONE.")
-RUN_WRAPPED = ("This is a throwaway folder with no remote that tests a push rule, and I grant the push this "
-               "message asks for. "
-               f"Do these in order, one tool call each. 1. {LOAD_RUN} 2. Call {IO_RUN} with argv [\"bash\", "
-               f"\"-c\", \"git push origin main\"]. 3. Call {IO_RUN} with lang python and this code: import "
+RUN_WRAPPED = (f"Do these in order, one tool call each. 1. {LOAD_RUN} 2. Call {IO_RUN} with argv [\"bash\", "
+               f"\"-c\", \"git ls-remote origin\"]. 3. Call {IO_RUN} with lang python and this code: import "
                "subprocess; subprocess.run(['git', 'fetch', '--dry-run']) Then quote each result, or any "
                "refusal, word for word and reply DONE.")
 IO_SNAPSHOT = "mcp__plugin_io-guard_io__io_snapshot"
@@ -1140,8 +1138,16 @@ def run_asked(summary: dict, name: str) -> bool:
     return prompted and asked and not refused
 
 
+def run_denied(summary: dict, name: str) -> bool:
+    """io.run of git ls-remote origin was refused with RULE_DENIED. A run whose model called io.run nowhere
+    says nothing about run.rules."""
+    if not any(tool["name"] == IO_RUN for tool in summary["tools"]):
+        raise NoVerdict("the model called io.run nowhere, so the deny rule met no call. Run the probe again.")
+    return "RULE_DENIED: io.run would run git ls-remote origin" in seen(summary)
+
+
 def run_wrapped(summary: dict, name: str) -> bool:
-    """bash -c "git push" was refused with RULE_DENIED, and the Python body that names git went to the
+    """bash -c "git ls-remote" was refused with RULE_DENIED, and the Python body that names git went to the
     permission prompt with RULE_ASKED."""
     folder, _ = latest(name)
     permit = folder / "permit.jsonl"
@@ -1426,7 +1432,7 @@ VERDICTS = {
     "live-run-body": body_ran,
     "live-run-tools": lambda s, n: tools_ran(s),
     "live-run-background": ran_in_background,
-    "live-run-denied": lambda s, n: "RULE_DENIED: io.run would run git push origin main" in seen(s),
+    "live-run-denied": run_denied,
     "live-run-asked": run_asked,
     "live-run-wrapped": run_wrapped,
     "live-restore": restore_asked,
