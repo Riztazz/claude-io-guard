@@ -127,6 +127,12 @@ regular expressions for its error lines, such as `{"log": ["^Log\\w+: Error: "]}
 build made gets a warning. `checks.shell.results.builds` and `runs` name those commands, and by default
 `ctest` runs what `cmake --build` makes. `io.run` labels its results the same way.
 
+**Files a command changed:** around each Bash and PowerShell call, io-guard runs `git status` and tells the
+agent which files the command changed. A Bash command that can't change a file, such as `ls`, `grep`,
+`git log` or `sed -n`, with nothing sent to a file, skips both runs. That saves up to 110 ms a call in a large
+repository. `checks.shell.touched.readers` lists those programs by their first words. Your project's list
+replaces it, so a program you add there is never watched.
+
 **Log noise:** `io.read_log` leaves out the lines a regular expression in `noise_patterns` matches, such as
 `["^LogTemp: Display:"]`. A project file's pattern in `noise_patterns` or `error_patterns` must compile, stay
 under 200 characters, never repeat a group that repeats or chooses inside it, such as `(a+)+` or `(a|aa)+`,

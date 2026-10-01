@@ -50,6 +50,8 @@ plugins/io-guard/
         program.py                 program_name, PROGRAM_SUFFIXES: the program a command word names, for
                                    every reader of a command's first word
         kills.py                   broad_stop: a stop by a shared runtime's name or by a command-line match
+        readonly.py                only_reads, READERS: a Bash command that can change no file, which
+                                   shell.touched leaves unwatched (task 171)
         python_source.py           compile_report: a Python body's syntax error or warning, without running it
         paths.py                   normalise, msys_prefix, reserved, link_target, inside, resolved, LockTable
         git.py                     Git, the GitPort implementation

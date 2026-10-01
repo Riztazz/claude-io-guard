@@ -19,7 +19,8 @@ one step for each kind of change that needs one: read a read file again, before 
 when it is an image or other binary file, delete a new file the task does not need, and use a moved file's
 new path. A path in the session's scratchpad is shown from it. A tracked file that changed while an
 interpreter ran a script file also gets SHELL_WRITE, because that write skipped the checks an Edit gets,
-unless a git command in the same command could have changed it.
+unless a git command in the same command could have changed it. A Bash command that can change no file, by
+lib.readonly and the readers setting, is not watched, so it costs no git status.
 """
 import fnmatch
 from collections.abc import Callable, Sequence
@@ -27,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ioguard.checks.base import Check, CheckMeta, Cost
-from ioguard.lib import commit_message, paths, pwsh, shell
+from ioguard.lib import commit_message, paths, pwsh, readonly, shell
 from ioguard.lib.compare import Written, compare
 from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context
@@ -46,6 +47,11 @@ TREE_WRITERS = frozenset({"am", "apply", "cherry-pick", "merge", "pull", "rebase
 RESET_TREE = frozenset({"--hard", "--merge", "--keep"})
 STASH_READS = frozenset({"list", "show"})
 MOVERS = frozenset({"mv", "move", "move-item", "mi", "ren", "rename", "rename-item", "rni"})
+OPTIONS = {"listed": ConfigKey(int, LISTED, "The paths each part of the report names before it gives the "
+                               "rest as a count."),
+           "readers": ConfigKey(list, readonly.READERS, "Commands that change no file, each as its first "
+                                "words. A Bash command made only of these, with nothing sent to a file, is "
+                                "not watched. A project's list replaces it.")}
 
 
 def git_changes(simple: shell.SimpleCommand, cwd: Path | None, ctx: Context) -> frozenset[Path] | None:
@@ -284,8 +290,7 @@ class Touched(Check):
         tools=frozenset({Tool.BASH, Tool.POWERSHELL, Tool.EDIT, Tool.WRITE}),
         platforms=EVERY_PLATFORM,
         severity=Severity.WARNING, cost=Cost.EXPENSIVE, reads=frozenset({"command"}), writes=frozenset(),
-        after=frozenset(), config={"listed": ConfigKey(int, LISTED, "The paths each part of the report names "
-                                                       "before it gives the rest as a count.")},
+        after=frozenset(), config=OPTIONS,
         codes=frozenset({Code.TOUCHED_BY_SHELL, Code.EOL_MISMATCH, Code.BOM_CHANGED, Code.ENCODING_INVALID,
                          Code.CONTROL_BYTES_ADDED, Code.INDENT_MISMATCH, Code.SHELL_WRITE}),
         description="Tells the agent which files a shell command changed, and what it did to their bytes.")
@@ -298,6 +303,8 @@ class Touched(Check):
         if event.tool_use_id is None:
             return Decision.observe(self.meta.id)
         if event.kind is HookEvent.PRE_TOOL_USE:
+            if event.tool is Tool.BASH and readonly.only_reads(event.command or "", self.options["readers"]):
+                return Decision.observe(self.meta.id)
             root = repository_root(ctx.git, event.cwd)
             with ctx.session.lock:
                 read = list(ctx.session.read_profiles)

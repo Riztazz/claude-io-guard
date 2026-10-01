@@ -50,6 +50,18 @@ class Session:
                 for result in decision.results]
 
 
+class ACommandThatOnlyReadsIsNotWatched(unittest.TestCase):
+    def test_a_read_only_command_runs_no_git_status(self):
+        session, asked = Session(), []
+        real = session.git.status
+        session.git.status = lambda root: asked.append(root) or real(root)
+        session.after()
+        session.run(events.bash("git log --oneline -3", CWD))
+        session.fs.write_atomic(READ, b"int b;\r\n")
+        self.assertEqual((session.after(command="git log --oneline -3"), asked), ([], [CWD]),
+                         "only make's PostToolUse asks git, since git log changes no file")
+
+
 class TheCommandsChangesAreNamed(unittest.TestCase):
     def test_a_read_file_the_command_changed_is_named_with_the_step(self):
         session = Session()
