@@ -880,7 +880,10 @@ def scan(command: str) -> Scan              # heredocs, python -c bodies, halvin
                                             # body is found behind -X and -W values and in -Bc, task 108.
                                             # carriage_returns, task 159, and a $() inside $(( )) is
                                             # scanned as one. Kept per command (lru_cache, 64), so every
-                                            # check of one call shares one Scan, task 166
+                                            # check of one call shares one Scan, task 166. Scan.closes
+                                            # holds where each $() and $(( )) ends, which word_end jumps
+                                            # to, and ${ }, <<<, case patterns are read as bash reads
+                                            # them, task 164
 def ansi_decoded(text: str) -> str          # a $'...' quote's text as bash decodes it, task 159
 def budget_length(command: str) -> int      # UTF-8 bytes, apostrophes count four
 def moved(command: str, heredocs: Mapping[Heredoc, str], bodies: Mapping[InlineBody, str]) -> str

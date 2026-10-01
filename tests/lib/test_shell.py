@@ -266,6 +266,58 @@ class PathsAreQuotedForBash(unittest.TestCase):
                          "the path arrives as written")
 
 
+class ShapesBashReadsItsOwnWay(unittest.TestCase):
+    def test_a_here_string_is_data_and_not_an_input_file(self):
+        found = shell.commands('cat <<< "foo bar"; grep x <<<$y')
+        self.assertEqual([(each.words, each.inputs) for each in found], [(("cat",), ()), (("grep", "x"), ())],
+                         "<<< gives its word to stdin, and names no file and no argument")
+
+    def test_a_python_c_body_after_a_wrapper_or_a_keyword_is_found(self):
+        for command in ('time python -c "print(1)"', "if true; then python -c 'x=1'; fi",
+                        "env FOO=1 python -c 'print(1)'", "for f in a; do python -c 'x=1'; done",
+                        "exec python -c 'x=1'"):
+            with self.subTest(command=command):
+                self.assertEqual(len(shell.scan(command).bodies), 1, "the body is found and checked")
+
+    def test_a_loop_head_is_named_for_its_keyword(self):
+        for command, words in (("for f in /Game/a b; do echo $f; done", [("for", "f", "in", "/Game/a", "b"),
+                                                                         ("echo", "$f")]),
+                               ("for ((i=0;i<3;i++)); do echo $i; done", [("for", "((i=0;i<3;i++))"),
+                                                                          ("echo", "$i")]),
+                               ("select x in a b; do echo $x; done", [("select", "x", "in", "a", "b"),
+                                                                      ("echo", "$x")])):
+            with self.subTest(command=command):
+                self.assertEqual([each.words for each in shell.commands(command)], words,
+                                 "no program is named for the variable, and the values stay words, since "
+                                 "each reaches the loop's commands")
+
+    def test_a_case_pattern_inside_a_substitution_does_not_close_it(self):
+        command = "echo $(case x in a) echo one;; esac) after"
+        self.assertEqual([each.words for each in shell.commands(command)],
+                         [("echo", "$(case x in a) echo one;; esac)", "after")],
+                         "the pattern's ) belongs to the case, and the substitution closes at its own )")
+
+    def test_a_quote_inside_a_parameter_expansion_keeps_the_string_whole(self):
+        found = shell.scan('echo "${x:-"a b"}" done')
+        self.assertEqual(([each.words for each in shell.commands('echo "${x:-"a b"}" done')],
+                          found.unterminated), ([("echo", "${x:-a b}", "done")], False),
+                         "bash reads one word, and the string closes after the }")
+        self.assertEqual([shell.scan(text).unterminated for text in ("echo ${x", 'echo "${x', "echo ${x}")],
+                         [True, True, False], "an expansion left open runs to the end, as bash reports")
+
+    def test_a_quote_left_open_inside_a_substitution_ends_the_last_word(self):
+        for command in ("""echo "$(conn x 'A < B)\"""", "echo $(a $'b", "echo \"$(a 'b"):
+            with self.subTest(command=command):
+                found = shell.commands(command)
+                self.assertEqual((found[0].words[0], shell.scan(command).unterminated), ("echo", True),
+                                 "the open quote runs to the end, and every offset stays inside the command")
+
+    def test_a_command_inside_arithmetic_stays_visible(self):
+        command = "echo $(( $(pgrep python) + 1 ))"
+        self.assertIn("pgrep python", shell.blanked(command),
+                      "only the arithmetic is hidden, not the command")
+
+
 class ACommandIsScannedOnce(unittest.TestCase):
     def test_every_check_on_one_bash_call_shares_one_scan_and_one_split(self):
         command = f"echo {uuid.uuid4().hex} > out.txt && git status | grep -c M; python -c 'print(1)'"

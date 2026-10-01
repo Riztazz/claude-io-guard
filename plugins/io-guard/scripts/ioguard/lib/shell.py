@@ -10,8 +10,9 @@ import functools
 import json
 import re
 import shlex
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from ioguard.lib.program import program_name
 
@@ -20,7 +21,8 @@ MAX_NESTING = 100                       # $( ... ) levels read, well inside Pyth
 ESCAPED_IN_DOUBLE = "$`\"\\\n"          # a backslash escapes only these inside double quotes
 ESCAPED_IN_BODY = "$`\\\n"              # and only these in a heredoc body bash expands
 WORD_END = " \t\n;&|<>()"
-COMMAND_START = r"(?:^|[;&|(\n])[ \t]*(?:[A-Za-z_]\w*=\S*[ \t]+)*"
+COMMAND_START = (r"(?:^|[;&|(\n])[ \t]*(?:(?:time|then|do|else|exec|env|nohup|command|builtin|!)[ \t]+"
+                 r"|[A-Za-z_]\w*=\S*[ \t]+)*")
 PYTHON_NAME = r"py(?:thon[\d.]*)?(?:\.exe)?"
 PROGRAM = (rf"(?P<program>\"(?:[^\"]*[\\/])?{PYTHON_NAME}\"|'(?:[^']*[\\/])?{PYTHON_NAME}'"
            rf"|(?:[^\s;&|()<>'\"]*[\\/])?{PYTHON_NAME})")
@@ -57,6 +59,7 @@ class Scan:
     unterminated: bool = False        # a quote, $( or backtick runs to the end: bash stops at unexpected EOF
     too_deep: bool = False            # $( ... ) nests past MAX_NESTING, and the scan stopped there
     carriage_returns: tuple[int, ...] = ()   # offsets of the $'...' Git Bash fails to parse, see ansi()
+    closes: Mapping[int, int] = MappingProxyType({})   # the offset after each $() and $(( )), by its $
 
 
 class Scanner:
@@ -73,6 +76,7 @@ class Scanner:
         self.word_start, self.word_substitutions = 0, 0     # of the word being read outside every $()
         self.late = 0                       # the open $() inside a word's second or later $()
         self.carriage_returns: list[int] = []
+        self.closes: dict[int, int] = {}
 
     def mark(self, start: int, end: int, state: int) -> None:
         self.states[start:end] = bytes([state]) * (end - start)
@@ -91,15 +95,20 @@ class Scanner:
         self.normal(0, stop=None)
         return Scan(tuple(self.heredocs), inline_bodies(self.text, self.states), tuple(sorted(self.hazards)),
                     bytes(self.states), tuple(self.backticks), self.unclosed or self.backtick_open,
-                    self.too_deep, tuple(self.carriage_returns))
+                    self.too_deep, tuple(self.carriage_returns), MappingProxyType(self.closes))
 
     def normal(self, at: int, stop: str | None) -> int:
         """Scan unquoted text from at, until stop closes a command substitution. Returns the offset after."""
-        text, depth = self.text, 0
+        text, depth, cases = self.text, 0, 0
         while at < len(text):
             char = text[at]
             if self.depth == 0 and char in WORD_END:
                 self.word_start, self.word_substitutions = at + 1, 0
+            if stop and char in "ce" and (at == 0 or text[at - 1] in WORD_END):
+                if reserved(text, at, "case"):
+                    cases += 1
+                elif cases and reserved(text, at, "esac"):
+                    cases -= 1
             if char == "\\":
                 if self.pair(at):
                     self.hazards.append(at)
@@ -114,20 +123,24 @@ class Scanner:
                 at = self.arithmetic(at, at)
             elif text.startswith("$'", at):
                 at = self.ansi(at + 2)
+            elif text.startswith("${", at):
+                at = self.parameter(at + 2, quoted=False)
             elif text.startswith("$(", at):
                 at = self.counted(at)
             elif char == "(" and stop:
                 depth, at = depth + 1, at + 1
             elif char == ")" and stop:
-                if depth == 0:
+                if depth == 0 and not cases:
                     return at + 1
-                depth, at = depth - 1, at + 1
+                depth, at = max(depth - 1, 0), at + 1       # with no ( open, a case pattern's close
             elif char == "#" and (at == 0 or text[at - 1] in " \t\n;&|()"):
                 end = text.find("\n", at)
                 end = len(text) if end < 0 else end
                 self.mark(at, end, COMMENT)
                 at = end
-            elif text.startswith("<<", at) and not text.startswith("<<<", at):
+            elif text.startswith("<<<", at):
+                at += 3                 # a here-string, whose word the loop reads next as any word
+            elif text.startswith("<<", at):
                 at = self.operator(at)
             elif char == "\n" and self.pending:
                 at = self.bodies(at + 1)
@@ -158,7 +171,8 @@ class Scanner:
             return len(self.text)
         self.depth += 1
         try:
-            return self.normal(at + 2, stop=")")
+            self.closes[at] = self.normal(at + 2, stop=")")
+            return self.closes[at]
         finally:
             self.depth -= 1
 
@@ -169,7 +183,7 @@ class Scanner:
         self.mark(at, end, SINGLE)
         self.hazards.extend(offset for match in re.finditer(r"\\\\", self.text[at:end])
                             if self.pair(offset := at + match.start()))
-        return end + 1
+        return min(end + 1, len(self.text))
 
     def double(self, at: int) -> int:
         text = self.text
@@ -184,6 +198,9 @@ class Scanner:
                 at += 2
             elif text.startswith("$((", at):
                 at = self.arithmetic(at, at + 1)
+            elif text.startswith("${", at):
+                self.mark(at, at + 2, DOUBLE)
+                at = self.parameter(at + 2, quoted=True)
             elif text.startswith("$(", at):
                 at = self.counted(at)
             else:
@@ -215,7 +232,7 @@ class Scanner:
             once = ansi_decoded(text[start:at])
             if "\r" in once or "\r" in ansi_decoded(once):
                 self.carriage_returns.append(start - 2)
-        return at + 1
+        return min(at + 1, len(text))
 
     def command_position(self, at: int) -> bool:
         """Whether at starts a command, where bash reads (( as arithmetic: after nothing, an operator, a
@@ -229,12 +246,15 @@ class Scanner:
 
     def arithmetic(self, at: int, opening: int) -> int:
         """$(( ... )) or (( ... )) from at, whose first parenthesis is at opening. The offset after it. A $()
-        inside is scanned as one, and counted toward the word the $(( )) sits in."""
+        inside is scanned as one, keeps its own states, so its command stays visible, and is counted toward
+        the word the $(( )) sits in."""
         depth, end = 0, opening
+        self.mark(at, opening, ARITH)
         while end < len(self.text):
             if self.text.startswith("$(", end) and not self.text.startswith("$((", end):
                 end = self.counted(end)
                 continue
+            self.states[end] = ARITH
             if self.text[end] == "(":
                 depth += 1
             elif self.text[end] == ")":
@@ -243,8 +263,38 @@ class Scanner:
                     end += 1
                     break
             end += 1
-        self.mark(at, end, ARITH)
+        if self.text[at] == "$":
+            self.closes[at] = end
         return end
+
+    def parameter(self, at: int, quoted: bool) -> int:
+        """The ${ ... } whose text starts at at, to its matching }. Quotes and $() inside are read as bash
+        reads them, and inside double quotes the expansion's own characters stay part of the string, so a
+        quote in "${x:-"a b"}" opens a string of its own. Returns the offset after the }."""
+        text, depth = self.text, 0
+        while at < len(text):
+            char = text[at]
+            if char == '"':
+                at = self.double(at + 1)
+                continue
+            if char == "'" and not quoted:
+                at = self.single(at + 1)
+                continue
+            if text.startswith("$(", at) and not text.startswith("$((", at):
+                at = self.counted(at)
+                continue
+            width = 2 if char == "\\" or text.startswith("${", at) else 1
+            if quoted:
+                self.mark(at, at + width, DOUBLE)
+            if text.startswith("${", at):
+                depth += 1
+            elif char == "}":
+                if depth == 0:
+                    return at + 1
+                depth -= 1
+            at += width
+        self.unclosed = True
+        return at
 
     def operator(self, at: int) -> int:
         """A heredoc operator: record its delimiter, whose body starts on the next line."""
@@ -372,6 +422,7 @@ class SimpleCommand:
 SEPARATORS = ";&|\n()"
 RESERVED = {"if", "then", "else", "elif", "fi", "do", "done", "while", "until", "for", "case", "esac", "in",
             "{", "}", "!", "time", "exec", "command", "builtin", "nohup", "sudo"}
+LOOP_HEADS = {"for", "select"}
 ASSIGNMENT = re.compile(r"^[A-Za-z_]\w*=")
 REDIRECT = re.compile(r"(\d*|&)(>\||>>?|<>?)")
 
@@ -385,7 +436,8 @@ def commands(command: str) -> tuple[SimpleCommand, ...]:
 def split(command: str) -> tuple[SimpleCommand, ...]:
     """The simple commands of a Bash command, split at the operators bash reads outside quotes, heredoc bodies
     and comments. Command substitutions stay inside their word."""
-    states, text = scan(command).states, command
+    found = scan(command)
+    states, text = found.states, command
     parsed, at, start = [], 0, 0
     words: list[str] = []
     redirects: list[Redirect] = []
@@ -394,7 +446,9 @@ def split(command: str) -> tuple[SimpleCommand, ...]:
     def finish(end: int) -> None:
         nonlocal words, redirects, inputs
         kept = list(words)
-        while kept and (ASSIGNMENT.match(kept[0]) or kept[0] in RESERVED):
+        # A loop head keeps its keyword first, so it never names a program after its variable, and its values
+        # stay words, since each reaches the loop's commands as $f.
+        while kept and (ASSIGNMENT.match(kept[0]) or kept[0] in RESERVED - LOOP_HEADS):
             kept.pop(0)
         if kept or redirects:
             parsed.append(SimpleCommand(tuple(kept), tuple(redirects), tuple(inputs), (start, end)))
@@ -416,12 +470,12 @@ def split(command: str) -> tuple[SimpleCommand, ...]:
             at = match.end()
             duplicated = text.startswith("&", at)
             if duplicated and re.match(r"&(?:\d+|-)(?=[\s;&|()<>]|$)", text[at:]):
-                at = word_end(text, states, at + 1)       # 2>&1, >&2, >&-: a stream, not a file
+                at = word_end(text, found, at + 1)       # 2>&1, >&2, >&-: a stream, not a file
                 continue
             at += duplicated                               # >&file writes both streams to the file
             while at < len(text) and text[at] in " \t":
                 at += 1
-            end = word_end(text, states, at)
+            end = word_end(text, found, at)
             target = unquote(text, states, at, end)
             operator = match[2]
             if operator.startswith(">"):
@@ -430,10 +484,15 @@ def split(command: str) -> tuple[SimpleCommand, ...]:
             else:
                 inputs.append(target)
             at = end
+        elif states[at] == NORMAL and text.startswith("<<<", at):
+            at += 3                 # a here-string: its word goes to stdin, and is no argument and no file
+            while at < len(text) and text[at] in " \t":
+                at += 1
+            at = word_end(text, found, at)
         elif states[at] == NORMAL and text.startswith("<<", at):
             at = heredoc_word_end(text, at)
         else:
-            end = word_end(text, states, at)
+            end = word_end(text, found, at)
             words.append(unquote(text, states, at, end))
             at = end
     finish(len(text))
@@ -459,21 +518,19 @@ def subshells(command: str, states: bytes | bytearray) -> tuple[list[int], dict[
     return group_of, parent
 
 
-def word_end(text: str, states: bytes | bytearray, at: int) -> int:
-    """The end of the word starting at at: the first unquoted blank, operator or redirect."""
+def word_end(text: str, found: Scan, at: int) -> int:
+    """The end of the word starting at at: the first unquoted blank, operator or redirect. A $() or $(( ))
+    ends where the scan found its closing parenthesis."""
+    states = found.states
     while at < len(text):
         if states[at] == NORMAL:
             if text[at] in " \t" or text[at] in SEPARATORS or text[at] in "<>":
-                if not (text[at] in "()" and text.startswith("$(", at - 1)):
-                    return at
+                return at
             if text[at] == "\\":
                 at += 2
                 continue
-            if text.startswith("$(", at):
-                depth, at = 1, at + 2
-                while at < len(text) and depth:
-                    depth += {"(": 1, ")": -1}.get(text[at], 0) if states[at] == NORMAL else 0
-                    at += 1
+            if at in found.closes:
+                at = found.closes[at]
                 continue
         elif states[at] in (COMMENT, BODY):
             return at
@@ -723,6 +780,12 @@ def trailing_backslash_paths(command: str) -> tuple[tuple[int, int], ...]:
     """The spans of the double-quoted Windows paths that end in a backslash. That backslash escapes the
     closing quote, so bash reads the string on past it."""
     return tuple(match.span() for match in QUOTED_PATH_BEFORE_QUOTE.finditer(command))
+
+
+def reserved(text: str, at: int, word: str) -> bool:
+    """Whether word, such as case, stands at at as a word of its own."""
+    end = at + len(word)
+    return text.startswith(word, at) and (end == len(text) or text[end] in WORD_END)
 
 
 def ansi_decoded(text: str) -> str:
