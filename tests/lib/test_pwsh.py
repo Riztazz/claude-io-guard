@@ -1,5 +1,6 @@
 """lib.pwsh splits a PowerShell command into simple commands, and finds its file redirects and [IO.File]
 calls."""
+import threading
 import unittest
 
 from ioguard.lib import pwsh
@@ -11,6 +12,22 @@ class PowerShellCommands(unittest.TestCase):
         self.assertEqual([command.words for command in found],
                          [("Get-Item", "a;b"), ("Select-Object", "-First", "1"), ("git", "status"),
                           ("echo", "it's")], "quotes keep their separators, and '' is one quote")
+
+    def test_a_stray_closing_bracket_is_passed_over_and_never_stops_the_parse(self):
+        shapes = {"Write-Host 'x' }": [("Write-Host", "x")], "echo a)": [("echo", "a")],
+                  "echo a ]": [("echo", "a")], "(echo a) )": [("(echo a)",)],
+                  "Get-ChildItem | % { $_.Name } }": [("Get-ChildItem",), ("%", "{ $_.Name }")],
+                  "echo a > )": [("echo", "a")]}
+        found: dict[str, list] = {}
+
+        def parse() -> None:
+            for command in shapes:
+                found[command] = [each.words for each in pwsh.commands(command)]
+        worker = threading.Thread(target=parse, daemon=True)
+        worker.start()
+        worker.join(5)
+        self.assertEqual((worker.is_alive(), found), (False, shapes),
+                         "a ), ] or } that closes nothing is skipped, and the parse ends")
 
     def test_a_here_string_is_one_word(self):
         found = pwsh.commands("git commit -m @'\nfirst | line; two\n'@ 2>&1 | Select-Object -Last 6")

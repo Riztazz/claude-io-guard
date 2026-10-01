@@ -79,11 +79,16 @@ def commands(command: str) -> tuple[SimpleCommand, ...]:
             while at < len(text) and text[at] in " \t":
                 at += 1
             end = word_at(text, at)
-            redirects.append(Redirect(unquote(text[at:end]), match[2] == ">>",
-                                      None if match[1] == "*" else int(match[1] or 1)))
+            if end > at:
+                redirects.append(Redirect(unquote(text[at:end]), match[2] == ">>",
+                                          None if match[1] == "*" else int(match[1] or 1)))
             at = end
         else:
             end = word_at(text, at)
+            # A ), ] or } that closes nothing is a word of no length, which PowerShell refuses to parse.
+            if end == at:
+                at += 1
+                continue
             words.append(text[at:end])
             at = end
     finish(len(text))
