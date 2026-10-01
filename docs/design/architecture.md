@@ -421,6 +421,8 @@ counted as four, and `halving` is true, until `FIXED_IN` names the release that 
 below the cut, `transport.budget_bytes`, is task 11's key. A well-formed command over 5 KB that the Bash tool's
 own bash reads as ending inside a quote, `bash: -c: line N: unexpected EOF`, sets the session's
 `budget_override` below its length (task 22). A script's `<file>: line N:` or an `eval:` line sets nothing.
+Well-formed means no quote, `$(` or backtick left open and no `Scan.carriage_returns`, since bash rejects
+each of those whatever its length (task 161).
 On macOS, where no cut is known, the first such command only warns, and the second sets the budget (task 109).
 The hooks' context is built again when `probe.json` changes, as when a config file does, so the first
 session on a machine has the probe's bash and git from its next hook call on (task 151).
@@ -891,7 +893,8 @@ class Redirect: target, append, fd                          # a file only: 2>&1 
 def subshells(command: str, states: bytes) -> tuple[list[int], dict[int, int]]   # task 103: the ( ) group
                                                             # of each offset, and each group's parent
 # shell.py, task 13
-Scan.backticks, Scan.unterminated           # unescaped backticks in double quotes, a quote left open at the end
+Scan.backticks, Scan.unterminated           # unescaped backticks in double quotes, a quote, $( or backtick
+                                            # left open at the end (task 161)
 def call_operators(command: str, states: bytes) -> tuple[int, ...]   # an & that starts a command
 def trailing_backslash_paths(command: str) -> tuple[tuple[int, int], ...]   # "C:\dir\" escaping its quote
 def forward_slashed(command: str, spans: Sequence[tuple[int, int]]) -> str

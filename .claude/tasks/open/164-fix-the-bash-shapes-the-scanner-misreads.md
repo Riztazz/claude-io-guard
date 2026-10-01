@@ -24,6 +24,8 @@ that reads the command after it.
   named `((i=0;...))`, which `lib/rules.py` filters with a pattern of its own.
 - A `case` pattern's `)` inside `$()` closes the substitution early.
 - A quote inside `${...}` inside double quotes ends the string: `echo "${x:-"a b"}"` gives two words.
+- An unclosed `${`, as in `echo ${x`, does not read as unterminated. Task 161 left it here, since the scanner
+  needs a reading of `${...}` for both.
 - `arithmetic()` marks the whole `$(( ))` as ARITH after scanning the `$()` inside it, so `blanked()` hides
   that command from kills and lint. Plausible, by reading.
 

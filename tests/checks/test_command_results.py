@@ -292,6 +292,17 @@ class TheBudgetLearnsFromACutCommand(unittest.TestCase):
         found(failed("echo 'open " + "x" * 6000, EOF), ctx)
         self.assertIsNone(ctx.session.budget_override, "bash was right: the quote never closes")
 
+    def test_a_command_bash_could_never_parse_teaches_nothing(self):
+        pad = " " + "y" * 6000
+        for command in ("echo $(echo a # x)" + pad, "echo $(echo a" + pad, "echo `date" + pad,
+                        "echo \"$(echo a) $(echo $'\\r')\" #" + pad):
+            with self.subTest(command=command[:30]):
+                ctx = context()
+                found(failed(command, EOF), ctx)
+                self.assertIsNone(ctx.session.budget_override,
+                                  "an unclosed $() or backtick, or a CR quote Git Bash cannot parse, is the "
+                                  "command's own fault, not a cut")
+
     def test_a_lower_budget_learned_earlier_stays(self):
         ctx = context()
         ctx.session.budget_override = 6500

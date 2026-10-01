@@ -271,6 +271,13 @@ class QuotingBashReadsDifferently(unittest.TestCase):
                          [True, True, True, False, False, True, True],
                          "a command that ends inside a quote is unterminated, an empty one at the end too")
 
+    def test_a_substitution_or_backtick_left_open_is_unterminated(self):
+        cases = {"echo $(foo": True, "echo $(echo a # x)": True, "echo `foo": True, 'echo "`foo"': True,
+                 "echo $(echo $(a)": True, "echo $(foo)": False, "echo `foo`": False, "echo \\`foo": False,
+                 "echo '`' \"\\`\"": False, "echo $(echo ')')": False, "echo ${x}": False}
+        self.assertEqual({text: shell.scan(text).unterminated for text in cases}, cases,
+                         "bash stops at unexpected EOF on each open one, and on none that closes")
+
     def test_a_windows_path_ending_in_a_backslash_is_found_and_slashed(self):
         command = r'ls "C:\a b\c\" && cat "C:\d\e.md"'
         spans = shell.trailing_backslash_paths(command)

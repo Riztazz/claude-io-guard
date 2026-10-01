@@ -53,7 +53,7 @@ class Scan:
     hazards: tuple[int, ...]     # offsets of the \\ pairs whose halving changes what bash reads
     states: bytes                # the quoting state at each offset
     backticks: tuple[int, ...] = ()   # offsets of unescaped backticks inside double quotes
-    unterminated: bool = False        # a quote runs to the end, so bash stops at unexpected EOF
+    unterminated: bool = False        # a quote, $( or backtick runs to the end: bash stops at unexpected EOF
     too_deep: bool = False            # $( ... ) nests past MAX_NESTING, and the scan stopped there
     carriage_returns: tuple[int, ...] = ()   # offsets of the $'...' Git Bash fails to parse, see ansi()
 
@@ -65,6 +65,7 @@ class Scanner:
         self.hazards: list[int] = []
         self.backticks: list[int] = []
         self.unclosed = False
+        self.backtick_open = False          # an odd number of unescaped backticks read so far
         self.heredocs: list[Heredoc] = []
         self.pending: list[tuple[int, int, str, bool, bool]] = []
         self.depth, self.too_deep = 0, False
@@ -88,8 +89,8 @@ class Scanner:
     def run(self) -> Scan:
         self.normal(0, stop=None)
         return Scan(tuple(self.heredocs), inline_bodies(self.text, self.states), tuple(sorted(self.hazards)),
-                    bytes(self.states), tuple(self.backticks), self.unclosed, self.too_deep,
-                    tuple(self.carriage_returns))
+                    bytes(self.states), tuple(self.backticks), self.unclosed or self.backtick_open,
+                    self.too_deep, tuple(self.carriage_returns))
 
     def normal(self, at: int, stop: str | None) -> int:
         """Scan unquoted text from at, until stop closes a command substitution. Returns the offset after."""
@@ -130,7 +131,10 @@ class Scanner:
             elif char == "\n" and self.pending:
                 at = self.bodies(at + 1)
             else:
+                if char == "`":
+                    self.backtick_open = not self.backtick_open
                 at += 1
+        self.unclosed = self.unclosed or stop is not None    # a $( that no ) closed before the end
         return at
 
     def counted(self, at: int) -> int:
@@ -184,6 +188,7 @@ class Scanner:
             else:
                 if char == "`":
                     self.backticks.append(at)
+                    self.backtick_open = not self.backtick_open
                 self.states[at] = DOUBLE
                 at += 1
         self.unclosed = True

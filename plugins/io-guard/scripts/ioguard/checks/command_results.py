@@ -193,7 +193,8 @@ class Reading:
         if not (self.bash and self.failed and CUT.search(self.text)):
             return None
         length = shell.budget_length(self.command)
-        whole = not self.found.unterminated and all(heredoc.terminated for heredoc in self.found.heredocs)
+        whole = (not self.found.unterminated and not self.found.carriage_returns
+                 and all(heredoc.terminated for heredoc in self.found.heredocs))
         if length <= self.options["learn_from_bytes"] or not whole:
             return None
         session = self.ctx.session
