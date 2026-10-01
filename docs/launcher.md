@@ -89,6 +89,11 @@ turn. Most of the third row is `hook.py` itself, which imports the whole check p
 starts outside Claude Code, 156 ms of it imports, measured on 2026-09-28. `sh pyrun` adds 36 ms, of which
 `py -3` is about 14. Setting `IOGUARD_PYTHON` skips `py`.
 
+The hook at the start of each turn only checks that the io server is running. When the server wrote its
+heartbeat in the last 10 seconds, `hook.py` answers before it loads the pipeline. Through `sh pyrun`, that
+answer took 120 ms at p50 over 15 starts on 2026-10-01, against 270 ms for the full pipeline in the same
+checkout. A server that has gone quiet still gets the full pipeline, which tells you it's down.
+
 The io server starts through `pyrun.cmd` and `py -3` in 395 to 411 ms on this machine, and in 231 to 248 ms
 with `IOGUARD_PYTHON` naming `python.exe`. That's once per session.
 

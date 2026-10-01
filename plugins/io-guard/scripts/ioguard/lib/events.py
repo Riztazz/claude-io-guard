@@ -1,6 +1,5 @@
 """One hook event as io-guard sees it, from the harness JSON or from an mcp_tool hook's substituted map."""
 import json
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from enum import Enum
@@ -9,6 +8,7 @@ from types import MappingProxyType
 from typing import Any
 
 from ioguard.lib import paths
+from ioguard.lib.folders import SESSION_ID
 from ioguard.lib.platform import Platform, detect
 
 
@@ -71,7 +71,6 @@ class Surface(Enum):
 SCALAR_FIELDS = ("hook_event_name", "session_id", "tool_use_id", "prompt_id", "tool_name", "cwd",
                  "scratchpad_dir", "transcript_path", "permission_mode", "agent_id", "error")
 WHOLE_FIELDS = ("tool_input", "tool_response")
-SESSION_ID = re.compile(r"[A-Za-z0-9_-]+")      # it names io-guard's files for the session
 
 
 def text(value: Any) -> str | None:

@@ -1,11 +1,11 @@
-"""Where things are: Claude Code's folder, io-guard's folder, a session's shared files, and the project and
-the repository a path belongs to.
+"""Where things are: Claude Code's folder, io-guard's folder, a session's shared files, and the project a path
+belongs to. It imports nothing of io-guard's, so a command hook that only needs a path starts fast.
 """
+import re
 from collections.abc import Mapping
 from pathlib import Path
 
-from ioguard.lib.git import GitError
-from ioguard.lib.ports import GitPort
+SESSION_ID = re.compile(r"[A-Za-z0-9_-]+")      # a session id names io-guard's files for the session
 
 
 def claude_folder(env: Mapping[str, str]) -> Path:
@@ -55,11 +55,3 @@ def project_of(env: Mapping[str, str], fallback: Path) -> Path:
     """The folder whose .claude settings Claude Code reads: CLAUDE_PROJECT_DIR, else fallback."""
     named = env.get("CLAUDE_PROJECT_DIR")
     return Path(named) if named else fallback
-
-
-def repository_root(git: GitPort, path: Path) -> Path | None:
-    """The repository that holds path, or None outside one or when git cannot say."""
-    try:
-        return git.root(path)
-    except GitError:
-        return None

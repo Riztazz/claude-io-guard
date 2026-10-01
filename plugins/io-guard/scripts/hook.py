@@ -9,8 +9,8 @@ This file runs on older Pythons long enough to say that they are too old, so it 
 and it imports ioguard only on 3.14 or later.
 """
 import json
+import os
 import sys
-import traceback
 
 MINIMUM = (3, 14)
 FIX = ("Install Python 3.14 or later, or set IOGUARD_PYTHON to its full path in the env block of "
@@ -30,8 +30,13 @@ def interpreter_warning():
             + ", so it checks nothing this session. " + FIX)
 
 
-def guard(raw):
-    """The pipeline's answer to the event."""
+def guard(raw, event_name):
+    """The pipeline's answer to the event. A heartbeat event whose server is running answers {} before the
+    pipeline loads, since loading it is most of this hook's time on every prompt."""
+    if event_name == "heartbeat":
+        from ioguard.hooks.beat import running
+        if running(raw, os.environ):
+            return {}
     from ioguard.hooks.entry import run_event
     from ioguard.lib.events import Surface
     return run_event(json.loads(raw.decode("utf-8")), Surface.COMMAND_HOOK)
@@ -46,8 +51,9 @@ def main():
     reply = {}
     if sys.version_info[:2] >= MINIMUM:
         try:
-            reply = guard(raw)
+            reply = guard(raw, event_name)
         except Exception:
+            import traceback
             sys.stderr.write("GUARD_ERROR: io-guard's " + event_name + " hook failed, so it answered {} and "
                              "let the session go on.\n" + traceback.format_exc())
             reply = {}

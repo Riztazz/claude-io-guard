@@ -10,8 +10,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from ioguard.lib import heartbeat
 from tests import PLUGIN_SCRIPTS, REPO
 from tests.support import injected
 from tests.support.fixtures import FIXTURES_DIR
@@ -106,6 +108,33 @@ class EveryEventGetsItsAnswer(HookPyTest):
         event = {**recorded("PreToolUse"), "hook_event_name": "NoSuchEvent"}
         self.assertEqual(self.hook(event, checks="note"), {},
                          "an event io-guard cannot read answers {}, and the call goes on")
+
+
+class TheHeartbeatHookAnswersARunningServerAtOnce(HookPyTest):
+    SESSION = "beat-session"
+
+    def beat(self, age_s: float) -> dict:
+        """A heartbeat age_s old in io-guard's test folder, and the prompt event of its session."""
+        now = datetime.now(timezone.utc)
+        found = heartbeat.Heartbeat(4242, self.SESSION, heartbeat.Era.MODERN, now - timedelta(hours=1),
+                                    now - timedelta(seconds=age_s))
+        (self.data / "sessions").mkdir(exist_ok=True)
+        (self.data / "sessions" / f"{self.SESSION}.alive").write_bytes(found.encode())
+        return {"hook_event_name": "UserPromptSubmit", "session_id": self.SESSION, "prompt": "hi",
+                "cwd": str(self.data), "permission_mode": "default", "transcript_path": ""}
+
+    def test_a_fresh_heartbeat_answers_without_loading_the_checks(self):
+        done = subprocess.run([sys.executable, "-X", "importtime", str(HOOK_PY), "heartbeat"],
+                              input=json.dumps(self.beat(1)).encode("ascii"), capture_output=True,
+                              env=self.env, cwd=self.data, timeout=60)
+        self.assertEqual(json.loads(done.stdout), {}, "a running server leaves the turn nothing to hear")
+        self.assertFalse(b"ioguard.checks.pipeline" in done.stderr,
+                         "the pipeline's imports are most of a Python start, paid on every prompt")
+
+    def test_an_old_heartbeat_still_warns_that_the_server_is_down(self):
+        reply = self.hook(self.beat(120), argument="heartbeat")
+        self.assertTrue(reply["systemMessage"].startswith("SERVER_DOWN: "),
+                        "a server silent for two minutes died, and the checks say so")
 
 
 class EveryRewriteModeShapesTheAnswer(HookPyTest):

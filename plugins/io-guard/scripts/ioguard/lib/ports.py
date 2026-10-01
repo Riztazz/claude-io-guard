@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Protocol
 
 from ioguard.lib import bytesio, locks, paths
-from ioguard.lib.git import GitStatus, LineRange
+from ioguard.lib.git import GitError, GitStatus, LineRange
 from ioguard.lib.locks import Process
 from ioguard.lib.platform import detect
 
@@ -172,4 +172,12 @@ def read_or_none(fs: FsPort, path: Path, limit: int | None = None) -> bytes | No
     try:
         return fs.read_bytes(path, limit)
     except OSError:
+        return None
+
+
+def repository_root(git: GitPort, path: Path) -> Path | None:
+    """The repository that holds path, or None outside one or when git cannot say."""
+    try:
+        return git.root(path)
+    except GitError:
         return None

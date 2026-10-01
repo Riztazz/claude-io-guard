@@ -18,9 +18,9 @@ from ioguard.lib import editorconfig, paths
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Rewrite, Verdict
 from ioguard.lib.events import Event, HookEvent, Tool
-from ioguard.lib.folders import repository_root
 from ioguard.lib.git import GitError
 from ioguard.lib.platform import EVERY_PLATFORM
+from ioguard.lib.ports import repository_root
 from ioguard.lib.profile import (Bom, Eol, Profile, convert_eol, lone_cr_lines, profile, target_profile,
                                  with_bom, with_final_newline)
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity

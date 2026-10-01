@@ -33,7 +33,7 @@ class Heartbeat(Check):
         tools=frozenset(), platforms=EVERY_PLATFORM, severity=Severity.WARNING,
         cost=Cost.CHEAP, reads=frozenset(), writes=frozenset(), after=frozenset(),
         config={"stale_s": ConfigKey(int, 30, "Seconds after its last heartbeat that the io server counts as "
-                                     "stopped. It writes one every 5 seconds.")},
+                                     "stopped. It writes one every 5 seconds, so under 10 counts as 10.")},
         codes=frozenset({Code.SERVER_DOWN}),
         description="Warns once at the start of a turn when the io server is not running.")
 
@@ -41,14 +41,15 @@ class Heartbeat(Check):
         if ctx.data_dir is None:
             return Decision.observe(self.meta.id)
         try:
-            beat = heartbeat.parse(ctx.fs.read_bytes(session_file(ctx.data_dir, event.session_id, "alive")))
+            data = ctx.fs.read_bytes(session_file(ctx.data_dir, event.session_id, "alive"))
         except OSError:
             return self.skipped(event, ctx)
-        if beat is None or beat.stopped is not None:
+        now = ctx.clock.now()
+        if heartbeat.quiet(data, now, self.options["stale_s"]):
             return Decision.observe(self.meta.id)
-        age = (ctx.clock.now() - beat.beat).total_seconds()
-        key = f"server-down:{beat.pid}:{beat.beat.isoformat()}"
-        if age <= self.options["stale_s"] or not ctx.session.first_time(key):
+        beat = heartbeat.parse(data)
+        age = (now - beat.beat).total_seconds()
+        if not ctx.session.first_time(f"server-down:{beat.pid}:{beat.beat.isoformat()}"):
             return Decision.observe(self.meta.id)
         return self.warn(event, ctx, f"io-guard's io server last answered at {clock(beat.beat)}, so the "
                                      f"tool calls since then ran without its checks.", None,

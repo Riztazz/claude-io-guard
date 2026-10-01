@@ -64,10 +64,11 @@ plugins/io-guard/
                                    needs_yes, config_write: the io.config write that waits for the user's yes
         events.py                  HookEvent, Tool, PermissionMode, Surface, Event, by_value
         context.py                 Context: what a check reads, built live or fake
-        ports.py                   GitPort, FsPort, Clock, LiveFs, SystemClock, FileStat, newlines, read_or_none
+        ports.py                   GitPort, FsPort, Clock, LiveFs, SystemClock, FileStat, newlines,
+                                   read_or_none, repository_root
         fakes.py                   FakeFs, FakeGit: the in-memory ports Context.fake builds, for tests
         folders.py                 claude_folder, home_folder, session_file, memory_file, project_root,
-                                   project_of, repository_root: where things are
+                                   project_of: where things are, with no import of io-guard's own
         session.py                 SessionState, Snapshot, ShellSnapshot, first_in_file, tracked, ignored: what
                                    a session learns, and what a PreToolUse keeps for its PostToolUse
         decisions.py               Verdict, Rewrite, Decision, compose
@@ -143,6 +144,8 @@ plugins/io-guard/
         entry.py                   run_event: an event in, the answer dict out, never raising
         answer.py                  Outcome -> hook JSON, per event and rewrite mode
         bridge.py                  hook.* tools: substituted fields -> run_event -> the tool's text
+        beat.py                    running: the heartbeat hook's {} for a running server, before the
+                                   pipeline loads (task 172)
       mcp/
         server.py                  stdio loop, threads, shutdown
         protocol.py                framing, _meta, eras, JSON-RPC errors
@@ -1930,7 +1933,9 @@ the server's environment, with its process, era and time (`context.md`, "Hooks a
 cannot start leaves every hook failing open and tells the model nothing (row 18). Worse, Claude Code then
 records the failure in `~/.claude/mcp-needs-auth-cache.json` and skips the server in every session for 15
 minutes (row 33). With no heartbeat for its session, the check reads that cache and names the skip and its
-end. That hook is the only Python spawn per turn, and costs about 300 ms (`docs/launcher.md`).
+end. That hook is the only Python spawn per turn. A beat younger than 10 seconds is answered by
+`hooks.beat` before the pipeline loads, in about 120 ms, and any other state runs the check, in about 270 ms
+(`docs/launcher.md`). A `stale_s` under 10 counts as 10, so the two paths agree.
 
 Shutdown is one ordered list: stop accepting, drain the workers with a 2 second cap, cancel the calls still
 running and give them 1 second more (task 105), close the heartbeat. A

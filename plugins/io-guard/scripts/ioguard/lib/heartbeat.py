@@ -13,6 +13,8 @@ from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 
+FRESH_S = 10        # a beat this young is a running server, since the server writes one every 5 seconds
+
 
 class Era(Enum):
     """The MCP era the io server answers in, decided once per process."""
@@ -62,3 +64,11 @@ def parse(data: bytes) -> Heartbeat | None:
                          None if stopped is None else datetime.fromisoformat(stopped))
     except (ValueError, KeyError, TypeError, AttributeError):
         return None
+
+
+def quiet(data: bytes, now: datetime, stale_s: float = FRESH_S) -> bool:
+    """Whether a heartbeat file's bytes leave nothing to say: no heartbeat in them, a server that stopped
+    cleanly, or one that beat within stale_s, which counts as FRESH_S when lower."""
+    found = parse(data)
+    return found is None or found.stopped is not None or \
+        (now - found.beat).total_seconds() <= max(stale_s, FRESH_S)
