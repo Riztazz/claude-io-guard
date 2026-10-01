@@ -27,9 +27,19 @@ MSYS_PROGRAMS = ["echo", "printf", "test", "[", "cd", "pushd", "export", "grep",
                  "awk", "find", "ls", "cat", "head", "tail", "wc", "sort", "uniq", "cut", "tr", "diff", "tee",
                  "mkdir", "rm", "cp", "mv", "touch", "stat", "file", "basename", "dirname", "realpath",
                  "readlink"]
-ALREADY = re.compile(r"\bMSYS2_ARG_CONV_EXCL=|\bMSYS_NO_PATHCONV=")
+NO_CONVERSION = re.compile(r"\bMSYS_NO_PATHCONV=")
+EXCLUDED = re.compile(r"\bMSYS2_ARG_CONV_EXCL=['\"]?([^'\"\s]*)")
 CMD_SWITCH = re.compile(r"(?<=[ \t])/[cCkK](?=[ \t]|$)")
 TO_NUL = re.compile(r"(?<![\w/.])((?:\d|&)?>>?)[ \t]*((?i:nul))(?![\w./])")
+
+
+def converts(command: str, switch: str) -> bool:
+    """Whether Git Bash still turns switch, such as /c, into a path in this command: the command sets no
+    MSYS_NO_PATHCONV, and no MSYS2_ARG_CONV_EXCL entry is * or a start of the switch."""
+    if NO_CONVERSION.search(command):
+        return False
+    entries = [entry for match in EXCLUDED.finditer(command) for entry in match[1].split(";") if entry]
+    return not any(entry == "*" or switch.lower().startswith(entry.lower()) for entry in entries)
 
 
 def excluded(simples: tuple[shell.SimpleCommand, ...], options: Mapping[str, Any]) -> list[str]:
@@ -73,7 +83,8 @@ class WinPaths(Check):
         edits: list[tuple[int, int, str]] = []
         notes: list[str] = []
         codes: list[Code] = []
-        prefixes = [] if ALREADY.search(command) else excluded(simples, self.options)
+        already = NO_CONVERSION.search(command) or EXCLUDED.search(command)
+        prefixes = [] if already else excluded(simples, self.options)
         if prefixes:
             codes.append(Code.MSYS_PATH)
             notes.append(f"io-guard exported MSYS2_ARG_CONV_EXCL='{';'.join(prefixes)}', so Git Bash passes "
@@ -81,12 +92,13 @@ class WinPaths(Check):
                          f"install folder.")
         switches = [match for simple in simples if simple.name == "cmd"
                     for match in CMD_SWITCH.finditer(command, *simple.span)
-                    if found.states[match.start()] == shell.NORMAL]
+                    if found.states[match.start()] == shell.NORMAL and converts(command, match[0])]
         if switches:
             edits += [(match.start(), match.start(), "/") for match in switches]
             codes.append(Code.MSYS_PATH)
-            notes.append("io-guard wrote cmd //c, because Git Bash turns a lone /c into C:/ and cmd then "
-                         "runs nothing.")
+            letter = switches[0][0][1].lower()
+            notes.append(f"io-guard wrote cmd //{letter}, because Git Bash turns a lone /{letter} into "
+                         f"{letter.upper()}:/ and cmd then runs nothing.")
         nuls = [match for match in TO_NUL.finditer(command) if found.states[match.start(1)] == shell.NORMAL]
         if nuls:
             edits += [(match.start(2), match.end(2), "/dev/null") for match in nuls]

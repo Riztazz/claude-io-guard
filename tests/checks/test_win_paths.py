@@ -61,6 +61,20 @@ class CmdAndNul(unittest.TestCase):
         self.assertEqual(outcome.tool_input["command"], 'cmd //c "dir /b" && cmd.exe //k ver',
                          "Git Bash turns //c into /c for cmd, and a lone /c into C:/")
 
+    def test_cmd_slash_c_stays_when_the_command_turns_conversion_off(self):
+        cases = {"MSYS_NO_PATHCONV=1 cmd /c dir": "MSYS_NO_PATHCONV=1 cmd /c dir",
+                 "MSYS2_ARG_CONV_EXCL='*' cmd /c dir": "MSYS2_ARG_CONV_EXCL='*' cmd /c dir",
+                 "MSYS2_ARG_CONV_EXCL=/ cmd /k ver": "MSYS2_ARG_CONV_EXCL=/ cmd /k ver",
+                 "MSYS2_ARG_CONV_EXCL=/Game cmd /c dir": "MSYS2_ARG_CONV_EXCL=/Game cmd //c dir"}
+        self.assertEqual({command: run(command).tool_input["command"] for command in cases}, cases,
+                         "with conversion off for the switch, Git Bash hands //c to cmd as written, and cmd "
+                         "then runs nothing")
+
+    def test_the_note_names_the_switch_it_doubled(self):
+        note = run("cmd /k ver").rewrites[0].note
+        self.assertIn("io-guard wrote cmd //k, because Git Bash turns a lone /k into K:/", note,
+                      "the note names /k, not /c")
+
     def test_a_redirect_to_nul_goes_to_dev_null(self):
         outcome = run("ls missing 2>nul; make >NUL 2>&1; echo 'x > nul'")
         self.assertEqual((outcome.rewrites[0].code, outcome.tool_input["command"]),

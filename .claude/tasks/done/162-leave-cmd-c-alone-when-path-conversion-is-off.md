@@ -3,7 +3,7 @@ title: win.paths writes cmd //c even when the command turned Git Bash's path con
 stage: I
 area: checks
 created: 2026-10-01
-status: open
+status: done
 depends-on: []
 findings: []
 platforms: [windows]
@@ -33,3 +33,23 @@ The note also says "a lone /c" while `CMD_SWITCH` rewrites `/k` and any `/c` amo
 ## Done when
 
 - Both shapes with conversion off pass untouched, and `cmd /c echo hi` is still rewritten.
+
+## What changed
+
+`checks/win_paths.py` has `converts(command, switch)`: Git Bash still turns the switch into a path unless the
+command sets `MSYS_NO_PATHCONV`, or an `MSYS2_ARG_CONV_EXCL` entry is `*` or a start of the switch, such as `/`
+or `/c`. A switch it does not convert stays as written. The note names the switch it doubled, `//k` for `/k`.
+`ALREADY` is gone: the two patterns `converts` reads also decide when the prefixes export is skipped.
+
+Evidence:
+
+- `test_cmd_slash_c_stays_when_the_command_turns_conversion_off` and
+  `test_the_note_names_the_switch_it_doubled` in `tests/checks/test_win_paths.py` failed first.
+- Each of five commands, as win.paths leaves it or rewrites it, printed `hi` through Git Bash 5.2.37's
+  `cmd`: `cmd //c echo hi`, `MSYS_NO_PATHCONV=1 cmd /c echo hi`, `MSYS2_ARG_CONV_EXCL='*' cmd /c echo hi`,
+  `MSYS2_ARG_CONV_EXCL=/ cmd /c echo hi` and `MSYS2_ARG_CONV_EXCL=/Game cmd //c echo hi`.
+- `python tests/run_all.py`: 1,148 tests, OK, 2 skipped, against 1,146.
+
+Docs: none. No code, setting or signature a doc states changed.
+
+Checked on Windows 10 on 2026-10-01.
