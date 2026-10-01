@@ -7,6 +7,7 @@ suffix, so sed -i 's/a/b/' f takes the script for a suffix. BSD grep has no -P, 
 takes -c, BSD date -d does something else, and BSD find, cp, mv, du and head lack -printf, -t, -b and a
 negative line count.
 """
+import itertools
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -72,7 +73,7 @@ def gnu_only(simples: Sequence[shell.SimpleCommand]) -> tuple[Unportable, ...]:
     found = []
     for simple in simples:
         words = simple.words
-        following = list(zip(words, [*words[1:], None]))
+        following = list(itertools.pairwise([*words, None]))
         if simple.name == "sed":
             long_form = any(word == "--in-place" or word.startswith("--in-place=") for word in words)
             if long_form or any(word == "-i" and after != "" for word, after in following):

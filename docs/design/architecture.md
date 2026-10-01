@@ -910,6 +910,7 @@ def call_operators(command: str, states: bytes) -> tuple[int, ...]   # an & that
 def trailing_backslash_paths(command: str) -> tuple[tuple[int, int], ...]   # "C:\dir\" escaping its quote
 def forward_slashed(command: str, spans: Sequence[tuple[int, int]]) -> str
 def piped(command: str, simple: SimpleCommand) -> bool      # its output goes into | or |&
+def pipefail(command: str) -> bool                          # set in the code, not in a string, task 168
 def python_reads_stdin(simple: SimpleCommand) -> bool       # python or python -, with no script, -c or -m
 def body_files(command: str) -> tuple[str, ...]             # the moved body files the command reads
 def script_run(simple: SimpleCommand) -> Optional[ScriptRun] # task 48: the script file an interpreter runs,
@@ -1062,6 +1063,7 @@ def is_task_output(path: Path, session_id: str) -> bool        # task 154: <sess
 def error_lines(text: str, patterns: Mapping[str, Pattern]) -> tuple[ErrorLine, ...]   # matched from line start
 def mojibake(text: str, code_pages: Sequence[str]) -> Mojibake # U+FFFD, and UTF-8 a console read in a code page
 def excerpt(text: str, head: int, tail: int, marked: Sequence[ErrorLine], width: int) -> str   # numbered lines
+def plural(count: int, word: str) -> str                       # 1 line, 3 lines, task 168
 
 # rules.py, task 25
 class RuleVerdict(Enum): DENY, ASK, UNREAD, NONE           # what the rules say of a command, RuleMatch.decision

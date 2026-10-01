@@ -135,7 +135,7 @@ def python_bodies(command: str, found: shell.Scan, simples: tuple[shell.SimpleCo
     halving = ctx.probe.halving is True
 
     def halved(span: tuple[int, int]) -> bool:
-        return halving and any(span[0] <= at < span[1] for at in found.hazards)
+        return halving and found.hazard_in(span)
 
     def owner(offset: int) -> shell.SimpleCommand | None:
         return next((simple for simple in simples if simple.span[0] <= offset < simple.span[1]), None)
@@ -194,7 +194,7 @@ def hidden_exit(command: str, simples: tuple[shell.SimpleCommand, ...],
                 builds: list[str]) -> tuple[str, str] | None:
     """The first build piped into another command, and that command's name, unless pipefail or PIPESTATUS
     keeps the build's exit code."""
-    if re.search(r"pipefail|PIPESTATUS", command):
+    if shell.pipefail(command) or "PIPESTATUS" in command:     # PIPESTATUS keeps the code, read quoted too
         return None
     for index, simple in enumerate(simples[:-1]):
         label = shell.matching(simple, builds)

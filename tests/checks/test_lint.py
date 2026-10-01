@@ -189,6 +189,11 @@ class APipeHidesABuildsExitCode(unittest.TestCase):
         self.assertEqual((decision.verdict, decision.results[0].code), (Verdict.ALLOW, Code.PIPE_HIDES_EXIT),
                          "the exit code shown is tail's")
 
+    def test_the_word_pipefail_in_a_string_sets_nothing(self):
+        decision = lint(run('make all | tail -20; echo "turn on pipefail next time"'))
+        self.assertEqual(decision.results[0].code, Code.PIPE_HIDES_EXIT,
+                         "only set -o pipefail in the code keeps the build's exit code")
+
     def test_a_pipe_that_hides_nothing_passes(self):
         for command in ("set -o pipefail; make | tail", "make > log", "grep x a | head", "make || true"):
             with self.subTest(command=command):

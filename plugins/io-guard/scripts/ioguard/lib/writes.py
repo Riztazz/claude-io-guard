@@ -14,7 +14,7 @@ import fnmatch
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from ioguard.lib import paths, pwsh, rules, shell
 from ioguard.lib.context import Context
@@ -300,7 +300,7 @@ def into_folder(raw: str, cwd: Path | None, host: Host) -> bool:
 
 def inside_folder(folder: str, source: str) -> str:
     """The path a source lands at in folder: the folder, then the source's own last name."""
-    return f"{folder.rstrip('/\\')}/{re.split(r'[\\/]', source.rstrip('/\\'))[-1]}"
+    return f"{folder.rstrip('/\\')}/{PureWindowsPath(source.rstrip('/\\')).name}"
 
 
 def sed_files(arguments: list[str]) -> list[str]:

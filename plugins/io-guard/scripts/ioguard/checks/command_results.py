@@ -95,12 +95,8 @@ def counted(errors: Sequence[output.ErrorLine]) -> str:
     return ", ".join(f"{count} {kind}" for kind, count in kinds.items())
 
 
-def plural(count: int, word: str) -> str:
-    return f"{count:,} {word}" + ("" if count == 1 else "s")
-
-
 def reporting(count: int) -> str:
-    return f"{plural(count, 'line')} that {'reports' if count == 1 else 'report'} errors"
+    return f"{output.plural(count, 'line')} that {'reports' if count == 1 else 'report'} errors"
 
 
 class Reading:
@@ -123,7 +119,7 @@ class Reading:
         if self.failed:
             error = self.event.error or ""
             code = output.exit_code(error)
-            return code, error.split("\n", 1)[1] if code is not None and "\n" in error else ""
+            return code, error.partition("\n")[2] if code is not None else ""
         stderr = str(self.response.get("stderr") or "")
         return 0, str(self.response.get("stdout") or "") + (f"\n{stderr}" if stderr else "")
 
@@ -229,8 +225,8 @@ class Reading:
         kept = {key: value for key, value in self.response.items() if key not in DROPPED}
         errors = f", the {reporting(len(marked))}" if marked else ""
         result = self.result(Code.OUTPUT_SAVED,
-                             f"The output was {self.size / 1024:,.1f} KB in {plural(lines, 'line')}, so "
-                             f"io-guard shows its first {head} lines{errors} and its last {tail}.",
+                             f"The output was {self.size / 1024:,.1f} KB in {output.plural(lines, 'line')}, "
+                             f"so io-guard shows its first {head} lines{errors} and its last {tail}.",
                              f"Read {path} with offset and limit for the rest.",
                              evidence={"path": path, "lines": lines, "bytes": self.size})
         return result, {**kept, "stdout": stdout}
@@ -239,7 +235,7 @@ class Reading:
         """The last command of the pipe that gave a Bash command exit code 0, or None when no pipe did, or
         when an echo or printf of $?, after some other command and before that pipe, already put that
         command's exit code in the output."""
-        if not self.bash or self.failed or "pipefail" in self.command:
+        if not self.bash or self.failed or shell.pipefail(self.command):
             return None
         lines = shell.pipelines(self.command)
         if not lines or len(lines[-1].commands) < 2:
@@ -302,10 +298,11 @@ class Reading:
             return None
         parts = []
         if found.garbled:
-            parts.append(f"{plural(found.garbled, 'run')} of UTF-8 read in a Windows code page, such as "
-                         f"{found.example} for {found.meant}")
+            parts.append(f"{output.plural(found.garbled, 'run')} of UTF-8 read in a Windows code page, such "
+                         f"as {found.example} for {found.meant}")
         if found.replaced:
-            parts.append(f"{plural(found.replaced, 'U+FFFD character')}, each where bytes were not UTF-8")
+            parts.append(f"{output.plural(found.replaced, 'U+FFFD character')}, each where bytes were not "
+                         f"UTF-8")
         fix = (READ_AS_UTF8 if found.garbled else WRITE_AS_UTF8) + " Copy none of that text into a file."
         return self.result(Code.MOJIBAKE, f"The output holds {' and '.join(parts)}.", fix,
                            evidence={"garbled": found.garbled, "replaced": found.replaced})

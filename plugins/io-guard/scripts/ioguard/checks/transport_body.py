@@ -71,7 +71,7 @@ class TransportBody(Check):
         over = budget is not None and shell.budget_length(command) > budget
 
         def halved(span: tuple[int, int]) -> bool:
-            return halving and any(span[0] <= offset < span[1] for offset in scan.hazards)
+            return halving and scan.hazard_in(span)
 
         heredocs = [heredoc for heredoc in scan.heredocs if heredoc.quoted and heredoc.terminated
                     and (over or halved(heredoc.span))]

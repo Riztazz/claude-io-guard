@@ -473,6 +473,7 @@ class PipelinesAndTheExitCode(unittest.TestCase):
                                   ("make; grep x log", ["grep"]), ("make || grep x log", ["grep"]),
                                   ("make | tail -3", ["tail"]),
                                   ("set -o pipefail; make | tail", ["tail", "make"]),
+                                  ('echo "pipefail" | grep x', ["grep"]),
                                   ("for f in *.md; do grep -c x $f; done", ["grep"])):
             with self.subTest(command=command):
                 self.assertEqual(names(shell.exit_candidates(command)), expected,

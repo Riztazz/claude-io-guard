@@ -128,6 +128,11 @@ def decode_back(run: str, code_pages: Sequence[str]) -> str | None:
     return None
 
 
+def plural(count: int, word: str) -> str:
+    """The count and the word, as 1 line or 3 lines."""
+    return f"{count:,} {word}" + ("" if count == 1 else "s")
+
+
 def excerpt(text: str, head: int, tail: int, marked: Sequence[ErrorLine], width: int) -> str:
     """The first head lines of text, the marked lines between them, and the last tail lines, each numbered
     from 1 as the Read tool numbers them and cut to width characters. A bracketed line says what each gap left
@@ -143,7 +148,7 @@ def excerpt(text: str, head: int, tail: int, marked: Sequence[ErrorLine], width:
     for number in shown:
         if number > last + 1:
             left = number - last - 1
-            out.append(f"[{left:,} line{'s' if left > 1 else ''} left out, {last + 1:,} to {number - 1:,}]")
+            out.append(f"[{plural(left, 'line')} left out, {last + 1:,} to {number - 1:,}]")
         line = lines[number - 1].rstrip("\r")
         cut = f" [{len(line) - width:,} more characters]" if len(line) > width else ""
         out.append(f"{number:>{numbers},}| {line[:width]}{cut}")

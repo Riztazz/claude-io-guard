@@ -67,6 +67,10 @@ class Scan:
     carriage_returns: tuple[int, ...] = ()   # offsets of the $'...' Git Bash fails to parse, see ansi()
     closes: Mapping[int, int] = MappingProxyType({})   # after each $(), $(( )) and unquoted ${ }, by its $
 
+    def hazard_in(self, span: tuple[int, int]) -> bool:
+        """Whether a backslash pair the Windows Bash tool halves sits inside span."""
+        return any(span[0] <= at < span[1] for at in self.hazards)
+
 
 class Scanner:
     def __init__(self, text: str) -> None:
@@ -429,6 +433,7 @@ class SimpleCommand:
 SEPARATORS = ";&|\n()"
 LOOP_HEADS = {"for", "select"}
 REDIRECT = re.compile(r"(\d*|&)(>\||>>?|<>?)")
+DUPLICATED = re.compile(r"&(?:\d+|-)(?=[\s;&|()<>]|$)")         # the &1 of 2>&1: a stream, not a file
 
 
 @functools.lru_cache(maxsize=64)
@@ -473,7 +478,7 @@ def split(command: str) -> tuple[SimpleCommand, ...]:
         elif match:
             at = match.end()
             duplicated = text.startswith("&", at)
-            if duplicated and re.match(r"&(?:\d+|-)(?=[\s;&|()<>]|$)", text[at:]):
+            if duplicated and DUPLICATED.match(text, at):
                 at = word_end(text, found, at + 1)       # 2>&1, >&2, >&-: a stream, not a file
                 continue
             at += duplicated                               # >&file writes both streams to the file
@@ -669,6 +674,12 @@ def python_reads_stdin(simple: SimpleCommand) -> bool:
     return True
 
 
+def pipefail(command: str) -> bool:
+    """Whether the command's code turns pipefail on, as set -o pipefail does. The word inside a string or a
+    comment turns nothing on."""
+    return re.search(r"\bpipefail\b", blanked(command)) is not None
+
+
 def piped(command: str, simple: SimpleCommand) -> bool:
     """Whether the simple command's output goes into a pipe: one | or a |& follows it."""
     end = simple.span[1]
@@ -754,7 +765,7 @@ def exit_candidates(command: str) -> tuple[SimpleCommand, ...]:
     lines = pipelines(command)
     chosen: list[SimpleCommand] = []
     for line in reversed(lines or ()):
-        chosen += reversed(line.commands) if "pipefail" in command else [line.commands[-1]]
+        chosen += reversed(line.commands) if pipefail(command) else [line.commands[-1]]
         if line.joined_by != "&&":
             break
     return tuple(chosen)
