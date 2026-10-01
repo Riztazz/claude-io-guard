@@ -38,7 +38,6 @@ PS_SWITCHES = {"-force", "-nonewline", "-append", "-passthru", "-whatif", "-conf
                "-asbytestream", "-verbose", "-debug", "-recurse"}   # the writers' options that take no value
 PS_MOVERS = {"copy-item", "move-item", "copy", "move", "cpi", "mi", "cp", "mv"}
 XARGS_VALUED = {"-n", "-I", "-d", "-P", "-L", "-s", "-E", "-a"}
-ASSIGNMENT = re.compile(r"^[A-Za-z_]\w*=")
 CHANGE_DIRECTORY = {"cd", "pushd", "set-location", "sl", "push-location", "chdir"}
 PUSH_DIRECTORY = {"pushd", "push-location"}
 POP_DIRECTORY = {"popd", "pop-location"}
@@ -102,7 +101,7 @@ def moved_to(simple: shell.SimpleCommand, cwd: Path | None, host: Host) -> Path 
 def located(command: str, start: Path | None, host: Host) -> list[tuple[shell.SimpleCommand, Path | None]]:
     """Each simple command with the folder it runs in, following each cd, pushd and popd, and leaving them
     out. A cd inside ( ) holds for that subshell only."""
-    group_of, parent = shell.subshells(command, shell.scan(command).states)
+    group_of, parent = shell.subshells(command, shell.scan(command))
     cwd_of: dict[int, Path | None] = {0: start}
     pushed: list[Path | None] = []
     placed = []
@@ -209,7 +208,7 @@ def without_env(words: list[str]) -> list[str]:
     """words without a leading env and its options and settings."""
     if words[:1] == ["env"]:
         words = words[1:]
-        while words and (words[0].startswith("-") or ASSIGNMENT.match(words[0])):
+        while words and (words[0].startswith("-") or shell.ASSIGNMENT.match(words[0])):
             words = words[1:]
     return words
 

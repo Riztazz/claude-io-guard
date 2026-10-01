@@ -37,8 +37,6 @@ from ioguard.lib.program import PROGRAM_SUFFIXES, program_name
 
 RULE = re.compile(r"^(Bash|PowerShell)(?:\((.*)\))?$", re.S)
 PARAMETER = re.compile(r"^\s*(?:command|run_in_background|dangerouslyDisableSandbox)\s*:")
-ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
-PLAIN_WRAPPERS = frozenset({"time", "nohup", "builtin", "noglob"})
 SHELLS = frozenset({"bash", "sh", "zsh", "dash", "ksh", "mksh", "fish"})
 SHELL_C = re.compile(r"^-[A-Za-z]*c[A-Za-z]*$")
 SHELL_VALUED = frozenset({"-o", "+o", "-O", "+O", "--rcfile", "--init-file"})
@@ -51,7 +49,6 @@ CODE_FLAGS = {"python": ("-c",), "py": ("-c",), "node": ("-e", "-p", "--eval", "
               "bun": ("-e", "--eval")}
 CODE_VALUED = frozenset({"-X", "-W", "-r", "--require", "--import", "--loader"})
 UNREAD_BASH = ("$(", "`", "<(", ">(")
-ARITHMETIC = re.compile(r"\(\(.*\)\)", re.S)     # bash's (( ... )), which runs no command
 PWSH_ASSIGNS = frozenset({"=", "+=", "-=", "*=", "/=", "%=", "??="})
 PWSH_ASSIGNMENT = re.compile(r"^\$[\w:]+(?:\+|-|\*|/|%|\?\?)?=(.*)$", re.S)   # $x=value, written as one word
 READS_TEXT = frozenset({"eval", "source", ".", "iex", "invoke-expression", "invoke-command"})
@@ -167,7 +164,8 @@ def unwrapped(words: Sequence[str]) -> list[str]:
     words = list(words)
     while words:
         head = words[0]
-        if ASSIGNMENT.match(head) or head in PLAIN_WRAPPERS or (head == "command" and words[1:2] != ["-v"]):
+        if (shell.ASSIGNMENT.match(head) or head in shell.RULE_WRAPPERS
+                or (head == "command" and words[1:2] != ["-v"])):
             words = words[1:]
         elif head in ("timeout", "nice", "stdbuf"):
             rest = words[1:]
@@ -292,8 +290,7 @@ def inner(found: Wrapped) -> list[list[str]] | None:
         scanned = shell.scan(found.text)
         if scanned.too_deep or any(not heredoc.terminated for heredoc in scanned.heredocs):
             return None
-        parts = [list(simple.words) for simple in shell.commands(found.text)
-                 if not (simple.words and ARITHMETIC.fullmatch(simple.words[0]))]
+        parts = [list(simple.words) for simple in shell.commands(found.text)]
     else:
         if "$(" in found.text:
             return None

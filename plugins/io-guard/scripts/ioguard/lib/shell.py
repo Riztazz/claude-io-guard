@@ -21,8 +21,14 @@ MAX_NESTING = 100                       # $( ... ) levels read, well inside Pyth
 ESCAPED_IN_DOUBLE = "$`\"\\\n"          # a backslash escapes only these inside double quotes
 ESCAPED_IN_BODY = "$`\\\n"              # and only these in a heredoc body bash expands
 WORD_END = " \t\n;&|<>()"
-COMMAND_START = (r"(?:^|[;&|(\n])[ \t]*(?:(?:time|then|do|else|exec|env|nohup|command|builtin|!)[ \t]+"
-                 r"|[A-Za-z_]\w*=\S*[ \t]+)*")
+RULE_WRAPPERS = frozenset({"time", "nohup", "builtin", "noglob"})   # Claude Code strips these for a rule
+WRAPPERS = RULE_WRAPPERS | {"exec", "command", "sudo"}              # each runs the word after it
+KEYWORDS = frozenset({"if", "then", "else", "elif", "fi", "do", "done", "while", "until", "for", "case",
+                      "esac", "in", "{", "}", "!"})
+RESERVED = KEYWORDS | WRAPPERS
+ASSIGNMENT = re.compile(r"^[A-Za-z_]\w*=")
+STARTERS = "|".join(re.escape(word) for word in sorted(WRAPPERS | {"env", "then", "do", "else", "!"}))
+COMMAND_START = rf"(?:^|[;&|(\n])[ \t]*(?:(?:{STARTERS})[ \t]+|[A-Za-z_]\w*=\S*[ \t]+)*"
 PYTHON_NAME = r"py(?:thon[\d.]*)?(?:\.exe)?"
 PROGRAM = (rf"(?P<program>\"(?:[^\"]*[\\/])?{PYTHON_NAME}\"|'(?:[^']*[\\/])?{PYTHON_NAME}'"
            rf"|(?:[^\s;&|()<>'\"]*[\\/])?{PYTHON_NAME})")
@@ -59,7 +65,7 @@ class Scan:
     unterminated: bool = False        # a quote, $( or backtick runs to the end: bash stops at unexpected EOF
     too_deep: bool = False            # $( ... ) nests past MAX_NESTING, and the scan stopped there
     carriage_returns: tuple[int, ...] = ()   # offsets of the $'...' Git Bash fails to parse, see ansi()
-    closes: Mapping[int, int] = MappingProxyType({})   # the offset after each $() and $(( )), by its $
+    closes: Mapping[int, int] = MappingProxyType({})   # after each $(), $(( )) and unquoted ${ }, by its $
 
 
 class Scanner:
@@ -124,7 +130,8 @@ class Scanner:
             elif text.startswith("$'", at):
                 at = self.ansi(at + 2)
             elif text.startswith("${", at):
-                at = self.parameter(at + 2, quoted=False)
+                self.closes[at] = self.parameter(at + 2, quoted=False)
+                at = self.closes[at]
             elif text.startswith("$(", at):
                 at = self.counted(at)
             elif char == "(" and stop:
@@ -420,10 +427,7 @@ class SimpleCommand:
 
 
 SEPARATORS = ";&|\n()"
-RESERVED = {"if", "then", "else", "elif", "fi", "do", "done", "while", "until", "for", "case", "esac", "in",
-            "{", "}", "!", "time", "exec", "command", "builtin", "nohup", "sudo"}
 LOOP_HEADS = {"for", "select"}
-ASSIGNMENT = re.compile(r"^[A-Za-z_]\w*=")
 REDIRECT = re.compile(r"(\d*|&)(>\||>>?|<>?)")
 
 
@@ -484,37 +488,41 @@ def split(command: str) -> tuple[SimpleCommand, ...]:
             else:
                 inputs.append(target)
             at = end
-        elif states[at] == NORMAL and text.startswith("<<<", at):
+        elif normal and text.startswith("<<<", at):
             at += 3                 # a here-string: its word goes to stdin, and is no argument and no file
             while at < len(text) and text[at] in " \t":
                 at += 1
             at = word_end(text, found, at)
-        elif states[at] == NORMAL and text.startswith("<<", at):
+        elif normal and text.startswith("<<", at):
             at = heredoc_word_end(text, at)
         else:
             end = word_end(text, found, at)
-            words.append(unquote(text, states, at, end))
+            if words or states[at] != ARITH:        # (( )) alone is arithmetic, and runs no program
+                words.append(unquote(text, states, at, end))
             at = end
     finish(len(text))
     return tuple(parsed)
 
 
-def subshells(command: str, states: bytes | bytearray) -> tuple[list[int], dict[int, int]]:
+def subshells(command: str, found: Scan) -> tuple[list[int], dict[int, int]]:
     """The subshell each offset runs in, by an id counted from 1 in the order each ( opens, 0 for the
-    command's own shell, and each subshell's parent. A $( substitution and (( arithmetic open none."""
-    group_of, parent, open_groups, current = [], {}, [], 0
-    for at, char in enumerate(command):
-        if states[at] == NORMAL and char == "(":
-            if at > 0 and command[at - 1] == "$":
-                open_groups.append(None)
-            else:
-                opened = len(parent) + 1
-                parent[opened], current = current, opened
-                open_groups.append(opened)
-        elif states[at] == NORMAL and char == ")" and open_groups:
-            if open_groups.pop() is not None:
-                current = parent[current]
+    command's own shell, and each subshell's parent. A $( ), $(( )) or ${ } opens none, and runs in the
+    subshell around it to the end the scan found for it."""
+    group_of: list[int] = []
+    parent: dict[int, int] = {}
+    current, at = 0, 0
+    while at < len(command):
+        if at in found.closes:
+            group_of += [current] * (found.closes[at] - at)
+            at = found.closes[at]
+            continue
+        if found.states[at] == NORMAL and command[at] == "(":
+            opened = len(parent) + 1
+            parent[opened], current = current, opened
+        elif found.states[at] == NORMAL and command[at] == ")" and current:
+            current = parent[current]
         group_of.append(current)
+        at += 1
     return group_of, parent
 
 
@@ -699,7 +707,7 @@ def pipelines(command: str) -> tuple[Pipeline, ...] | None:
     simples = commands(command)
     if not simples:
         return ()
-    top = structure(command, scan(command).states)
+    top = structure(command, scan(command))
 
     def normal(start: int, end: int) -> str:
         return "".join(command[at] if top[at] else " " for at in range(start, end))
@@ -726,24 +734,15 @@ def pipelines(command: str) -> tuple[Pipeline, ...] | None:
     return tuple(found_lines)
 
 
-def structure(command: str, states: bytes) -> bytearray:
+def structure(command: str, found: Scan) -> bytearray:
     """1 for each character bash reads as the command's own structure: outside quotes, comments, heredoc
-    bodies and every $( ) or ${ } expansion."""
-    top, depth, at = bytearray(len(command)), 0, 0
+    bodies and every $( ), $(( )) or ${ } expansion, which ends where the scan found it."""
+    top, at = bytearray(len(command)), 0
     while at < len(command):
-        char = command[at]
-        if states[at] != NORMAL:
-            at += 1
+        if at in found.closes:
+            at = found.closes[at]
             continue
-        if command.startswith(("$(", "${"), at):
-            depth, at = depth + 1, at + 2
-            continue
-        if depth and char in "({":
-            depth += 1
-        elif depth and char in ")}":
-            depth -= 1
-        elif not depth:
-            top[at] = 1
+        top[at] = found.states[at] == NORMAL
         at += 1
     return top
 

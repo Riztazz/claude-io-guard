@@ -312,6 +312,16 @@ class ShapesBashReadsItsOwnWay(unittest.TestCase):
                 self.assertEqual((found[0].words[0], shell.scan(command).unterminated), ("echo", True),
                                  "the open quote runs to the end, and every offset stays inside the command")
 
+    def test_a_subshell_holds_past_a_case_pattern_inside_its_substitution(self):
+        command = "(echo $(case x in a) b;; esac); cd sub); ls"
+        group_of, _ = shell.subshells(command, shell.scan(command))
+        self.assertEqual((group_of[command.index("cd sub")], group_of[command.index("ls")]), (1, 0),
+                         "the pattern's ) closes neither the substitution nor the subshell")
+
+    def test_arithmetic_on_its_own_runs_no_command(self):
+        self.assertEqual([each.name for each in shell.commands("(( i++ )); echo $i; x=$((1+2))")], ["echo"],
+                         "(( )) names no program, and an assignment of $(( )) is no command either")
+
     def test_a_command_inside_arithmetic_stays_visible(self):
         command = "echo $(( $(pgrep python) + 1 ))"
         self.assertIn("pgrep python", shell.blanked(command),

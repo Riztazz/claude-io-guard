@@ -896,8 +896,13 @@ def split(command: str) -> tuple[SimpleCommand, ...]
 class SimpleCommand: words, redirects, inputs, span, name  # words unquoted, leading assignments dropped
 class Redirect: target, append, fd                          # a file only: 2>&1 and >&2 are never one, and
                                                             # >| and >&file are (task 103)
-def subshells(command: str, states: bytes) -> tuple[list[int], dict[int, int]]   # task 103: the ( ) group
-                                                            # of each offset, and each group's parent
+def subshells(command: str, found: Scan) -> tuple[list[int], dict[int, int]]   # task 103: the ( ) group
+                                                            # of each offset, and each group's parent. It
+                                                            # and structure() step over each expansion by
+                                                            # Scan.closes, task 167
+RULE_WRAPPERS, WRAPPERS, KEYWORDS, RESERVED, ASSIGNMENT     # one declaration of the words before a program,
+                                                            # read by commands, rules.unwrapped and the
+                                                            # python -c regex, task 167
 # shell.py, task 13
 Scan.backticks, Scan.unterminated           # unescaped backticks in double quotes, a quote, $( or backtick
                                             # left open at the end (task 161)
