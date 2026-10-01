@@ -922,6 +922,12 @@ def file_calls(command: str) -> tuple[str, ...]             # the literal paths 
                                                             # and a (Resolve-Path x) given as one, task 103
 # pwsh.py, task 13
 def blanked(command: str) -> str                            # strings and comments as spaces, code left
+# pwsh.py, task 165
+def scan(command: str) -> bytes                             # CODE, STRING or COMMENT per character, one walk
+                                                            # kept per command for commands, blanked and
+                                                            # script_blocks. A here-string closes only at a
+                                                            # line's start, and a $( ) in a string keeps its
+                                                            # own quotes
 # pwsh.py, task 97
 def script_blocks(command: str) -> tuple[str, ...]          # the text of each outermost { }, strings left out
 

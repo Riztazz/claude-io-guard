@@ -29,6 +29,26 @@ class PowerShellCommands(unittest.TestCase):
         self.assertEqual((worker.is_alive(), found), (False, shapes),
                          "a ), ] or } that closes nothing is skipped, and the parse ends")
 
+    def test_a_here_string_closes_only_at_the_start_of_a_line(self):
+        closed = "Set-Content a.txt @'\nx\n'@\nStop-Process -Name python"
+        indented = "Set-Content a.txt @'\nx\n  '@\nStop-Process -Name python"
+        self.assertEqual(("Stop-Process" in pwsh.blanked(closed), "Stop-Process" in pwsh.blanked(indented)),
+                         (True, False), "PowerShell refuses an indented '@, so the here-string runs on")
+
+    def test_a_subexpression_keeps_its_own_quotes_inside_a_string(self):
+        command = 'Write-Host "a $(\'b\'.Replace("b","c")) d"; Stop-Process -Name python'
+        self.assertEqual(([each.name for each in pwsh.commands(command)], pwsh.blanked(command).split()),
+                         (["write-host", "stop-process"],
+                          ["Write-Host", ";", "Stop-Process", "-Name", "python"]),
+                         "the inner quotes belong to $( ), and the string ends at its own quote")
+
+    def test_one_walk_gives_every_reader_its_states(self):
+        command = "Get-Item 'a; b' # c; d\nWrite-Host x"
+        self.assertEqual((pwsh.scan(command), [each.words for each in pwsh.commands(command)]),
+                         (bytes([0] * 9 + [1] * 6 + [0] + [2] * 6 + [0] * 13),
+                          [("Get-Item", "a; b"), ("Write-Host", "x")]),
+                         "code, a string, a comment, and code again, read once and shared")
+
     def test_a_call_operator_is_not_the_program(self):
         found = pwsh.commands('& "C:\\tools\\x.exe" -a > out.txt; . ./setup.ps1')
         self.assertEqual([each.name for each in found], ["x", "setup.ps1"],

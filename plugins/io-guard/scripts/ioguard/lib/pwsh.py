@@ -5,10 +5,12 @@ write calls.
 The reader follows PowerShell's quoting: '...' with '' inside, "..." with backtick escapes, the here-strings
 @'...'@ and @"..."@, # and <# #> comments. It splits at ; | && || and newlines outside them.
 """
+import functools
 import re
 
 from ioguard.lib.shell import Redirect, SimpleCommand
 
+CODE, STRING, COMMENT = range(3)
 REDIRECT = re.compile(r"(\d|\*)?(>>?)(&\d)?")
 FILE_CALL = re.compile(r"\[(?:System\.)?IO\.File\]::(?:WriteAll\w*|AppendAll\w*|Create|Open\w*)\(\s*"
                        r"(?:(['\"])(?P<path>[^'\"]+)\1"
@@ -17,9 +19,11 @@ FILE_CALL = re.compile(r"\[(?:System\.)?IO\.File\]::(?:WriteAll\w*|AppendAll\w*|
 
 
 def quoted_end(text: str, at: int) -> int:
-    """The offset after the string, here-string or comment that starts at at."""
+    """The offset after the string, here-string or comment that starts at at. A here-string closes only at
+    the start of a line, as PowerShell requires. A $( ) inside a double-quoted string runs code, so its own
+    strings never close the outer one."""
     if text.startswith(("@'", '@"'), at) and text[at + 2:at + 3] in ("\n", "\r"):
-        close = re.compile(r"^\s*" + re.escape(text[at + 1]) + "@", re.M).search(text, at + 2)
+        close = re.compile(r"^" + re.escape(text[at + 1]) + "@", re.M).search(text, at + 2)
         return len(text) if close is None else close.end()
     if text.startswith("<#", at):
         close = text.find("#>", at + 2)
@@ -29,14 +33,56 @@ def quoted_end(text: str, at: int) -> int:
     while at < len(text):
         if quote == '"' and text[at] == "`":
             at += 2
-            continue
-        if text[at] == quote:
-            if text[at + 1:at + 2] == quote:
-                at += 2
-                continue
+        elif quote == '"' and text.startswith("$(", at):
+            at = subexpression_end(text, at + 2)
+        elif text[at] == quote and text[at + 1:at + 2] == quote:
+            at += 2
+        elif text[at] == quote:
             return at + 1
+        else:
+            at += 1
+    return min(at, len(text))
+
+
+def subexpression_end(text: str, at: int) -> int:
+    """The offset after the ) that closes a $( whose code starts at at, past the strings inside it."""
+    depth = 0
+    while at < len(text):
+        char = text[at]
+        if char in "'\"":
+            at = quoted_end(text, at)
+            continue
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            if depth == 0:
+                return at + 1
+            depth -= 1
         at += 1
     return at
+
+
+@functools.lru_cache(maxsize=64)
+def scan(command: str) -> bytes:
+    """The state of each character of the command: CODE, STRING for a string or here-string with its quotes,
+    or COMMENT. One walk serves commands, blanked and script_blocks."""
+    marks, at = bytearray(len(command)), 0
+    while at < len(command):
+        char = command[at]
+        here = command.startswith(("@'", '@"'), at) and command[at + 2:at + 3] in ("\n", "\r")
+        if here or char in "'\"":
+            end, state = quoted_end(command, at), STRING
+        elif command.startswith("<#", at):
+            end, state = quoted_end(command, at), COMMENT
+        elif char == "#" and (at == 0 or command[at - 1] in " \t\n;|("):
+            end = command.find("\n", at)
+            end, state = len(command) if end < 0 else end, COMMENT
+        else:
+            at += 1
+            continue
+        marks[at:end] = bytes([state]) * (end - at)
+        at = end
+    return bytes(marks)
 
 
 def unquote(word: str) -> str:
@@ -48,7 +94,7 @@ def unquote(word: str) -> str:
 
 def commands(command: str) -> tuple[SimpleCommand, ...]:
     """The simple commands of a PowerShell command, with their words unquoted and their file redirects."""
-    text, parsed, at, start = command, [], 0, 0
+    text, states, parsed, at, start = command, scan(command), [], 0, 0
     words: list[str] = []
     redirects: list[Redirect] = []
 
@@ -64,31 +110,27 @@ def commands(command: str) -> tuple[SimpleCommand, ...]:
         words, redirects = [], []
 
     while at < len(text):
-        char = text[at]
-        if char == "#" and (at == 0 or text[at - 1] in " \t\n;|("):
-            end = text.find("\n", at)
-            at = len(text) if end < 0 else end
-        elif text.startswith("<#", at):
-            at = quoted_end(text, at)
-        elif char in ";\n|" or text.startswith("&&", at):
+        char, code = text[at], states[at] == CODE
+        if states[at] == COMMENT or (code and char in " \t\r"):
+            at += 1
+        elif code and (char in ";\n|" or text.startswith("&&", at)):
             finish(at)
             at += 2 if text.startswith(("&&", "||"), at) else 1
             start = at
-        elif char in " \t\r":
-            at += 1
-        elif (match := REDIRECT.match(text, at)) and (at == 0 or text[at - 1] in " \t" or text[at] == ">"):
+        elif (code and (match := REDIRECT.match(text, at))
+              and (at == 0 or text[at - 1] in " \t" or text[at] == ">")):
             at = match.end()
             if match[3]:
                 continue
             while at < len(text) and text[at] in " \t":
                 at += 1
-            end = word_at(text, at)
+            end = word_at(text, states, at)
             if end > at:
                 redirects.append(Redirect(unquote(text[at:end]), match[2] == ">>",
                                           None if match[1] == "*" else int(match[1] or 1)))
             at = end
         else:
-            end = word_at(text, at)
+            end = word_at(text, states, at)
             # A ), ] or } that closes nothing is a word of no length, which PowerShell refuses to parse.
             if end == at:
                 at += 1
@@ -99,14 +141,13 @@ def commands(command: str) -> tuple[SimpleCommand, ...]:
     return tuple(parsed)
 
 
-def word_at(text: str, at: int) -> int:
+def word_at(text: str, states: bytes, at: int) -> int:
     """The end of the word at at, with strings, here-strings and bracketed parts kept whole."""
     depth = 0
     while at < len(text):
         char = text[at]
-        here = text.startswith(("@'", '@"'), at) and text[at + 2:at + 3] in ("\n", "\r")
-        if here or char in "'\"":
-            at = quoted_end(text, at)
+        if states[at] != CODE:
+            at += 1
             continue
         if char in "([{":
             depth += 1
@@ -123,22 +164,8 @@ def word_at(text: str, at: int) -> int:
 def blanked(command: str) -> str:
     """The command with each string, here-string and comment turned into spaces, so a search of what is left
     finds only code. Newlines stay, so an offset still points at the same place."""
-    out, at = [], 0
-    while at < len(command):
-        char = command[at]
-        here = command.startswith(("@'", '@"'), at) and command[at + 2:at + 3] in ("\n", "\r")
-        if here or char in "'\"" or command.startswith("<#", at):
-            end = quoted_end(command, at)
-        elif char == "#" and (at == 0 or command[at - 1] in " \t\n;|("):
-            end = command.find("\n", at)
-            end = len(command) if end < 0 else end
-        else:
-            out.append(char)
-            at += 1
-            continue
-        out.append(re.sub(r"[^\n]", " ", command[at:end]))
-        at = end
-    return "".join(out)
+    states = scan(command)
+    return "".join(char if states[at] == CODE or char == "\n" else " " for at, char in enumerate(command))
 
 
 def script_blocks(command: str) -> tuple[str, ...]:
