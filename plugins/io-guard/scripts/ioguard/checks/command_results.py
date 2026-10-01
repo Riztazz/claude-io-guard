@@ -112,7 +112,7 @@ class Reading:
         self.command = event.command or ""
         self.bash = event.tool is Tool.BASH
         self.found = shell.scan(self.command) if self.bash else None
-        self.simples = shell.commands(self.command, self.found) if self.bash else pwsh.commands(self.command)
+        self.simples = shell.commands(self.command) if self.bash else pwsh.commands(self.command)
         self.failed = event.kind is HookEvent.POST_TOOL_USE_FAILURE
         self.response = {} if self.failed else dict(event.tool_response or {})
         self.code, self.text = self.printed()
@@ -241,7 +241,7 @@ class Reading:
         command's exit code in the output."""
         if not self.bash or self.failed or "pipefail" in self.command:
             return None
-        lines = shell.pipelines(self.command, self.found)
+        lines = shell.pipelines(self.command)
         if not lines or len(lines[-1].commands) < 2:
             return None
         printed = any(simple.name in ("echo", "printf") and any("$?" in word for word in simple.words[1:])
@@ -272,7 +272,7 @@ class Reading:
         if not (self.bash and self.failed and self.code) or self.errors or SHELL_ERROR.search(self.text):
             return None
         exits: Mapping[str, Mapping[str, str]] = self.options["benign_exits"]
-        candidates, answers = shell.exit_candidates(self.command, self.found), []
+        candidates, answers = shell.exit_candidates(self.command), []
         for simple in candidates:
             name = next((name for name in exits if shell.matching(simple, [name])), None)
             meaning = None if name is None else exits[name].get(str(self.code))

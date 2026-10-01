@@ -97,15 +97,14 @@ def moved_to(simple: shell.SimpleCommand, cwd: Path | None, host: Host) -> Path 
     return resolve(arguments[0], cwd, host)
 
 
-def located(command: str, found: shell.Scan, start: Path | None,
-            host: Host) -> list[tuple[shell.SimpleCommand, Path | None]]:
+def located(command: str, start: Path | None, host: Host) -> list[tuple[shell.SimpleCommand, Path | None]]:
     """Each simple command with the folder it runs in, following each cd, pushd and popd, and leaving them
     out. A cd inside ( ) holds for that subshell only."""
-    group_of, parent = shell.subshells(command, found.states)
+    group_of, parent = shell.subshells(command, shell.scan(command).states)
     cwd_of: dict[int, Path | None] = {0: start}
     pushed: list[Path | None] = []
     placed = []
-    for simple in shell.commands(command, found):
+    for simple in shell.commands(command):
         group = group_of[simple.span[0]] if simple.span[0] < len(group_of) else 0
         if group not in cwd_of:
             chain = [group]
@@ -127,7 +126,7 @@ def located(command: str, found: shell.Scan, start: Path | None,
 def script_files(command: str, cwd: Path | None, host: Host) -> list[Script]:
     """The script files the command's interpreters run, up to SCRIPT_BYTES each, that can be read."""
     scripts = []
-    for simple, where in located(command, shell.scan(command), cwd, host):
+    for simple, where in located(command, cwd, host):
         run = shell.script_run(simple)
         path = None if run is None else resolve(run.script, where, host)
         if path is None:
@@ -148,7 +147,7 @@ def bash_writes(command: str, cwd: Path | None, host: Host, start: Path | None =
     found = shell.scan(command)
     writes: list[Write] = []
     interpreter, script_cwd = False, start or cwd
-    for simple, where in located(command, found, start or cwd, host):
+    for simple, where in located(command, start or cwd, host):
         writes += command_writes(simple, where, cwd, host, depth)
         words = run_words(simple)
         if not interpreter and words and shell.INTERPRETERS.match(program_name(words[0])):
@@ -160,7 +159,8 @@ def bash_writes(command: str, cwd: Path | None, host: Host, start: Path | None =
     scripts = script_files(command, cwd, host) if scripts is None else scripts
     writes += [Write(target, "a script file", script.cwd)
                for script in scripts for target in script_targets(script.body)]
-    return writes
+    # A python -c body is read by its program above and by the scan, which also finds one inside $().
+    return list(dict.fromkeys(writes))
 
 
 def run_words(simple: shell.SimpleCommand) -> list[str]:

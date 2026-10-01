@@ -4,10 +4,17 @@ import subprocess
 import sys
 import time
 import unittest
+import uuid
 from pathlib import Path
+from unittest import mock
 
+from ioguard.checks.pipeline import Pipeline
+from ioguard.checks.registry import default_registry
 from ioguard.lib import shell
-from tests.support import shells
+from ioguard.lib.context import Context
+from ioguard.lib.events import Event, Surface
+from ioguard.lib.platform import Platform
+from tests.support import events, shells
 from tests.support.project import TemporaryProject
 
 BASH = shells.bash()
@@ -257,6 +264,28 @@ class PathsAreQuotedForBash(unittest.TestCase):
     def test_the_four_characters_bash_reads_in_double_quotes_are_escaped(self):
         self.assertEqual(shell.shell_path('a"b$c`d\\e'), '"a\\"b\\$c\\`d\\\\e"',
                          "the path arrives as written")
+
+
+class ACommandIsScannedOnce(unittest.TestCase):
+    def test_every_check_on_one_bash_call_shares_one_scan_and_one_split(self):
+        command = f"echo {uuid.uuid4().hex} > out.txt && git status | grep -c M; python -c 'print(1)'"
+        raw = events.bash(command, Path("C:/project"))
+        event = Event.from_hook_json(raw, Surface.MCP_HOOK, Platform("win32", True))
+        runs = {"scan": 0, "split": 0}
+        real_run, real_split = shell.Scanner.run, shell.split
+
+        def counted_run(scanner):
+            runs["scan"] += 1
+            return real_run(scanner)
+
+        def counted_split(text):
+            runs["split"] += 1
+            return real_split(text)
+        with mock.patch.object(shell.Scanner, "run", counted_run), mock.patch.object(shell, "split",
+                                                                                   counted_split):
+            Pipeline(default_registry()).run(event, Context.fake(platform=Platform("win32", True)))
+        self.assertEqual(runs, {"scan": 1, "split": 1},
+                         "the checks before a call read one scan and one list of simple commands")
 
 
 class QuotingBashReadsDifferently(unittest.TestCase):

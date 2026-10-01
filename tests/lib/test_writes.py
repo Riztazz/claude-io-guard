@@ -29,5 +29,12 @@ class OneCommandsWrites(unittest.TestCase):
                                  "a simple command's writes need no other command around it")
 
 
+class AWholeCommandsWrites(unittest.TestCase):
+    def test_a_python_c_body_names_each_target_once(self):
+        found = writes.bash_writes("""python -c "open('a.txt', 'w').write('x')\"""", CWD, HOST, scripts=[])
+        self.assertEqual(found, [writes.Write("a.txt", "a script body", CWD)],
+                         "the body is read by its program and by the scan, and its target is one write")
+
+
 if __name__ == "__main__":
     unittest.main()

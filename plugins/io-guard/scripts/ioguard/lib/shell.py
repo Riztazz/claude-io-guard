@@ -6,6 +6,7 @@ The scanner follows bash's quoting: single quotes, double quotes and their four 
 command substitution, arithmetic, comments and heredoc bodies. It holds no policy. The checks decide what to
 move, rewrite and refuse.
 """
+import functools
 import json
 import re
 import shlex
@@ -341,7 +342,10 @@ def quoted_word(text: str, at: int) -> tuple[int, str, bool] | None:
     return end, body, expands
 
 
+@functools.lru_cache(maxsize=64)
 def scan(command: str) -> Scan:
+    """The command's Scan. Every check of one call reads the same command, and a Scan is frozen, so the scan
+    runs once and each later reader shares it."""
     return Scanner(command).run()
 
 
@@ -372,11 +376,16 @@ ASSIGNMENT = re.compile(r"^[A-Za-z_]\w*=")
 REDIRECT = re.compile(r"(\d*|&)(>\||>>?|<>?)")
 
 
-def commands(command: str, found: Scan | None = None) -> tuple[SimpleCommand, ...]:
+@functools.lru_cache(maxsize=64)
+def commands(command: str) -> tuple[SimpleCommand, ...]:
+    """The command's simple commands from split, kept once per command as scan keeps its Scan."""
+    return split(command)
+
+
+def split(command: str) -> tuple[SimpleCommand, ...]:
     """The simple commands of a Bash command, split at the operators bash reads outside quotes, heredoc bodies
     and comments. Command substitutions stay inside their word."""
-    found = found or scan(command)
-    states, text = found.states, command
+    states, text = scan(command).states, command
     parsed, at, start = [], 0, 0
     words: list[str] = []
     redirects: list[Redirect] = []
@@ -501,11 +510,11 @@ def unquote(text: str, states: bytes | bytearray, start: int, end: int) -> str:
     return "".join(out)
 
 
-def blanked(command: str, found: Scan | None = None) -> str:
+def blanked(command: str) -> str:
     """The command with the text inside each pair of quotes, each comment and each heredoc body turned into
     spaces, so a search of what is left finds only code. The quote marks stay, and every offset still points
     at the same place."""
-    states = (found or scan(command)).states
+    states = scan(command).states
     return "".join(char if states[at] == NORMAL or char == "\n" else " " for at, char in enumerate(command))
 
 
@@ -625,16 +634,15 @@ OPERATORS = frozenset({"&&", "||", "|", ";", "&", "\n"})
 LOOP_WORDS = frozenset({"do", "done"})
 
 
-def pipelines(command: str, found: Scan | None = None) -> tuple[Pipeline, ...] | None:
+def pipelines(command: str) -> tuple[Pipeline, ...] | None:
     """The pipelines of a Bash command in order, each with the operator that joins it to the one before. None
     when parentheses, braces, if, case or ! group its commands, or when a command made only of assignments
     ends the command or joins the next with &&, || or |, because the order alone then no longer says which
     command ran last."""
-    found = found or scan(command)
-    simples = commands(command, found)
+    simples = commands(command)
     if not simples:
         return ()
-    top = structure(command, found.states)
+    top = structure(command, scan(command).states)
 
     def normal(start: int, end: int) -> str:
         return "".join(command[at] if top[at] else " " for at in range(start, end))
@@ -683,11 +691,11 @@ def structure(command: str, states: bytes) -> bytearray:
     return top
 
 
-def exit_candidates(command: str, found: Scan | None = None) -> tuple[SimpleCommand, ...]:
+def exit_candidates(command: str) -> tuple[SimpleCommand, ...]:
     """The simple commands whose exit code can be the whole command's, the last to run first: the last command
     of each pipeline in the && chain that ends the command, or every command of those pipelines under
     pipefail. () when pipelines cannot say."""
-    lines = pipelines(command, found)
+    lines = pipelines(command)
     chosen: list[SimpleCommand] = []
     for line in reversed(lines or ()):
         chosen += reversed(line.commands) if "pipefail" in command else [line.commands[-1]]

@@ -284,7 +284,7 @@ class Lint(Check):
             findings.add(Code.COMMAND_TOO_DEEP, f"This command nests $() more than {shell.MAX_NESTING} deep, "
                          f"past what io-guard reads, so its checks cannot see all of it.",
                          "Put the inner commands in a script file with the Write tool, then run the file.")
-        simples = shell.commands(command, found)
+        simples = shell.commands(command)
         bash_dialect(command, found, simples, findings)
         if found.backticks:
             at = found.backticks[0]
@@ -310,7 +310,7 @@ class Lint(Check):
                          f"shown is {into}'s, not {label}'s.", "Read the output for the result, not the exit "
                          "code.", command=label)
         unportable(command, found, simples, ctx, findings)
-        broad_stop(command, shell.blanked(command, found), findings)
+        broad_stop(command, shell.blanked(command), findings)
         return self.trailing_backslashes(command, found)
 
     def trailing_backslashes(self, command: str, found: shell.Scan) -> Rewrite | None:

@@ -341,7 +341,7 @@ class Touched(Check):
             return ()
         command = event.command or ""
         by_git = [git_changes(simple, cwd, ctx)
-                  for simple, cwd in located(command, shell.scan(command), event.cwd, Host.of(ctx))]
+                  for simple, cwd in located(command, event.cwd, Host.of(ctx))]
         if None in by_git:
             return ()
         named_by_git = frozenset().union(*by_git)

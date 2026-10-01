@@ -76,7 +76,7 @@ def powershell_messages(command: str, event: Event, cwd: Path, ctx: Context) -> 
 
 def bash_messages(command: str, event: Event, cwd: Path, ctx: Context) -> list[Message]:
     scan = shell.scan(command)
-    placed = located(command, scan, cwd, Host.of(ctx))
+    placed = located(command, cwd, Host.of(ctx))
     commits = [(simple, where, each) for simple, where in placed
                if (each := commit_message.sources(simple.words)) is not None]
     written = {}

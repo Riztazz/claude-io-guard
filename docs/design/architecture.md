@@ -878,14 +878,16 @@ def scan(command: str) -> Scan              # heredocs, python -c bodies, halvin
                                             # and too_deep past MAX_NESTING levels of $(), task 100. A -c
                                             # body is found behind -X and -W values and in -Bc, task 108.
                                             # carriage_returns, task 159, and a $() inside $(( )) is
-                                            # scanned as one
+                                            # scanned as one. Kept per command (lru_cache, 64), so every
+                                            # check of one call shares one Scan, task 166
 def ansi_decoded(text: str) -> str          # a $'...' quote's text as bash decodes it, task 159
 def budget_length(command: str) -> int      # UTF-8 bytes, apostrophes count four
 def moved(command: str, heredocs: Mapping[Heredoc, str], bodies: Mapping[InlineBody, str]) -> str
 def shell_path(path: str) -> str            # a path as a double-quoted bash word
 def exec_file(path: str) -> str             # the python -c argument that runs a file as -c ran its body
 # shell.py, task 12
-def commands(command: str, found: Optional[Scan] = None) -> tuple[SimpleCommand, ...]
+def commands(command: str) -> tuple[SimpleCommand, ...]   # split()'s result, kept per command like scan
+def split(command: str) -> tuple[SimpleCommand, ...]
                                             # split at ; & | ( ) and newlines outside quotes, bodies, comments
 class SimpleCommand: words, redirects, inputs, span, name  # words unquoted, leading assignments dropped
 class Redirect: target, append, fd                          # a file only: 2>&1 and >&2 are never one, and

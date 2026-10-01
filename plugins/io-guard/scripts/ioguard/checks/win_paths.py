@@ -79,7 +79,7 @@ class WinPaths(Check):
     def run(self, event: Event, ctx: Context) -> Decision:
         command = event.command or ""
         found = shell.scan(command)
-        simples = shell.commands(command, found)
+        simples = shell.commands(command)
         edits: list[tuple[int, int, str]] = []
         notes: list[str] = []
         codes: list[Code] = []

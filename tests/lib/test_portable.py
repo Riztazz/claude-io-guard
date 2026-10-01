@@ -7,7 +7,7 @@ from ioguard.lib import portable, shell
 
 def bash4(command: str) -> list[str]:
     found = shell.scan(command)
-    return [each.what for each in portable.bash4(command, found.states, shell.commands(command, found))]
+    return [each.what for each in portable.bash4(command, found.states, shell.commands(command))]
 
 
 def gnu(command: str) -> list[str]:
