@@ -65,6 +65,11 @@ the release, and the release follows the measured result.
   line, D19 and the EXT catalog row, and `docs/design/review.md`'s decision table. Those are gone or reworded, and
   `git grep` for the scan's name and for `EXT-` finds nothing. The history keeps the four mentions, with no
   finding in them, so nothing needs rewriting.
+- **Step 1 again, on 2026-10-01**, after the lead's push up to `ad45b47`. The tracked tree names none of the
+  other person's scan: `git grep` finds no `EXT-` id, none of its sources' names, and none of the 79 row ids
+  of the findings map's Part F. No file under `corpus/`, `workbench/`, `reports/` or `.claude/tasks/baseline/`
+  is tracked, or ever was in any commit. No token or key pattern is tracked. Task files still name the lead's
+  local paths and projects, as every task has since task 01. D19 publishes those.
 - **Step 3, in part:** the README's settings already carry the commit and push rules (task 29), and its
   install steps name the marketplace. The full check waits for the release.
 - **Step 6, on the machine:** io-guard loads on Windows from the marketplace install (task 30), and `live-skill`
