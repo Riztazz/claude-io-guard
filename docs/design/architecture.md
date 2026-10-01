@@ -35,7 +35,8 @@ plugins/io-guard/
         diagnosis.py               Diagnosis, Failed, Wording: what a failed file call gets back, for the
                                    diagnose checks and io.edit and io.splice
         writes.py                  Host, Write, located, resolve, targets, bash_writes, powershell_writes: the
-                                   files a shell command writes, and the folder each of its commands runs in
+                                   files a shell command writes, and the folder each of its commands runs in.
+                                   powershell_writes reads each { } script block too (task 163)
         commands.py                command_for, filled: the user's verify and format commands per extension
         anchors.py                 find, blind, closest, unique_anchor, edit_view, file_view, joins: where an
                                    old_string is, or nearly is, and where an Edit joins two words
@@ -911,7 +912,9 @@ def pipelines(command: str) -> Optional[tuple[Pipeline, ...]]   # with &&, || or
 def exit_candidates(command: str) -> tuple[SimpleCommand, ...]  # those that can have set the exit code, last first
 
 # pwsh.py, task 12
-def commands(command: str) -> tuple[SimpleCommand, ...]     # split at ; | && || and newlines, here-strings whole
+def commands(command: str) -> tuple[SimpleCommand, ...]     # split at ; | && || and newlines, here-strings whole.
+                                                            # A call through & or . names the program after
+                                                            # it, unless that is a $variable, task 163
 def file_calls(command: str) -> tuple[str, ...]             # the literal paths [IO.File] write calls name,
                                                             # and a (Resolve-Path x) given as one, task 103
 # pwsh.py, task 13

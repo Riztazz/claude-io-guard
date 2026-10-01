@@ -28,6 +28,9 @@ POWERSHELL = {
     "Stop-Process -Id 40564 -Force; Get-CimInstance Win32_Process -Filter \"Name LIKE 'python%'\" | "
     "Select-Object ProcessId": None,
     "Get-Process python": None,
+    "Get-Process | Where-Object {$_.ProcessName -eq 'python'} | Stop-Process -Force": "every python process",
+    "Get-Process | ? { $_.Path -like '*node*' } | kill": "every node process",
+    "Get-Process | Where-Object { $_.Id -eq 25300 } | Stop-Process": None,
     "Write-Output 'Stop-Process -Name python'": None,
     "Get-CimInstance Win32_Process | Select-Object Name": None,
 }
@@ -41,6 +44,7 @@ BASH = {
     "wmic process where \"name='node.exe'\" delete": "every process wmic matches",
     "killall node": "every node process",
     "killall Xcode": None,
+    "pkill -F run.pid": None,
     "taskkill //F //IM UnrealEditor.exe": None,
     "kill 1234": None,
     "echo 'pkill -f x'": None,

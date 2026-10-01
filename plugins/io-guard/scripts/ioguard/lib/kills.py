@@ -13,10 +13,12 @@ RUNTIMES = re.compile(r"(?<![\w.-])(?:python[\d.]*w?|py|node|pwsh|powershell|bas
                       r"|perl|deno|bun|uv)(?:\.exe)?(?![\w.-])", re.I)
 NAMED = re.compile(r"\b(?:stop-process|spps|kill)\b[^;|\n]*?\s-(?:name|processname)\b[^;|\n]*"
                    r"|\btaskkill(?:\.exe)?\b[^;|\n]*?\s(?:/{1,2}|-)im\b[^;|\n]*"
-                   r"|(?:^|(?<=[\s;&|(]))(?:pkill|killall)(?:\.exe)?\s+(?!-f\b)[^;|&\n]*"
-                   r"|\b(?:get-process|gps)\b(?![^;|\n]*\s-id\b)[^;|\n]*\|\s*(?:stop-process|spps|kill)\b",
+                   r"|(?:^|(?<=[\s;&|(]))(?:pkill|killall)(?:\.exe)?\s+(?!(?-i:-f)\b)[^;|&\n]*"
+                   r"|\b(?:get-process|gps)\b(?![^;|\n]*\s-id\b)[^;|\n]*"
+                   r"(?:\|\s*(?:where-object|where|\?(?=[\s{]))[^;|\n]*)?\|\s*(?:stop-process|spps|kill)\b",
                    re.I)
-MATCHED = re.compile(r"(?:^|(?<=[\s;&|(]))pkill\s+(?:-\S+\s+)*-f\b|\btaskkill\b[^;|\n]*?\s(?:/{1,2}|-)fi\b"
+MATCHED = re.compile(r"(?:^|(?<=[\s;&|(]))pkill\s+(?:-\S+\s+)*(?-i:-f)\b"
+                     r"|\btaskkill\b[^;|\n]*?\s(?:/{1,2}|-)fi\b"
                      r"|\bwmic\b[^;|\n]*\bprocess\b[^;|\n]*\b(?:delete|call\s+terminate)\b", re.I)
 LISTS = re.compile(r"\bwin32_process\b|\bpgrep\b|(?:^|(?<=[\s;&|(]))ps\s+(?:aux|-e|-ef|-A)\b", re.I)
 NAME_FILTER = re.compile(r"\bname\s*(?:=|like)\s*'([^']*)'", re.I)

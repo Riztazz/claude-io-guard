@@ -29,6 +29,22 @@ class OneCommandsWrites(unittest.TestCase):
                                  "a simple command's writes need no other command around it")
 
 
+class APowerShellCommandsWrites(unittest.TestCase):
+    def test_writes_inside_script_blocks_and_after_value_options_are_found(self):
+        cases = {"if (Test-Path x) { Set-Content -Path a.txt -Value 1 }": ["a.txt"],
+                 "Get-ChildItem | ForEach-Object { Out-File b.txt }": ["b.txt"],
+                 "& { 'x' > c.txt }": ["c.txt"],
+                 "New-Item -ItemType File -Force foo.txt": ["foo.txt"],
+                 "New-Item -ItemType Directory -Force some/dir": ["some/dir"],
+                 "Set-Content d.txt -Value x -NoNewline": ["d.txt"],
+                 "Set-Content -Encoding utf8 e.txt x": ["e.txt"],
+                 "Get-ChildItem | ForEach-Object { $_.Name }": []}
+        found = {command: [write.target for write in writes.powershell_writes(command, CWD, HOST)]
+                 for command in cases}
+        self.assertEqual(found, cases, "a write inside { } is still a write, and an option's value is not "
+                                       "the path")
+
+
 class AWholeCommandsWrites(unittest.TestCase):
     def test_a_python_c_body_names_each_target_once(self):
         found = writes.bash_writes("""python -c "open('a.txt', 'w').write('x')\"""", CWD, HOST, scripts=[])

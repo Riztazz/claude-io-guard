@@ -29,6 +29,11 @@ class PowerShellCommands(unittest.TestCase):
         self.assertEqual((worker.is_alive(), found), (False, shapes),
                          "a ), ] or } that closes nothing is skipped, and the parse ends")
 
+    def test_a_call_operator_is_not_the_program(self):
+        found = pwsh.commands('& "C:\\tools\\x.exe" -a > out.txt; . ./setup.ps1')
+        self.assertEqual([each.name for each in found], ["x", "setup.ps1"],
+                         "& and . run the word after them, which is the program")
+
     def test_a_here_string_is_one_word(self):
         found = pwsh.commands("git commit -m @'\nfirst | line; two\n'@ 2>&1 | Select-Object -Last 6")
         self.assertEqual([command.name for command in found], ["git", "select-object"],

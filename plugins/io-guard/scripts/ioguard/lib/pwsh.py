@@ -55,7 +55,11 @@ def commands(command: str) -> tuple[SimpleCommand, ...]:
     def finish(end: int) -> None:
         nonlocal words, redirects
         if words or redirects:
-            unquoted = tuple(unquote(word) for word in words)
+            # & and . run the word after them. A call through a $variable keeps its operator, which tells
+            # rules.statement it is a call and not an expression.
+            literal = len(words) > 1 and words[0] in ("&", ".") and not words[1].startswith("$")
+            called = words[1:] if literal else words
+            unquoted = tuple(unquote(word) for word in called)
             parsed.append(SimpleCommand(unquoted, tuple(redirects), (), (start, end)))
         words, redirects = [], []
 

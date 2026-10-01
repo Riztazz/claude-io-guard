@@ -34,6 +34,8 @@ PS_WRITERS = {"set-content": ("-path", "-literalpath"), "sc": ("-path", "-litera
               "tee": ("-filepath", "-path"), "clear-content": ("-path", "-literalpath"),
               "clc": ("-path", "-literalpath")}
 PS_CREATORS = {"new-item", "ni"}          # a writer when it gives -Value, or -Force, which empties a file
+PS_SWITCHES = {"-force", "-nonewline", "-append", "-passthru", "-whatif", "-confirm", "-noclobber",
+               "-asbytestream", "-verbose", "-debug", "-recurse"}   # the writers' options that take no value
 PS_MOVERS = {"copy-item", "move-item", "copy", "move", "cpi", "mi", "cp", "mv"}
 XARGS_VALUED = {"-n", "-I", "-d", "-P", "-L", "-s", "-E", "-a"}
 ASSIGNMENT = re.compile(r"^[A-Za-z_]\w*=")
@@ -364,7 +366,11 @@ def powershell_writes(command: str, cwd: Path | None, host: Host, start: Path | 
                 target = inside_folder(target, source)
             if target:
                 writes.append(Write(target, simple.words[0], where))
-    return writes
+    if depth < rules.BLOCKS:
+        for block in pwsh.script_blocks(command):
+            writes += powershell_writes(block, cwd, host, start, depth + 1)
+    # An [IO.File] call inside a block is found in the whole command and again in its block.
+    return list(dict.fromkeys(writes))
 
 
 def named(arguments: list[str], names: tuple[str, ...]) -> str | None:
@@ -380,12 +386,14 @@ def named(arguments: list[str], names: tuple[str, ...]) -> str | None:
 
 
 def positional(arguments: list[str]) -> str | None:
+    """The first argument no option takes: an option takes the word after it unless it is a switch, or
+    gives its value after a colon, as -Confirm:$false does."""
     skip = False
     for word in arguments:
         if skip:
             skip = False
         elif word.startswith("-"):
-            skip = word.lower() in ("-value", "-encoding", "-inputobject", "-width")
+            skip = ":" not in word and word.lower() not in PS_SWITCHES
         else:
             return word
     return None
