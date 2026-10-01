@@ -26,6 +26,7 @@ SPACE_INDENT = re.compile(rb"\n( {2,})(?=[^\s])")
 FIRST_SPACE_INDENT = re.compile(rb"( {2,})(?=[^\s])")
 WIDTHS = (8, 4, 3, 2)
 CENTRAL_EUROPEAN = frozenset(b"\x8c\x8f\x9c\x9f\xa3\xa5\xaa\xaf\xb3\xb9\xba\xbf")
+NOT_CENTRAL = bytes(byte for byte in range(0x100) if byte not in CENTRAL_EUROPEAN)
 
 
 class Eol(Enum):
@@ -172,9 +173,9 @@ def eol_of(counts: EolCounts) -> Eol:
 
 def legacy_guess(data: bytes) -> str:
     """cp1250 when the high bytes read as Central European letters, cp1252 otherwise."""
-    high = [byte for byte in data if byte > 0x7F]
-    central = sum(byte in CENTRAL_EUROPEAN for byte in high)
-    return "cp1250" if central and central * 3 >= len(high) else "cp1252"
+    high = len(data) - len(data.translate(None, HIGH_BYTES))
+    central = len(data.translate(None, NOT_CENTRAL))
+    return "cp1250" if central and central * 3 >= high else "cp1252"
 
 
 def encoding_of(data: bytes, bom: Bom) -> tuple[Encoding, bytes]:

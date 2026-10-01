@@ -3,8 +3,8 @@ target_profile gives the convention a new file takes."""
 import time
 import unittest
 
-from ioguard.lib.profile import (Bom, Eol, IndentKind, convert_eol, profile, target_profile, with_bom,
-                                 with_final_newline)
+from ioguard.lib.profile import (Bom, Eol, IndentKind, convert_eol, legacy_guess, profile, target_profile,
+                                 with_bom, with_final_newline)
 from tests.support.fixtures import FIXTURES_DIR
 
 
@@ -190,6 +190,15 @@ class Speed(unittest.TestCase):
         elapsed = time.perf_counter() - started
         self.assertLess(elapsed, 0.5,
                         "the budget is 20 ms, and this bound catches only a pathological slowdown")
+
+    def test_eight_megabytes_of_high_bytes_get_their_code_page_without_a_loop_in_python(self):
+        data = bytes(range(0x80, 0x100)) * (8 * 1024 * 1024 // 128)
+        started = time.perf_counter()
+        guess = legacy_guess(data)
+        elapsed = time.perf_counter() - started
+        self.assertEqual(guess, "cp1252", "12 of 128 high bytes are Central European letters, under a third")
+        self.assertLess(elapsed, 0.1,
+                        "a large image is mostly high bytes, and a loop in Python takes 0.4 s on 8 MB")
 
 
 if __name__ == "__main__":
