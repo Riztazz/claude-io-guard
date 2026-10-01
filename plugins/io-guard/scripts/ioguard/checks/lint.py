@@ -259,7 +259,8 @@ class Lint(Check):
                                             "replaces it.")},
         codes=frozenset({Code.COMMAND_TOO_DEEP, Code.BACKTICK_IN_DOUBLE_QUOTES, Code.TRAILING_BACKSLASH_QUOTE,
                          Code.DIALECT_MISMATCH, Code.POWERSHELL_TRAP, Code.PIPE_HIDES_EXIT,
-                         Code.INLINE_SCRIPT_INVALID, Code.NOT_PORTABLE, Code.STOPS_BY_MATCH}),
+                         Code.INLINE_SCRIPT_INVALID, Code.NOT_PORTABLE, Code.STOPS_BY_MATCH,
+                         Code.CR_QUOTE_UNPARSED}),
         description="Refuses a shell command whose quoting, escaping or dialect would change what runs, and "
                     "fixes a Windows path whose last backslash escapes its quote.")
 
@@ -292,6 +293,15 @@ class Lint(Check):
                          f"{shown(command, at)}",
                          "Put that text in single quotes, or escape each backtick with a backslash.",
                          offset=at)
+        returns = found.carriage_returns if ctx.platform.windows else ()
+        if returns:
+            findings.add(Code.CR_QUOTE_UNPARSED,
+                         f"Git Bash stops on this command with \"unexpected EOF while looking for matching "
+                         f")\", because a $'...' that makes a carriage return sits in the second or a later "
+                         f"$() of one word, here: {shown(command, returns[0])}",
+                         "Put that $() first in its word, or set a variable to it before this command and "
+                         "use the variable.",
+                         severity=Severity.WARNING, offset=returns[0])
         python(python_bodies(command, found, simples, ctx), findings)
         piped = hidden_exit(command, simples, self.options["build_commands"])
         if piped is not None and ctx.session.first_time("pipe-hides-exit"):

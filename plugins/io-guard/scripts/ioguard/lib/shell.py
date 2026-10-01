@@ -55,6 +55,7 @@ class Scan:
     backticks: tuple[int, ...] = ()   # offsets of unescaped backticks inside double quotes
     unterminated: bool = False        # a quote runs to the end, so bash stops at unexpected EOF
     too_deep: bool = False            # $( ... ) nests past MAX_NESTING, and the scan stopped there
+    carriage_returns: tuple[int, ...] = ()   # offsets of the $'...' Git Bash fails to parse, see ansi()
 
 
 class Scanner:
@@ -67,6 +68,9 @@ class Scanner:
         self.heredocs: list[Heredoc] = []
         self.pending: list[tuple[int, int, str, bool, bool]] = []
         self.depth, self.too_deep = 0, False
+        self.word_start, self.word_substitutions = 0, 0     # of the word being read outside every $()
+        self.late = 0                       # the open $() inside a word's second or later $()
+        self.carriage_returns: list[int] = []
 
     def mark(self, start: int, end: int, state: int) -> None:
         self.states[start:end] = bytes([state]) * (end - start)
@@ -84,13 +88,16 @@ class Scanner:
     def run(self) -> Scan:
         self.normal(0, stop=None)
         return Scan(tuple(self.heredocs), inline_bodies(self.text, self.states), tuple(sorted(self.hazards)),
-                    bytes(self.states), tuple(self.backticks), self.unclosed, self.too_deep)
+                    bytes(self.states), tuple(self.backticks), self.unclosed, self.too_deep,
+                    tuple(self.carriage_returns))
 
     def normal(self, at: int, stop: str | None) -> int:
         """Scan unquoted text from at, until stop closes a command substitution. Returns the offset after."""
         text, depth = self.text, 0
         while at < len(text):
             char = text[at]
+            if self.depth == 0 and char in WORD_END:
+                self.word_start, self.word_substitutions = at + 1, 0
             if char == "\\":
                 if self.pair(at):
                     self.hazards.append(at)
@@ -106,7 +113,7 @@ class Scanner:
             elif text.startswith("$'", at):
                 at = self.ansi(at + 2)
             elif text.startswith("$(", at):
-                at = self.substitution(at)
+                at = self.counted(at)
             elif char == "(" and stop:
                 depth, at = depth + 1, at + 1
             elif char == ")" and stop:
@@ -125,6 +132,18 @@ class Scanner:
             else:
                 at += 1
         return at
+
+    def counted(self, at: int) -> int:
+        """The $( ... ) at at, counted toward the word it sits in when that word is outside every $(). From
+        the word's second $() on, everything inside is late, at any depth. Returns the offset after."""
+        late = 0
+        if self.depth == 0:
+            self.word_substitutions += 1
+            late = int(self.word_substitutions > 1)
+        self.late += late
+        end = self.substitution(at)
+        self.late -= late
+        return end
 
     def substitution(self, at: int) -> int:
         """The $( ... ) at at, one level deeper. Past MAX_NESTING levels the scan stops there, marked too
@@ -161,7 +180,7 @@ class Scanner:
             elif text.startswith("$((", at):
                 at = self.arithmetic(at, at + 1)
             elif text.startswith("$(", at):
-                at = self.substitution(at)
+                at = self.counted(at)
             else:
                 if char == "`":
                     self.backticks.append(at)
@@ -171,7 +190,11 @@ class Scanner:
         return at
 
     def ansi(self, at: int) -> int:
-        text = self.text
+        """The $'...' whose text starts at at. Inside a word's second or later $(), when the word is outside
+        every $(), Git Bash 5.2 decodes the quote twice and fails to parse a carriage return either decode
+        makes, so the scan records it. Quotes around the $() do not matter. A newline in the word before the
+        quote lets bash parse it, so that quote is not recorded. Returns the offset after the quote."""
+        text, start = self.text, at
         while at < len(text) and text[at] != "'":
             if text[at] == "\\":
                 if self.pair(at):
@@ -182,6 +205,10 @@ class Scanner:
                 self.states[at] = ANSI
                 at += 1
         self.unclosed = self.unclosed or at >= len(text)
+        if self.late and "\n" not in text[self.word_start:start]:
+            once = ansi_decoded(text[start:at])
+            if "\r" in once or "\r" in ansi_decoded(once):
+                self.carriage_returns.append(start - 2)
         return at + 1
 
     def command_position(self, at: int) -> bool:
@@ -195,9 +222,13 @@ class Scanner:
                     and (back == 3 or text[back - 4] in " \t\n;&|(")))
 
     def arithmetic(self, at: int, opening: int) -> int:
-        """$(( ... )) or (( ... )) from at, whose first parenthesis is at opening. The offset after it."""
+        """$(( ... )) or (( ... )) from at, whose first parenthesis is at opening. The offset after it. A $()
+        inside is scanned as one, and counted toward the word the $(( )) sits in."""
         depth, end = 0, opening
         while end < len(self.text):
+            if self.text.startswith("$(", end) and not self.text.startswith("$((", end):
+                end = self.counted(end)
+                continue
             if self.text[end] == "(":
                 depth += 1
             elif self.text[end] == ")":
@@ -532,6 +563,11 @@ def script_run(simple: SimpleCommand) -> ScriptRun | None:
 
 
 QUOTED_PATH_BEFORE_QUOTE = re.compile(r'"[A-Za-z]:\\[^"\n]*\\"(?=[\s;&|)<>]|$)')
+ANSI_ESCAPE = re.compile(r"\\(?:(?P<simple>[abeEfnrtv\\'\"?])|(?P<octal>[0-7]{1,3})"
+                         r"|x(?P<x>[0-9A-Fa-f]{1,2})|u(?P<u>[0-9A-Fa-f]{1,4})|U(?P<U>[0-9A-Fa-f]{1,8})"
+                         r"|c(?P<control>.))", re.S)
+ANSI_SIMPLE = {"a": "\a", "b": "\b", "e": "\x1b", "E": "\x1b", "f": "\f", "n": "\n", "r": "\r", "t": "\t",
+               "v": "\v", "\\": "\\", "'": "'", '"': '"', "?": "?"}
 
 
 def body_files(command: str) -> tuple[str, ...]:
@@ -674,6 +710,20 @@ def trailing_backslash_paths(command: str) -> tuple[tuple[int, int], ...]:
     """The spans of the double-quoted Windows paths that end in a backslash. That backslash escapes the
     closing quote, so bash reads the string on past it."""
     return tuple(match.span() for match in QUOTED_PATH_BEFORE_QUOTE.finditer(command))
+
+
+def ansi_decoded(text: str) -> str:
+    """The text of a $'...' quote as bash decodes it: \\n, \\x0d, \\015, \\u000d, \\cM and the rest. An escape
+    bash does not know stays as written."""
+    def one(match: re.Match) -> str:
+        if match["simple"]:
+            return ANSI_SIMPLE[match["simple"]]
+        if match["control"]:
+            return chr(ord(match["control"]) & 0x1F)
+        if match["octal"]:
+            return chr(int(match["octal"], 8))
+        return chr(min(int(match["x"] or match["u"] or match["U"], 16), 0x10FFFF))
+    return ANSI_ESCAPE.sub(one, text)
 
 
 def forward_slashed(command: str, spans: Sequence[tuple[int, int]]) -> str:

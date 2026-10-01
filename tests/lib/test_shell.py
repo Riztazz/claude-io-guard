@@ -297,6 +297,44 @@ class QuotingBashReadsDifferently(unittest.TestCase):
                 self.assertEqual(shell.python_reads_stdin(shell.commands(command)[0]), expected,
                                  "a script, -c or -m means stdin is data")
 
+    def test_the_carriage_return_quotes_git_bash_fails_to_parse_are_found(self):
+        fails = [  # Git Bash 5.2.37 stopped on each on 2026-10-01, "unexpected EOF", the quote's line unrun
+            r'''echo "F $(grep -c $'\r$' f) and $(grep -c $'\r$' f) end"''',
+            r'''echo "$(echo a) $(echo $'\r')"''', r'''echo "$(echo $'\x0d') $(echo $'\x0d')"''',
+            r'''echo "$(echo a) $(echo $'\015')"''', r'''echo "$(echo a) $(echo $'\15')"''',
+            r'''echo "$(echo a) $(echo $'\cM')"''', r'''echo "$(echo a) $(echo $'\u000d')"''',
+            r'''echo "$(echo a) $(echo $'\x0da')"''', r'''echo "$(echo a) $(echo $'\\r')"''',
+            r'''echo "$(echo a) $(echo $'\\x0d')"''', r'''echo "$(echo a) $(echo b) $(echo $'\r')"''',
+            r'''echo "$(echo a) $(echo $(echo $'\r'))"''', r'''echo "$(echo a) $( (echo $'\r') )"''',
+            r'''echo "$(echo a) $(echo "$(echo $'\r')")"''',
+            r'''echo "$(( $(echo 1) + $(printf $'\r' | wc -c) ))"''',
+            r'''echo $(( $(echo 1) + $(printf $'\r' | wc -c) ))''',
+            r'''printf "%s %s\n" "$(grep -c $'\r' f)" "$(( $(grep -c '' f) - $(grep -c $'\r' f) ))"''',
+            r'''echo "$(echo a)"x"$(echo $'\r')"''', r'''echo $(echo a)"$(echo $'\r')"''',
+            r'''echo "$(echo a)"$(echo $'\r')''', r'''echo $(echo a)$(echo $'\r')''',
+            r'''echo "$(echo a)""$(echo $'\r')"''',
+            "echo \"$(echo a) $(echo $'\\r')\"\necho x", "echo before\necho \"$(echo a) $(echo $'\\r')\"",
+            "echo \"$(echo a) $(echo $'\\r'\n)\"", "echo \"$(echo a) $(echo $'\\r')\n\"",
+        ]
+        runs = [  # each ran in Git Bash 5.2.37 on 2026-10-01
+            r'''echo "$(echo $'\r') $(echo a)"''', r'''echo "$(echo $'\t$') $(echo $'\t$')"''',
+            r'''echo $(echo $'\r') $(echo $'\r')''', r'''echo "$(echo $'\r')" "$(echo $'\r')"''',
+            r'''echo "$(echo $'\r' $'\r')"''', r'''echo "$(echo a) $(echo '\r')"''',
+            r'''echo "$(echo a) $(echo $'\\t')"''', r'''echo "$(echo a) $(echo $'\\\\r')"''',
+            r'''echo "$(echo a) $(echo $'r')"''', r'''echo "$(echo $(echo $'\r'))"''',
+            r'''echo "$((1)) $(echo $'\r')"''', r'''echo "`echo a` $(echo $'\r')"''',
+            r'''echo "$(( $(printf $'\r' | wc -c) + $(echo 1) ))"''',
+            "echo \"$(echo a) $(echo b # it's\necho $'\\r')\"", "echo \"$(echo a)\n$(echo $'\\r')\"",
+            "echo \"$(echo a) $(echo b\necho $'\\r')\"",
+            r'''echo $(echo "$(echo a) $(echo $'\r')")''',
+            r'''x=$(echo "$(echo a) $(echo $'\r')"); echo ok''',
+            r'''echo "$(echo "$(echo a) $(echo $'\r')")"''',
+        ]
+        found = {command: [command[at:at + 2] for at in shell.scan(command).carriage_returns]
+                 for command in fails + runs}
+        self.assertEqual(found, {command: ["$'"] if command in fails else [] for command in fails + runs},
+                         "each quote Git Bash failed on is found at its $', and none it ran")
+
     def test_moved_body_files_are_named(self):
         command = 'python - < "C:/s/io-guard/body-0123456789abcdef.txt"; cat /tmp/body-x.txt'
         self.assertEqual(shell.body_files(command), ("C:/s/io-guard/body-0123456789abcdef.txt",),

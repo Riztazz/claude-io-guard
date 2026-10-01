@@ -95,6 +95,7 @@ A refused call did not run. A warning, or a note that io-guard fixed something, 
 | `CONFIG_ASKED` | io.config would write a command io-guard starts, or a variable a Bash call starts with, so the user decides whether it is written. | Wait for the user's answer. |
 | `CONFIG_REFUSED` | The setting was not written: the key is unknown, the value does not fit it, or this file may not set it. | Use a key and a value the message names. |
 | `CONTROL_BYTES_ADDED` | The write added NUL or other control bytes to a text file. | Remove them with the Edit tool, on the lines the message names. |
+| `CR_QUOTE_UNPARSED` | Git Bash cannot parse a $'...' that makes a carriage return in the second or a later $() of one word. | Put that $() first in its word, or set a variable to it before this command and use the variable. |
 | `DIALECT_MISMATCH` | The command is written for the other shell. | Send it to the tool for that shell, or write it for this one. |
 | `ENCODING_INVALID` | The write left bytes that are not UTF-8, or U+FFFD characters where others could not be read. | Read the lines the message names, and put back the characters they lost. |
 | `EOL_CONVERTED` | io-guard wrote the new text in the file's own line endings. | Nothing to do. |

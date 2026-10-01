@@ -143,6 +143,11 @@ CODES: tuple[CodeSpec, ...] = (
     CodeSpec("POWERSHELL_TRAP", Layer.TRANSPORT, Severity.REFUSED,
              "PowerShell refuses this command before it does anything.",
              "Change the command as the message says, then run it again.", "0.1"),
+    CodeSpec("CR_QUOTE_UNPARSED", Layer.TRANSPORT, Severity.WARNING,
+             "Git Bash cannot parse a $'...' that makes a carriage return in the second or a later $() of "
+             "one word.",
+             "Put that $() first in its word, or set a variable to it before this command and use the "
+             "variable.", "0.1"),
     CodeSpec("NOT_PORTABLE", Layer.TRANSPORT, Severity.WARNING,
              "The command uses bash 4 syntax or a GNU option, which this machine's bash 3.2 or BSD tools "
              "read another way or lack.", "Write it as the message says, for bash 3.2 and the BSD tools.",

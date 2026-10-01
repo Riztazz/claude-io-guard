@@ -56,6 +56,15 @@ class ACommandNestedTooDeep(unittest.TestCase):
                          "a command io-guard cannot read to its end is refused, and no check fails open")
 
 
+class ACarriageReturnQuoteGitBashCannotParse(unittest.TestCase):
+    def test_it_is_a_warning_on_windows_and_nothing_elsewhere(self):
+        command = """echo "$(wc -l < a.h) lines, $(grep -c $'\\r$' a.h) CRLF\""""
+        on_mac = Context.fake(config=context().config, platform=MACOS, probe=Probe.unprobed(MACOS))
+        self.assertEqual((codes(command), codes(command, ctx=on_mac)),
+                         ((Verdict.ALLOW, (Code.CR_QUOTE_UNPARSED,)), (Verdict.OBSERVE, ())),
+                         "Git Bash fails to parse it, so Windows warns, and the command still runs")
+
+
 class BackticksInsideDoubleQuotes(unittest.TestCase):
     def test_a_backtick_inside_double_quotes_is_refused(self):
         for command in ('git commit -m "fix `parse` for empty input"', "grep -n \"^### \\|^```\" README.md"):

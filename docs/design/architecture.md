@@ -113,7 +113,8 @@ plugins/io-guard/
                                    tracked file
         lint.py                    shell.lint: quoting, escapes, dialect, Python 3 bodies, PIPE_HIDES_EXIT once,
                                    STOPS_BY_MATCH. A cmdlet is Verb-Noun as PowerShell writes it, or a
-                                   common one in any case, and a Python 2 body is never compiled (task 108)
+                                   common one in any case, and a Python 2 body is never compiled (task 108).
+                                   CR_QUOTE_UNPARSED on Windows, from Scan.carriage_returns (task 159)
         win_paths.py               win.paths: MSYS_PATH for slash arguments and cmd /c, RESERVED_NAME for nul
         conform_write.py           conform.write: EOL_CONVERTED, BOM_RESTORED, EOL_MISMATCH for a mixed file
                                    and for a lone CR kept as written
@@ -510,6 +511,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Transport | `MSYS_PATH`, `RESERVED_NAME` | 14, in `CODES` |
 | Transport | `NOT_PORTABLE`, a warning for bash 4 syntax under bash 3.2 and GNU options on macOS | 36, in `CODES` |
 | Transport | `STOPS_BY_MATCH`, a warning for a stop by a shared runtime's name or by a command-line match | 64, in `CODES` |
+| Transport | `CR_QUOTE_UNPARSED`, a warning on Windows for a `$'...'` that makes a carriage return in the second or a later `$()` of one word outside every `$()`, which Git Bash fails to parse | 159, in `CODES` |
 | Transport | `COMMAND_TOO_DEEP`, a command whose `$()` nests past `shell.MAX_NESTING` (100), which the scanner stops reading | 100, in `CODES` |
 | Bytes | `EOL_CONVERTED`, `BOM_RESTORED`, `EOL_MISMATCH`, `INDENT_MISMATCH` | 17, in `CODES` |
 | Bytes | `BOM_CHANGED`, `ENCODING_INVALID`, `NON_ASCII_ADDED`, `CONTROL_BYTES_ADDED`, `SIZE_COLLAPSED`, `UNINTENDED_CHANGE`, all warnings | 18, in `CODES` |
@@ -872,7 +874,10 @@ def fitted(new: str, near: str, width: Optional[int]) -> Optional[str]   # None 
 # shell.py, task 11
 def scan(command: str) -> Scan              # heredocs, python -c bodies, halving hazards, quoting states,
                                             # and too_deep past MAX_NESTING levels of $(), task 100. A -c
-                                            # body is found behind -X and -W values and in -Bc, task 108
+                                            # body is found behind -X and -W values and in -Bc, task 108.
+                                            # carriage_returns, task 159, and a $() inside $(( )) is
+                                            # scanned as one
+def ansi_decoded(text: str) -> str          # a $'...' quote's text as bash decodes it, task 159
 def budget_length(command: str) -> int      # UTF-8 bytes, apostrophes count four
 def moved(command: str, heredocs: Mapping[Heredoc, str], bodies: Mapping[InlineBody, str]) -> str
 def shell_path(path: str) -> str            # a path as a double-quoted bash word
