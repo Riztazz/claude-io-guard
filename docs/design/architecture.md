@@ -130,7 +130,8 @@ plugins/io-guard/
         diagnose.py                diagnose.failure after a failed call, diagnose.refused at the next hook
         command_results.py         shell.results: EXIT_BENIGN, ERRORS_IN_OUTPUT, OUTPUT_SAVED, MOJIBAKE,
                                    STALE_BINARY, PIPE_HIDES_EXIT after the run unless an echo of $?
-                                   before the pipe printed the code (task 92), and the learned budget
+                                   before the pipe printed the code (task 92), once per session for a
+                                   short output (task 169), and the learned budget
         heartbeat.py               server.heartbeat: SERVER_DOWN at the start of a turn
         run_rules.py               run.rules: RULE_DENIED and RULE_ASKED at the PreToolUse hook on io.run
         commit_policy.py           commit.policy: COMMIT_POLICY for a commit message the user's policy forbids

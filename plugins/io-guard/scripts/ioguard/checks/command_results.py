@@ -245,18 +245,20 @@ class Reading:
         return None if printed else lines[-1].commands[-1].name
 
     def reported(self) -> Result | None:
-        """PIPE_HIDES_EXIT when a pipe gave a command that reports errors exit code 0, and ERRORS_IN_OUTPUT
-        when the errors sit in a long or saved output."""
+        """PIPE_HIDES_EXIT when a pipe gave a command that reports errors exit code 0, once a session for a
+        short output, which already shows the model its errors, and ERRORS_IN_OUTPUT when the errors sit in a
+        long or saved output."""
         if not self.errors:
             return None
         found = f"The output has {reporting(len(self.errors))} ({counted(self.errors)})"
         kinds = {"kinds": dict(Counter(error.kind for error in self.errors))}
+        short = self.full.count("\n") + 1 <= self.options["short_lines"] and self.whole is None
         last = self.hiding_pipe()
-        if last is not None:
+        if last is not None and (not short or self.ctx.session.first_time("pipe-hides-errors")):
             return self.result(Code.PIPE_HIDES_EXIT, f"{found}, and exit code 0 is {last}'s, the last "
                                f"command of the pipe:\n{self.shown(self.errors)}",
                                "Read the output for the result, not the exit code.", evidence=kinds)
-        if self.full.count("\n") + 1 <= self.options["short_lines"] and self.whole is None:
+        if short:
             return None
         return self.result(Code.ERRORS_IN_OUTPUT, f"{found}, first:\n{self.shown(self.errors)}",
                            evidence=kinds)

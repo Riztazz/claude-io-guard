@@ -141,6 +141,15 @@ class APipeThatHidesAFailure(unittest.TestCase):
                                                 "3| ValueError: bad"),
                          "a short output still says the exit code is the filter's")
 
+    def test_a_short_output_says_it_once_per_session_and_a_long_one_every_time(self):
+        ctx, short = context(), "FAIL: test_x (tests.a.B.test_x)\n"
+        repeated = [codes(ran("python -m unittest 2>&1 | grep FAIL", short), ctx) for _ in range(2)]
+        self.assertEqual(repeated, [[Code.PIPE_HIDES_EXIT], []],
+                         "the second short output already shows the model the failures the warning names")
+        long = lines(60, "ValueError: bad\n")
+        self.assertEqual([codes(ran("python build.py 2>&1 | tail -60", long), ctx) for _ in range(2)],
+                         [[Code.PIPE_HIDES_EXIT]] * 2, "in a long output the error lines are easy to miss")
+
     def test_a_command_that_only_lists_and_prints_files_hides_nothing(self):
         command = "ls open; ls done | tail -5; cat done/$(ls done | grep '^96') | head -60"
         output = "a.md\nb.md\n    self.assertEqual(long, [])\nAssertionError: Lists differ\n"
