@@ -92,8 +92,10 @@ def unquote(word: str) -> str:
     return word
 
 
+@functools.lru_cache(maxsize=64)
 def commands(command: str) -> tuple[SimpleCommand, ...]:
-    """The simple commands of a PowerShell command, with their words unquoted and their file redirects."""
+    """The simple commands of a PowerShell command, with their words unquoted and their file redirects. Every
+    check of one call reads the same command, so the parse runs once and each later reader shares it."""
     text, states, parsed, at, start = command, scan(command), [], 0, 0
     words: list[str] = []
     redirects: list[Redirect] = []
@@ -106,7 +108,7 @@ def commands(command: str) -> tuple[SimpleCommand, ...]:
             literal = len(words) > 1 and words[0] in ("&", ".") and not words[1].startswith("$")
             called = words[1:] if literal else words
             unquoted = tuple(unquote(word) for word in called)
-            parsed.append(SimpleCommand(unquoted, tuple(redirects), (), (start, end)))
+            parsed.append(SimpleCommand(unquoted, tuple(redirects), (), (start, end), tuple(called)))
         words, redirects = [], []
 
     while at < len(text):
@@ -171,6 +173,11 @@ def blanked(command: str) -> str:
 def script_blocks(command: str) -> tuple[str, ...]:
     """The text inside each outermost { } of the command, outside strings and comments: the script blocks
     of & { }, an if or foreach body, and a ForEach-Object block, each of which runs its own commands."""
+    return tuple(command[start:end] for start, end in script_block_spans(command))
+
+
+def script_block_spans(command: str) -> tuple[tuple[int, int], ...]:
+    """Where the text of each outermost { } of the command starts and ends, outside strings and comments."""
     code, found, depth, start = blanked(command), [], 0, 0
     for at, char in enumerate(code):
         if char == "{":
@@ -180,7 +187,7 @@ def script_blocks(command: str) -> tuple[str, ...]:
         elif char == "}" and depth:
             depth -= 1
             if depth == 0:
-                found.append(command[start:at])
+                found.append((start, at))
     return tuple(found)
 
 

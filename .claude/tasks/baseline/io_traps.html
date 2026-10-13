@@ -1,0 +1,1727 @@
+<title>Agent File IO Traps</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root {
+  --bg: #f3f5f6;
+  --surface: #ffffff;
+  --ink: #172026;
+  --muted: #56626c;
+  --rule: #d5dce1;
+  --accent: #0d5c97;
+  --accent-soft: #e2edf6;
+  --code-bg: #edf1f3;
+  --data: #b42318;
+  --data-soft: #fce8e5;
+  --time: #95560a;
+  --time-soft: #fbefd9;
+  --noise: #4b5563;
+  --noise-soft: #e9edf0;
+  --live: #0b7450;
+  --live-soft: #daf2e7;
+  --sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --cond: "IBM Plex Sans Condensed", "Arial Narrow", "IBM Plex Sans", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0e1317;
+    --surface: #151c22;
+    --ink: #e4eaee;
+    --muted: #9aa6b0;
+    --rule: #27313a;
+    --accent: #72b0e6;
+    --accent-soft: #14273a;
+    --code-bg: #1c252d;
+    --data: #ff8474;
+    --data-soft: #3b1b17;
+    --time: #f0b562;
+    --time-soft: #33260f;
+    --noise: #aeb8c1;
+    --noise-soft: #222a31;
+    --live: #56d19c;
+    --live-soft: #0f2e20;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e1317;
+  --surface: #151c22;
+  --ink: #e4eaee;
+  --muted: #9aa6b0;
+  --rule: #27313a;
+  --accent: #72b0e6;
+  --accent-soft: #14273a;
+  --code-bg: #1c252d;
+  --data: #ff8474;
+  --data-soft: #3b1b17;
+  --time: #f0b562;
+  --time-soft: #33260f;
+  --noise: #aeb8c1;
+  --noise-soft: #222a31;
+  --live: #56d19c;
+  --live-soft: #0f2e20;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.55;
+  padding-inline: 16px;
+}
+.wrap { max-width: 1120px; margin: 0 auto; padding-block: 28px 64px; }
+h1, h2, h3 { font-family: var(--cond); text-wrap: balance; line-height: 1.15; margin: 0; }
+h1 { font-size: 40px; font-weight: 600; letter-spacing: -0.01em; }
+h2 { font-size: 26px; font-weight: 600; }
+h3 { font-size: 19px; font-weight: 600; }
+p { margin: 0; max-width: 72ch; }
+a { color: var(--accent); }
+code, .mono {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  background: var(--code-bg);
+  padding: 0.05em 0.35em;
+  border-radius: 3px;
+  overflow-wrap: anywhere;
+}
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+header.top { display: grid; gap: 14px; padding-block: 8px 22px; border-bottom: 1px solid var(--rule); }
+.lede { font-size: 17px; color: var(--ink); }
+.facts { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 14px; color: var(--muted); }
+.facts b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+nav.jump {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 5;
+  background: var(--bg);
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding-block: 10px;
+  font-size: 14px;
+}
+nav.jump a { text-decoration: none; color: var(--muted); }
+nav.jump a:hover, nav.jump a:focus-visible { color: var(--accent); }
+section.block { display: grid; gap: 14px; padding-block: 34px 6px; }
+.note { color: var(--muted); font-size: 14px; }
+ol.first { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; counter-reset: rank; }
+ol.first li {
+  counter-increment: rank;
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 4px 12px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+ol.first li::before {
+  content: counter(rank);
+  font-family: var(--cond);
+  font-weight: 600;
+  font-size: 22px;
+  color: var(--accent);
+  grid-row: span 2;
+}
+ol.first .t { font-weight: 600; }
+ol.first .d { color: var(--muted); font-size: 14px; }
+.scroll { overflow-x: auto; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--rule); }
+th { font-family: var(--cond); font-weight: 600; font-size: 13px; letter-spacing: 0.03em; color: var(--muted); background: var(--surface); }
+tr:last-child td { border-bottom: 0; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pill {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.pill.data { color: var(--data); background: var(--data-soft); }
+.pill.time { color: var(--time); background: var(--time-soft); }
+.pill.noise { color: var(--noise); background: var(--noise-soft); }
+.pill.live { color: var(--live); background: var(--live-soft); }
+.pill.src { color: var(--accent); background: var(--accent-soft); }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 14px; color: var(--muted); align-items: center; }
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 12px;
+}
+.filters input[type="search"], .filters select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 6px 8px;
+  min-width: 0;
+}
+.filters input[type="search"] { flex: 1 1 220px; }
+.chipset { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  font: inherit;
+  font-size: 13px;
+  border: 1px solid var(--rule);
+  background: var(--bg);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 3px 11px;
+  cursor: pointer;
+}
+.chip[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.chip:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.count { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 14px; }
+.tool-btn {
+  font: inherit;
+  font-size: 13px;
+  border: 1px solid var(--rule);
+  background: var(--bg);
+  color: var(--ink);
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+section.area { display: grid; gap: 10px; padding-block: 18px 4px; }
+section.area > p { color: var(--muted); font-size: 14px; }
+article.f {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+}
+article.f[data-cls="data"] { border-left: 3px solid var(--data); }
+article.f[data-cls="time"] { border-left: 3px solid var(--time); }
+article.f[data-cls="noise"] { border-left: 3px solid var(--noise); }
+.fh { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+.fid { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.ft { font-weight: 600; font-size: 16px; }
+.fh .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.fgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; }
+.fgrid .lab { font-family: var(--cond); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: 2px; }
+.fgrid .chk { color: var(--ink); }
+details.ev summary { cursor: pointer; font-size: 13px; color: var(--accent); }
+details.ev dl { display: grid; grid-template-columns: 110px 1fr; gap: 6px 12px; margin: 8px 0 2px; font-size: 14px; }
+details.ev dt { font-family: var(--cond); font-weight: 600; color: var(--muted); }
+details.ev dd { margin: 0; }
+@media (max-width: 720px) {
+  h1 { font-size: 32px; }
+  .fgrid { grid-template-columns: 1fr; }
+  details.ev dl { grid-template-columns: 1fr; }
+  details.ev dt { margin-top: 4px; }
+  .fh .tags { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="wrap">
+<header class="top">
+  <div class="eyebrow">Scan of 2026-09-27 &middot; four Unreal projects on one Windows machine &middot; plus a friend's scan</div>
+  <h1>Agent File IO Traps</h1>
+  <p class="lede">Every way the agents failed to read, write or edit a file, and what each failure cost. Each entry names the check a read/write guard tool has to run, so the next agent stops paying for the same trap.</p>
+  <div class="facts">
+    <span><b>98</b> findings</span>
+    <span><b>738</b> transcripts, 6.4 GB</span>
+    <span><b>1,819</b> scratchpad scripts read</span>
+    <span><b>13</b> checks run live today</span>
+    <span>about <b>1.3M</b> tokens on failed and workaround writes</span>
+  </div>
+</header>
+
+<nav class="jump" aria-label="Sections">
+  <a href="#first">Read first</a>
+  <a href="#live">Verified live</a>
+  <a href="#catalog">Catalog</a>
+  <a href="#built">What agents built</a>
+  <a href="#repos">Repo bytes</a>
+  <a href="#tool">The tool</a>
+  <a href="#method">Method</a>
+</nav>
+
+<section class="block" id="first">
+  <h2>Read these first</h2>
+  <p class="note">Ranked by what they cost in our four projects. Token figures are the bytes the agents sent, divided by 4.</p>
+  <ol class="first">
+    <li><span class="t">Bash commands over about 7.8 KB always fail, and the error blames a quote (SHW-4).</span><span class="d">241 failed commands carried 2.0 MB, about 531k tokens. The message is <code>unexpected EOF while looking for matching `''</code>, so agents fix quoting and resend. Size is the cause: 160 of 160 commands between 8 and 16 KB failed. Verified live.</span></li>
+    <li><span class="t">Shell scripts replace the edit tool, and nothing checks what they write (SHW-1).</span><span class="d">417 scratchpad scripts write files, 2.9 MB, about 759k tokens of workaround code. 907 <code>sed -i</code> calls. Auto mode tells the agent to prefer these routes.</span></li>
+    <li><span class="t">The Bash tool turns <code>\\</code> into <code>\</code>, inside quoted heredocs too (SHW-2, SHW-3).</span><span class="d">Silent in both directions: wrong bytes in the written file, and a regex that matches nothing with no error. The PowerShell tool keeps both backslashes. Verified live.</span></li>
+    <li><span class="t">Write turns a CRLF file into LF and drops its BOM. Edit cuts trailing whitespace from new_string (BYT-1, ANC-4).</span><span class="d">432 git warnings of the form <code>LF will be replaced by CRLF</code>. <code>one = </code> became <code>one =</code>. Both verified live. Edit keeps CRLF and the BOM.</span></li>
+    <li><span class="t">The agent's view of a file goes stale (STL-1, STL-2, ANC-1).</span><span class="d">137 "not read yet" or "modified since read" errors and 71 anchor misses in our transcripts. The friend measured the same class as the largest in every one of his sources.</span></li>
+  </ol>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Spent on</th><th>Count</th><th>Payload</th><th>About</th></tr></thead>
+      <tbody>
+        <tr><td>Commands cut at about 7.8 KB</td><td class="num">241</td><td class="num">2.0 MB</td><td class="num">531k tokens</td></tr>
+        <tr><td>Scratchpad scripts that write files</td><td class="num">417</td><td class="num">2.9 MB</td><td class="num">759k tokens</td></tr>
+        <tr><td>All scratchpad scripts, editor probes included</td><td class="num">1,819</td><td class="num">6.6 MB</td><td class="num">1.69M tokens</td></tr>
+        <tr><td>Failed Write calls</td><td class="num">60</td><td class="num">296 KB</td><td class="num">75k tokens</td></tr>
+        <tr><td>Failed Edit calls</td><td class="num">184</td><td class="num">157 KB</td><td class="num">40k tokens</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="block" id="live">
+  <h2>Verified live on 2026-09-27</h2>
+  <p class="note">Run in a scratch folder on this machine: Claude Code desktop, Git Bash, PowerShell 7, Python 3.14.</p>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Claim</th><th>Test</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>The Bash tool halves backslashes</td><td><code>echo 'a\\b' | od -c</code></td><td><code>a \ b</code>, one backslash. <code>'a\\\\b'</code> gives two.</td></tr>
+        <tr><td>A quoted heredoc does not protect them</td><td><code>python - &lt;&lt;'PY'</code> then <code>len(r"\\n")</code></td><td>2, where 3 was sent</td></tr>
+        <tr><td>The PowerShell tool keeps them</td><td><code>'a\\b'.Length</code></td><td>4</td></tr>
+        <tr><td>Commands over about 7.8 KB fail</td><td><code>cat &lt;&lt;'EOF' | wc -c</code> with 5.3, 7.8 and 9.0 KB bodies</td><td>5,322. Then twice <code>/usr/bin/bash: -c: line 1: unexpected EOF while looking for matching `''</code></td></tr>
+        <tr><td>An apostrophe is not the trigger</td><td>The 9.0 KB body with no apostrophe at all</td><td>Same error</td></tr>
+        <tr><td>Line count is not the trigger</td><td>20 and 70-line heredocs with an apostrophe</td><td><code>20</code> and <code>70</code></td></tr>
+        <tr><td>Edit keeps CRLF</td><td>A newline inside new_string, in a CRLF file</td><td><code>TWO\r\nadded\r\n</code></td></tr>
+        <tr><td>Edit keeps a BOM</td><td>An edit in a CRLF file with a BOM</td><td>BOM and CRLF kept</td></tr>
+        <tr><td>Edit strips trailing whitespace</td><td>new_string <code>one = </code></td><td><code>one =</code></td></tr>
+        <tr><td>Write writes LF over a CRLF file</td><td>Write <code>alpha</code>, <code>beta</code> over a CRLF file</td><td><code>alpha\nbeta\n</code>, no CR</td></tr>
+        <tr><td>Write drops a BOM</td><td>The same Write over a file with a BOM</td><td>No BOM</td></tr>
+        <tr><td>Read hides endings and BOM</td><td>Read of CRLF, LF and CRLF-with-BOM probes</td><td>Three identical outputs</td></tr>
+        <tr><td>Python prints through cp1252</td><td><code>print()</code> of a text holding U+2192</td><td><code>UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 22: character maps to &lt;undefined&gt;</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="block" id="catalog">
+  <h2>Catalog</h2>
+  <div class="legend">
+    <span><span class="pill data">data</span> a file or result ends up wrong</span>
+    <span><span class="pill time">time</span> retries and wasted tokens</span>
+    <span><span class="pill noise">noise</span> friction, no damage</span>
+    <span><span class="pill live">live</span> verified today</span>
+    <span><span class="pill src">F1.1</span> the friend's row id</span>
+  </div>
+  <div class="filters" role="search">
+    <input type="search" id="q" placeholder="Search text, ids, error messages" aria-label="Search findings">
+    <select id="area" aria-label="Area">
+      <option value="all">All areas</option>
+      <option value="ANC">Finding the text to edit</option>
+      <option value="STL">The file changed under the agent</option>
+      <option value="BYT">File bytes</option>
+      <option value="SHW">Writes through the shell</option>
+      <option value="VFY">Right after the edit</option>
+      <option value="PTH">Paths and working directory</option>
+      <option value="SHL">Shells and interpreters</option>
+      <option value="OUT">Exit codes and output</option>
+      <option value="RUN">Waiting, long runs, searches</option>
+      <option value="LCK">Locks and read-only files</option>
+      <option value="GRD">Harness guards</option>
+      <option value="GIT">Git around edits</option>
+      <option value="INP">Tool input and limits</option>
+      <option value="EXT">Outside file IO</option>
+    </select>
+    <div class="chipset" aria-label="Class">
+      <button class="chip" type="button" data-kind="cls" data-val="data" aria-pressed="true">data</button>
+      <button class="chip" type="button" data-kind="cls" data-val="time" aria-pressed="true">time</button>
+      <button class="chip" type="button" data-kind="cls" data-val="noise" aria-pressed="true">noise</button>
+    </div>
+    <div class="chipset" aria-label="Seen in">
+      <button class="chip" type="button" data-kind="src" data-val="both" aria-pressed="true">both scans</button>
+      <button class="chip" type="button" data-kind="src" data-val="ours" aria-pressed="true">ours only</button>
+      <button class="chip" type="button" data-kind="src" data-val="his" aria-pressed="true">friend only</button>
+    </div>
+    <label class="count"><input type="checkbox" id="liveonly"> live only</label>
+    <button class="tool-btn" type="button" id="expand">Open all evidence</button>
+    <span class="count" id="count">98 of 98 findings</span>
+  </div>
+
+<section class="area" data-area="ANC">
+  <h3>Finding the text to edit</h3>
+  <p>The edit fails on its anchor before anything is written. This is the largest Edit failure class in both scans.</p>
+
+  <article class="f" data-area="ANC" data-cls="time" data-src="both" data-live="0" id="ANC-1">
+    <div class="fh"><span class="fid">ANC-1</span><span class="ft">Anchor not found</span><span class="tags"><span class="pill time">time</span><span class="pill src">F1.1</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>Edit answers <code>String to replace not found in file.</code> A patch script stops on <code>AssertionError</code> or <code>ValueError: substring not found</code>.</div>
+      <div class="chk"><span class="lab">Check</span>Run the freshness gate (STL-1) first. On a miss, show the closest whitespace-normalised match with line numbers, with spaces, tabs, CR and BOM made visible. Convert the anchor to the file's line ending before matching.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>The anchor is not the file's current text. The friend measured 72 misses: 30 used text the agent knew only from its own earlier edit (22 of them after a shell write), 27 used text absent from the last Read, 8 hit a file never read, 4 matched only the first line and 3 differed in spacing. In scripts, an LF anchor meets a CRLF file, or the reverse.</dd>
+      <dt>Ours</dt><dd>71 misses in 26,098 Edit calls (0.27%). 194 scratchpad scripts assert that each anchor is found exactly once. A SmartTablesHost agent: "The file is LF, not CRLF - my last script hardcoded CRLF, so every replacement missed."</dd>
+      <dt>Friend</dt><dd>F1.1. D: 32 Edit, about 15 script. svn-git: 9 Edit, 34 script. G: 72 Edit, 186 script.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="ANC" data-cls="data" data-src="both" data-live="0" id="ANC-2">
+    <div class="fh"><span class="fid">ANC-2</span><span class="ft">Anchor matches more than once</span><span class="tags"><span class="pill data">data</span><span class="pill src">F1.2</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>Found 2 matches of the string to replace, but replace_all is false.</code> A script's <code>str.replace</code> edits every match, or only the first.</div>
+      <div class="chk"><span class="lab">Check</span>List every match with two lines of context and propose the shortest unique anchor. A script asserts exactly one match.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>A short or common line used as the anchor.</dd>
+      <dt>Ours</dt><dd>1 Edit error. 194 scripts carry the exactly-once assert because a plain replace does not check.</dd>
+      <dt>Friend</dt><dd>F1.2. D: 3, svn-git 1, G: 16.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="ANC" data-cls="data" data-src="both" data-live="0" id="ANC-3">
+    <div class="fh"><span class="fid">ANC-3</span><span class="ft">A batch stops half applied</span><span class="tags"><span class="pill data">data</span><span class="pill src">F1.3</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>A three-edit script wrote edits 1 and 2, then failed on 3. Only <code>git diff</code> showed what was in the file.</div>
+      <div class="chk"><span class="lab">Check</span>Check every anchor of a batch first, then write all or none.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>Edits applied one at a time, with no pre-check.</dd>
+      <dt>Ours</dt><dd>The CLICKER <code>edit()</code> helper does it right: read once, apply every pair in memory, assert each, write once. 138 scripts define it, in 73 different bodies.</dd>
+      <dt>Friend</dt><dd>F1.3 (web W3).</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="ANC" data-cls="data" data-src="both" data-live="1" id="ANC-4">
+    <div class="fh"><span class="fid">ANC-4</span><span class="ft">Trailing whitespace is cut from new_string</span><span class="tags"><span class="pill data">data</span><span class="pill live">live</span><span class="pill src">F1.4</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>An Edit whose new_string was <code>one = </code> wrote <code>one =</code>. The friend's two cases compiled: <code>const auto minted =MakeAction(...)</code> and <code>CollectInventoryItemIds(crafter )</code>.</div>
+      <div class="chk"><span class="lab">Check</span>Warn when old_string or new_string starts or ends with whitespace. After a replace_all, show the changed token boundaries.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>The Edit tool strips trailing whitespace from new_string. Claude Code's own bundled update-config skill says Edit strips trailing whitespace before writing.</dd>
+      <dt>Ours</dt><dd>Verified live on 2026-09-27.</dd>
+      <dt>Friend</dt><dd>F1.4 (G: A3).</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="ANC" data-cls="data" data-src="his" data-live="0" id="ANC-5">
+    <div class="fh"><span class="fid">ANC-5</span><span class="ft">Private-use glyphs are invisible</span><span class="tags"><span class="pill data">data</span><span class="pill src">F1.5</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>An anchor holding <code>""</code> matched nothing, because the file held U+E8F4 between the quotes. Glyphs were lost on Write, and empty strings got committed.</div>
+      <div class="chk"><span class="lab">Check</span>Count private-use glyphs before and after each write. Flag <code>""</code> in old_string where the file has a glyph. Prefer <code>\uXXXX</code> escapes in new code.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>U+E000 to U+F8FF print as nothing in Read, grep, sed and the agent's own text.</dd>
+      <dt>Ours</dt><dd>Not seen. No tracked text file in the four repos is invalid UTF-8, and at most 7 files per extension hold any non-ASCII byte.</dd>
+      <dt>Friend</dt><dd>F1.5 (svn-git about 12).</dd>
+    </dl></details>
+  </article>
+</section>
+
+<section class="area" data-area="STL">
+  <h3>The file changed under the agent</h3>
+  <p>The agent's picture of a file goes stale. Formatters, scripts, git, other agents and the user all write behind the edit tool.</p>
+
+  <article class="f" data-area="STL" data-cls="time" data-src="both" data-live="0" id="STL-1">
+    <div class="fh"><span class="fid">STL-1</span><span class="ft">File changed between read and write</span><span class="tags"><span class="pill time">time</span><span class="pill src">F2.1</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.</code></div>
+      <div class="chk"><span class="lab">Check</span>Keep a hash of the text last seen for each file, from a Read or from the agent's own edit. Refuse a stale edit and show the current text of that region. Mark a file "re-read needed" after any shell, formatter or git command that can touch it.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>A formatter, a script, git, the user, another agent or the agent's own patch script wrote the file after the last Read.</dd>
+      <dt>Ours</dt><dd>16 Edit and 39 Write calls.</dd>
+      <dt>Friend</dt><dd>F2.1. D: 13, svn-git 3, G: 14.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="STL" data-cls="noise" data-src="both" data-live="0" id="STL-2">
+    <div class="fh"><span class="fid">STL-2</span><span class="ft">Edit or Write before Read</span><span class="tags"><span class="pill noise">noise</span><span class="pill src">F2.2</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>File has not been read yet. Read it first before writing to it.</code></div>
+      <div class="chk"><span class="lab">Check</span>Read and hash the file automatically before its first edit.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>The first touch of a file, or the first edit after a compaction.</dd>
+      <dt>Ours</dt><dd>62 Edit and 20 Write calls.</dd>
+      <dt>Friend</dt><dd>F2.2. D: 23, G: 13.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="STL" data-cls="data" data-src="both" data-live="0" id="STL-3">
+    <div class="fh"><span class="fid">STL-3</span><span class="ft">Someone else edits the same tree</span><span class="tags"><span class="pill data">data</span><span class="pill src">F2.3</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>A SmartTablesHost sub-agent: "other agents were editing this repo concurrently (the audit script itself and ~55 other plugin files changed under me mid-task)". The friend: the user's uncommitted edits were compiled into a test binary.</div>
+      <div class="chk"><span class="lab">Check</span>Snapshot git status at session start. Never stage, edit or revert a file that was dirty before. Resolve junctions and symlinks to the real path and name the repository that owns the file.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>A shared working tree. Junctions widen it: the kit is linked into four repositories, so one edit lands in all of them, and SmartTablesHost's git tracks kit skill files through its junctions.</dd>
+      <dt>Ours</dt><dd>SmartTablesHost, 2026-09-06.</dd>
+      <dt>Friend</dt><dd>F2.3.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="STL" data-cls="noise" data-src="both" data-live="0" id="STL-4">
+    <div class="fh"><span class="fid">STL-4</span><span class="ft">Edit with identical strings</span><span class="tags"><span class="pill noise">noise</span><span class="pill src">F14.6</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>No changes to make: old_string and new_string are exactly the same.</code></div>
+      <div class="chk"><span class="lab">Check</span>Treat it as a freshness signal and re-read the region.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>The agent believed the file still held the old text.</dd>
+      <dt>Ours</dt><dd>2.</dd>
+      <dt>Friend</dt><dd>F14.6 (D: 4).</dd>
+    </dl></details>
+  </article>
+</section>
+
+<section class="area" data-area="BYT">
+  <h3>File bytes: endings, encodings, size</h3>
+  <p>These corrupt a file with no error. A byte guard that runs before and after every write catches all of them.</p>
+
+  <article class="f" data-area="BYT" data-cls="data" data-src="both" data-live="1" id="BYT-1">
+    <div class="fh"><span class="fid">BYT-1</span><span class="ft">Write turns a CRLF file into LF and drops its BOM</span><span class="tags"><span class="pill data">data</span><span class="pill live">live</span><span class="pill src">F3.1</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>Git warns <code>in the working copy of 'X', LF will be replaced by CRLF the next time Git touches it</code>. A diff shows every line changed.</div>
+      <div class="chk"><span class="lab">Check</span>Before a write, record the file's ending style, BOM and encoding. Convert the new content to them, or refuse. After the write, fail if any of them changed.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>The Write tool writes the content as given, with LF. Verified live: Write over a CRLF file left LF, and Write over a CRLF file with a BOM left LF and no BOM. The Edit tool keeps both: a newline inside new_string became CRLF, and the BOM stayed.</dd>
+      <dt>Ours</dt><dd>432 git warnings of that form. 102 of CLICKER's 2,643 C++ files are LF. All 74 kit C++ files are LF in a repository with <code>core.autocrlf=true</code>.</dd>
+      <dt>Friend</dt><dd>F3.1. x-graph F1, D: 30 warnings, svn-git 81.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="BYT" data-cls="data" data-src="both" data-live="0" id="BYT-2">
+    <div class="fh"><span class="fid">BYT-2</span><span class="ft">Scripts rewrite every line ending</span><span class="tags"><span class="pill data">data</span><span class="pill src">F3.1</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>A SmartTablesHost agent: "My patch scripts normalised to LF on read and wrote it back that way, converting all seven files to LF - against .editorconfig, which specifies CRLF."</div>
+      <div class="chk"><span class="lab">Check</span>Scripts pass the same byte guard as the tools. Compare <code>git diff --numstat</code> with and without <code>--ignore-cr-at-eol</code>. A difference means an ending changed.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>Python <code>open(p, 'w')</code> without <code>newline=''</code> translates every ending. A script that hard-codes one ending misses on the other. Git Bash <code>sed -i</code> strips CR (friend).</dd>
+      <dt>Ours</dt><dd>306 scratchpad scripts read with <code>newline=''</code> to see the CR bytes. 11 define their own <code>crlf()</code>. <code>to_crlf.py</code> and <code>normalise.py</code> exist only to repair endings.</dd>
+      <dt>Friend</dt><dd>F3.1.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="BYT" data-cls="data" data-src="ours" data-live="0" id="BYT-3">
+    <div class="fh"><span class="fid">BYT-3</span><span class="ft">A formatter leaves mixed endings</span><span class="tags"><span class="pill data">data</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>A SmartTablesHost agent measured "clang-format on an LF file produces mixed endings - SmartTableColour.h came out CRLF=14, bareLF=14". Its own scripts split on <code>\r\n</code>, so they merged real lines into one.</div>
+      <div class="chk"><span class="lab">Check</span>Count endings after every formatter run. In a repository that mixes, set <code>LineEnding: DeriveLF</code> or <code>DeriveCRLF</code>, never a fixed style.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>A fixed <code>LineEnding: CRLF</code> meets an LF file. Three of the four repos set it. The kit's <code>.clang-format</code>, copied on 2026-09-27, says CRLF while all 74 kit C++ files are LF.</dd>
+      <dt>Ours</dt><dd>SmartTablesHost, 2026-08-24, measured by the agent and not re-run for this page. 7 of OrbitalDrift's 26 .ini files have mixed endings today.</dd>
+      <dt>Friend</dt><dd>Not in his scan.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="BYT" data-cls="time" data-src="ours" data-live="1" id="BYT-4">
+    <div class="fh"><span class="fid">BYT-4</span><span class="ft">Read hides endings, BOM and encoding</span><span class="tags"><span class="pill time">time</span><span class="pill live">live</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>Three probe files, CRLF, LF and CRLF with a BOM, read back identically. The agent cannot see which convention it must keep.</div>
+      <div class="chk"><span class="lab">Check</span>Print the file's ending style, BOM, encoding and indent character in a header line of every read.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>Read shows decoded text with line numbers only.</dd>
+      <dt>Ours</dt><dd>Verified live on 2026-09-27. Agents wrote <code>endings.py</code>, run 40 times, to count CRLF and LF in bytes.</dd>
+      <dt>Friend</dt><dd>Related: F3.2.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="BYT" data-cls="time" data-src="his" data-live="0" id="BYT-5">
+    <div class="fh"><span class="fid">BYT-5</span><span class="ft">Git Bash tools misreport CR</span><span class="tags"><span class="pill time">time</span><span class="pill src">F3.2</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>grep -c $'\r$'</code> reported every line as CRLF, or 0 on one call and 760 on the next, for the same file.</div>
+      <div class="chk"><span class="lab">Check</span>Count <code>\r\n</code>, <code>\n</code> and the BOM in bytes, or ask <code>git ls-files --eol</code>. Never infer endings from shell text tools.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>Git Bash tools normalise endings when they read.</dd>
+      <dt>Ours</dt><dd>Not measured.</dd>
+      <dt>Friend</dt><dd>F3.2 (x-graph F3).</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="BYT" data-cls="data" data-src="his" data-live="0" id="BYT-6">
+    <div class="fh"><span class="fid">BYT-6</span><span class="ft">Non-UTF-8 bytes become U+FFFD</span><span class="tags"><span class="pill data">data</span><span class="pill src">F3.3</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>An author name in a header became U+FFFD after an Edit, and git showed a stray hunk in lines 1 to 10. Read output showed U+FFFD 391 times.</div>
+      <div class="chk"><span class="lab">Check</span>Scan for invalid UTF-8 before an edit. Edit bytes, or put the original bytes back outside the edited hunk. Fail if the count of EF BF BD grew.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>cp1250 headers decoded as UTF-8 and written back as EF BF BD.</dd>
+      <dt>Ours</dt><dd>Not seen. No tracked text file in the four repos is invalid UTF-8.</dd>
+      <dt>Friend</dt><dd>F3.3. 334 such files in one repository.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="BYT" data-cls="data" data-src="both" data-live="1" id="BYT-7">
+    <div class="fh"><span class="fid">BYT-7</span><span class="ft">BOM lost or added</span><span class="tags"><span class="pill data">data</span><span class="pill live">live</span><span class="pill src">F3.4</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>A <code>utf-8-sig</code> write added a BOM (friend). Heredoc, Python and Write-tool writes drop one.</div>
+      <div class="chk"><span class="lab">Check</span>The BOM state after a write equals the state before. Flag <code>utf-8-sig</code> in scripts.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>BOM use is per file. PowerShell 5.1 <code>-Encoding utf8</code> adds one.</dd>
+      <dt>Ours</dt><dd>31 OrbitalDrift C++ files carry a BOM among 2,286. A comment-pass agent had to confirm "the BOM is still there on the Component and Interface headers". Verified live: Write drops a BOM, Edit keeps it.</dd>
+      <dt>Friend</dt><dd>F3.4.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="BYT" data-cls="data" data-src="his" data-live="0" id="BYT-8">
+    <div class="fh"><span class="fid">BYT-8</span><span class="ft">PowerShell changes bytes on write, redirect and pipe</span><span class="tags"><span class="pill data">data</span><span class="pill src">F3.5</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>Windows PowerShell 5.1 writes UTF-16 by default and pwsh writes UTF-8. A <code>&gt;</code> redirect re-encodes and can turn LF into CRLF. <code>git archive</code> piped into <code>tar</code> produced a corrupt archive.</div>
+      <div class="chk"><span class="lab">Check</span>Always pass <code>-Encoding</code> to a writing cmdlet. Send byte pipes and redirects through <code>cmd /c</code>.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>Two editions on one machine, and pipelines that carry text rather than bytes.</dd>
+      <dt>Ours</dt><dd>No failure measured. The transcripts hold 196 Set-Content, Out-File or WriteAll* commands and 118 here-strings.</dd>
+      <dt>Friend</dt><dd>F3.5 (x-graph F5, R5).</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="BYT" data-cls="data" data-src="both" data-live="0" id="BYT-9">
+    <div class="fh"><span class="fid">BYT-9</span><span class="ft">A file is cut to 0 bytes</span><span class="tags"><span class="pill data">data</span><span class="pill src">F3.6</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>A SmartTablesHost agent: "A patch script called io.open(path, "w") with an invalid newline value - the open truncated the file to 0 bytes, then raised. It was untracked, so git had nothing." It rebuilt the file from a <code>.pyc</code>.</div>
+      <div class="chk"><span class="lab">Check</span>Write to a temp file and rename it into place. Fail when the size collapses. Snapshot an untracked file before a script touches it.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd><code>open(..., 'w')</code> truncates before anything is validated or encoded.</dd>
+      <dt>Ours</dt><dd>SmartTablesHost, 2026-08-26, docsite.py.</dd>
+      <dt>Friend</dt><dd>F3.6. A UnicodeEncodeError after the truncation, reported as exit 0.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="BYT" data-cls="data" data-src="both" data-live="0" id="BYT-10">
+    <div class="fh"><span class="fid">BYT-10</span><span class="ft">Rebuilt versions must keep the index bytes</span><span class="tags"><span class="pill data">data</span><span class="pill src">F3.7</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>Rebuilding intermediate file versions to split a commit had to reproduce the index bytes exactly.</div>
+      <div class="chk"><span class="lab">Check</span>Hash exactly what was extracted, with <code>--no-filters</code>, and prove the final tree matches byte for byte.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd><code>git hash-object</code> without <code>--no-filters</code> can re-filter endings.</dd>
+      <dt>Ours</dt><dd>SmartTablesHost's <code>stageA.py</code> writes rebuilt versions straight into the index.</dd>
+      <dt>Friend</dt><dd>F3.7 (x-graph F4).</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="BYT" data-cls="noise" data-src="both" data-live="0" id="BYT-11">
+    <div class="fh"><span class="fid">BYT-11</span><span class="ft">Indent style does not match the file</span><span class="tags"><span class="pill noise">noise</span><span class="pill src">F3.8</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>Added lines take the agent's own indent, not the file's.</div>
+      <div class="chk"><span class="lab">Check</span>Each added line takes the indent character of its nearest neighbours.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>Indent is per file, and the configs contradict the files. CLICKER's <code>.clang-format</code> says <code>UseTab: Never</code> while 926 of its C++ files indent with tabs and 237 mix both. OrbitalDrift's <code>.editorconfig</code> says tabs while 589 C++ files indent with spaces.</dd>
+      <dt>Ours</dt><dd>Repository survey, 2026-09-27.</dd>
+      <dt>Friend</dt><dd>F3.8.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="BYT" data-cls="noise" data-src="both" data-live="0" id="BYT-12">
+    <div class="fh"><span class="fid">BYT-12</span><span class="ft">Whole-file rewriters change more than asked</span><span class="tags"><span class="pill noise">noise</span><span class="pill src">F3.9</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>clang-format over a whole file re-indents untouched code and adds <code>// namespace</code> closers. <code>Set-Content</code> appends a final newline (friend).</div>
+      <div class="chk"><span class="lab">Check</span>The diff holds only the intended hunks. Format only the changed lines.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>A whole-file rewrite where a hunk edit was meant.</dd>
+      <dt>Ours</dt><dd><code>fmt_hunks.py</code>, clang-format over the lines changed since HEAD, ran 197 times. <code>unformat.py</code> reverts whitespace-only hunks and added namespace closers.</dd>
+      <dt>Friend</dt><dd>F3.9.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="BYT" data-cls="noise" data-src="ours" data-live="0" id="BYT-13">
+    <div class="fh"><span class="fid">BYT-13</span><span class="ft">Non-ASCII slips into ASCII-only files</span><span class="tags"><span class="pill noise">noise</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>Em dashes, arrows and curly quotes arrive in code and docs that must stay ASCII.</div>
+      <div class="chk"><span class="lab">Check</span>Flag new non-ASCII characters in added lines, by repository policy.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>The model's own punctuation.</dd>
+      <dt>Ours</dt><dd>70 scratchpad scripts refuse non-ASCII around their writes.</dd>
+      <dt>Friend</dt><dd>Not in his scan.</dd>
+    </dl></details>
+  </article>
+</section>
+
+<section class="area" data-area="SHW">
+  <h3>Writes through the shell</h3>
+  <p>Heredocs, inline scripts and in-place edits fail far more often than the edit tool, and their failures are the silent kind.</p>
+
+  <article class="f" data-area="SHW" data-cls="data" data-src="both" data-live="0" id="SHW-1">
+    <div class="fh"><span class="fid">SHW-1</span><span class="ft">Files changed by shell instead of the edit tool</span><span class="tags"><span class="pill data">data</span><span class="pill src">F4.1</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>The file changes outside the edit tool, so no freshness gate, byte guard or review diff runs.</div>
+      <div class="chk"><span class="lab">Check</span>Block shell writes to tracked files and allow the scratchpad. A script that must edit passes the same gate and guard as Edit.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>Auto mode tells the agent to prefer these routes. The system text in the session that wrote this page: "make small, mechanical file changes with sed, heredocs, or short scripts instead of the dedicated Read, Edit, or Write tools". Agents also fall back to a script after an EPERM or a failed Edit.</dd>
+      <dt>Ours</dt><dd>20,646 commands carry a heredoc and 15,129 run <code>python -c</code>, most of them read-only. 907 run <code>sed -i</code>, 5,114 redirect into a source-type file, and 196 use Set-Content, Out-File or WriteAll*. 417 scratchpad scripts write files: 2.9 MB, about 759k tokens.</dd>
+      <dt>Friend</dt><dd>F4.1. D: about 1,800 shell writes against 8,269 Edit calls. svn-git: about 570 in one session.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="SHW" data-cls="data" data-src="both" data-live="1" id="SHW-2">
+    <div class="fh"><span class="fid">SHW-2</span><span class="ft">The Bash tool halves backslashes, even in a quoted heredoc</span><span class="tags"><span class="pill data">data</span><span class="pill live">live</span><span class="pill src">F4.2</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>echo 'a\\b'</code> prints <code>a\b</code>. Python inside <code>&lt;&lt;'PY'</code> sees <code>r"\\n"</code> as 2 characters. An agent: "a \n inside a heredoc became a literal newline and broke the file". The friend found a real NUL in a C# file, <code>D:&lt;FF&gt;ort</code> for <code>D:\fort</code>, and a BEL byte.</div>
+      <div class="chk"><span class="lab">Check</span>Refuse a shell body that contains <code>\\</code>. After any write, fail on a new NUL or C0 byte. Treat <code>Binary file matches</code> on a source file as corruption.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>The Bash tool turns <code>\\</code> into <code>\</code> before bash parses the command, inside single quotes and quoted heredocs too. The PowerShell tool does not: <code>'a\\b'.Length</code> is 4.</dd>
+      <dt>Ours</dt><dd>Verified live on 2026-09-27. Agents: "Right, an inline heredoc loses backslashes" (CLICKER), "The heredoc mangled the escapes again" (SmartTablesHost).</dd>
+      <dt>Friend</dt><dd>F4.2. svn-git about 14.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="SHW" data-cls="data" data-src="ours" data-live="1" id="SHW-3">
+    <div class="fh"><span class="fid">SHW-3</span><span class="ft">A regex loses a backslash and silently matches nothing</span><span class="tags"><span class="pill data">data</span><span class="pill live">live</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>A read-only count run from a heredoc returned 0 with no error. Its regex had lost one backslash on the way in.</div>
+      <div class="chk"><span class="lab">Check</span>As SHW-2. Run analysis from a script file, and treat an unexpected 0 as a failure until a known positive matches.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>SHW-2 on the read side. A count of 0 reads like a real answer.</dd>
+      <dt>Ours</dt><dd>Hit while writing this page. A kit agent on 2026-09-06: "Regex broke on heredoc quoting - the strip didn't run."</dd>
+      <dt>Friend</dt><dd>Not in his scan.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="SHW" data-cls="time" data-src="both" data-live="1" id="SHW-4">
+    <div class="fh"><span class="fid">SHW-4</span><span class="ft">Commands over about 7.8 KB fail</span><span class="tags"><span class="pill time">time</span><span class="pill live">live</span><span class="pill src">F4.3</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>/usr/bin/bash: -c: line 1: unexpected EOF while looking for matching `''</code>, whatever the command holds.</div>
+      <div class="chk"><span class="lab">Check</span>Measure every command before sending it. Refuse one over 6 KB, and send the content through Write, then run the file.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>Size, not quoting. The limit sits near 7,800 bytes when each apostrophe counts as 4 bytes, the way a single-quote wrapper escapes it. That fits a single-quoted command cut at the 8,191-character cmd.exe limit, but the mechanism is inferred. The message blames a quote, so agents fix quoting and resend.</dd>
+      <dt>Ours</dt><dd>Live: 5.3 KB passed, 7.8 KB and 9.0 KB failed, with and without an apostrophe. Transcripts: under 6 KB, 2 of 19,698 heredoc commands failed. From 6 to 8 KB, 32 of 222. From 8 to 16 KB, 160 of 160. Largest pass 7,810 bytes, smallest failure 7,807. The 241 failed commands carried 2.0 MB, about 531k tokens.</dd>
+      <dt>Friend</dt><dd>F4.3 put it down to apostrophes and line count: 10 of 63 heredocs over 60 lines failed. The byte limit explains both.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="SHW" data-cls="data" data-src="both" data-live="0" id="SHW-5">
+    <div class="fh"><span class="fid">SHW-5</span><span class="ft">Backticks run as commands</span><span class="tags"><span class="pill data">data</span><span class="pill src">F4.4</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>grep -n "^### \|^```" README.md</code> failed with <code>unexpected EOF while looking for matching ``'</code>. The friend: every <code>`symbol`</code> vanished from a committed doc, with no error.</div>
+      <div class="chk"><span class="lab">Check</span>Refuse backticks inside double quotes. Use single quotes or a script file.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>Backticks inside double quotes are command substitution.</dd>
+      <dt>Ours</dt><dd>11 failures of that form.</dd>
+      <dt>Friend</dt><dd>F4.4.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="SHW" data-cls="time" data-src="both" data-live="0" id="SHW-6">
+    <div class="fh"><span class="fid">SHW-6</span><span class="ft">Python escape errors in inline scripts</span><span class="tags"><span class="pill time">time</span><span class="pill src">F4.5</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>SyntaxWarning: "\s" is an invalid escape sequence</code>, also for <code>\.</code>, <code>\d</code>, <code>\,</code>, <code>\w</code> and <code>\{</code>. <code>SyntaxError: (unicode error) 'unicodeescape' codec can't decode bytes in position N-M: truncated \UXXXXXXXX escape</code>.</div>
+      <div class="chk"><span class="lab">Check</span>Compile the body with <code>py_compile</code> before it runs. Require raw strings for regexes, and forward slashes in paths.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>Regexes and Windows paths in plain string literals.</dd>
+      <dt>Ours</dt><dd>97 invalid-escape warnings, 8 unicodeescape errors.</dd>
+      <dt>Friend</dt><dd>F4.5. svn-git 9.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="SHW" data-cls="time" data-src="both" data-live="0" id="SHW-7">
+    <div class="fh"><span class="fid">SHW-7</span><span class="ft">A trailing backslash escapes the closing quote</span><span class="tags"><span class="pill time">time</span><span class="pill src">F6.4</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>ls "C:\Users\felia\Desktop\projs\unreal\CLICKER\docs\prototype\"</code> failed with <code>unexpected EOF while looking for matching `"'</code>.</div>
+      <div class="chk"><span class="lab">Check</span>Use forward slashes, or drop the trailing backslash of a quoted path.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd><code>\"</code> inside double quotes is an escaped quote, so the string never closes.</dd>
+      <dt>Ours</dt><dd>16 failures that wait for a closing double quote, this one among them.</dd>
+      <dt>Friend</dt><dd>Part of F6.4.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="SHW" data-cls="noise" data-src="ours" data-live="0" id="SHW-8">
+    <div class="fh"><span class="fid">SHW-8</span><span class="ft">The write guard refuses a harmless command</span><span class="tags"><span class="pill noise">noise</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>The kit's <code>shell-write-guard.py</code> refused <code>git commit -m @'...'@ 2&gt;&amp;1 | Select-Object -Last 6</code> as "a PowerShell here-string written to a file".</div>
+      <div class="chk"><span class="lab">Check</span>Parse redirections properly and skip <code>n&gt;&amp;m</code>. Test every guard rule against a corpus of real commands before it ships.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>The rule reads the stream merge <code>2&gt;&amp;1</code> as a file redirect.</dd>
+      <dt>Ours</dt><dd>SmartTablesHost, 2026-09-26. 1 of 12 refusals since the guard shipped on 2026-09-25. 3 of the 12 were deliberate tests.</dd>
+      <dt>Friend</dt><dd>Related: F11.1.</dd>
+    </dl></details>
+  </article>
+</section>
+
+<section class="area" data-area="VFY">
+  <h3>Right after the edit</h3>
+  <p>Cheap checks that belong straight after each edit, not at commit or build time.</p>
+
+  <article class="f" data-area="VFY" data-cls="time" data-src="his" data-live="0" id="VFY-1">
+    <div class="fh"><span class="fid">VFY-1</span><span class="ft">Moved JSX kept its old indentation</span><span class="tags"><span class="pill time">time</span><span class="pill src">F5.1</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>Wrapping panels in a conditional needed two re-indent passes. One pass over-indented and left a stray blank line.</div>
+      <div class="chk"><span class="lab">Check</span>Run the formatter on the changed JS or JSX, then show the diff.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>Manual re-indent.</dd>
+      <dt>Friend</dt><dd>F5.1 (web W6).</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="VFY" data-cls="time" data-src="his" data-live="0" id="VFY-2">
+    <div class="fh"><span class="fid">VFY-2</span><span class="ft">A new sibling needed a wrapper</span><span class="tags"><span class="pill time">time</span><span class="pill src">F5.2</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>Adding a Note beside a div needed a fragment around both.</div>
+      <div class="chk"><span class="lab">Check</span>Parse the JSX right after the edit, before the build.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>The JSX single-root rule.</dd>
+      <dt>Friend</dt><dd>F5.2 (web W7).</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="VFY" data-cls="time" data-src="his" data-live="0" id="VFY-3">
+    <div class="fh"><span class="fid">VFY-3</span><span class="ft">Missing imports after adding code</span><span class="tags"><span class="pill time">time</span><span class="pill src">F5.3</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>New code used names that were never imported. The linter found them later.</div>
+      <div class="chk"><span class="lab">Check</span>Lint the changed file right after the edit, not at commit time.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F5.3 (web W11).</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="VFY" data-cls="time" data-src="his" data-live="0" id="VFY-4">
+    <div class="fh"><span class="fid">VFY-4</span><span class="ft">Leftovers after removing code</span><span class="tags"><span class="pill time">time</span><span class="pill src">F5.4</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>Removed features left helper lambdas and an unused local (ruff F841).</div>
+      <div class="chk"><span class="lab">Check</span>Lint straight after the edit.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F5.4 (web W12).</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="VFY" data-cls="time" data-src="his" data-live="0" id="VFY-5">
+    <div class="fh"><span class="fid">VFY-5</span><span class="ft">Type annotation missing</span><span class="tags"><span class="pill time">time</span><span class="pill src">F5.5</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>mypy wanted <code>list[str]</code> on <code>out = []</code>.</div>
+      <div class="chk"><span class="lab">Check</span>Type-check only the changed module, for speed.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F5.5 (web W13).</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="VFY" data-cls="time" data-src="ours" data-live="0" id="VFY-6">
+    <div class="fh"><span class="fid">VFY-6</span><span class="ft">Proving a comment-only pass changed no code</span><span class="tags"><span class="pill time">time</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>After a comment or include pass, the agent must show that no code moved. Each pass built its own checker and its own before-copies.</div>
+      <div class="chk"><span class="lab">Check</span>Strip comments, or includes, from the before and after copies and compare what is left.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>No tool compares code with comments removed.</dd>
+      <dt>Ours</dt><dd><code>strip_compare.py</code>, <code>p3_guard.py</code>, <code>check77.py</code>, <code>verify_sort.py</code> and <code>verify_rail.py</code>. Before-copies: <code>source_backup</code> (722 files), <code>backup-before-commits</code> (105), <code>p3_before</code> (79).</dd>
+      <dt>Friend</dt><dd>Not in his scan.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="VFY" data-cls="data" data-src="his" data-live="0" id="VFY-7">
+    <div class="fh"><span class="fid">VFY-7</span><span class="ft">The result came from an old binary</span><span class="tags"><span class="pill data">data</span><span class="pill src">F12.1</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>A failed compile left the previous executable, and the test run passed on it. A test filter that matched nothing still printed SUCCESS.</div>
+      <div class="chk"><span class="lab">Check</span>Gate a pass on the build exit code, a moved executable timestamp and the expected case count.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F12.1. A 49-case pass had to be retracted.</dd>
+    </dl></details>
+  </article>
+</section>
+
+<section class="area" data-area="PTH">
+  <h3>Paths and working directory</h3>
+  <p>Most of these are cheap to catch before the call.</p>
+
+  <article class="f" data-area="PTH" data-cls="time" data-src="both" data-live="0" id="PTH-1">
+    <div class="fh"><span class="fid">PTH-1</span><span class="ft">Guessed path does not exist</span><span class="tags"><span class="pill time">time</span><span class="pill src">F6.1</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>Path does not exist: C:\Program Files\Epic Games\UE_5.8\Engine\Source\Runtime\GameplayTags\Public\GameplayTagContainer.h</code>. <code>File does not exist. Note: your current working directory is C:\Users\felia\Desktop\projs\unreal\CLICKER.</code></div>
+      <div class="chk"><span class="lab">Check</span>Check every path and glob before the call. On a miss, print the nearest existing path by basename.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>A guessed or moved layout, a type name taken as a file name, or a glob with no match passed on as a literal.</dd>
+      <dt>Ours</dt><dd>Grep 163, Read 53, Edit 8.</dd>
+      <dt>Friend</dt><dd>F6.1. D: about 230, svn-git about 45, G: 53 and about 584.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="PTH" data-cls="noise" data-src="both" data-live="0" id="PTH-2">
+    <div class="fh"><span class="fid">PTH-2</span><span class="ft">The working directory resets after cd</span><span class="tags"><span class="pill noise">noise</span><span class="pill src">F6.2</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>Shell cwd was reset to C:\Users\felia\Desktop\projs\unreal\UNREAL-SHARED</code>. Relative paths in the next call point somewhere else.</div>
+      <div class="chk"><span class="lab">Check</span>Use absolute paths, or <code>cd X &amp;&amp; cmd</code> inside one call.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>The harness returns the shell to the project after a command that left it.</dd>
+      <dt>Ours</dt><dd>5,669 result lines, 2,286 of them in the session that wrote this page.</dd>
+      <dt>Friend</dt><dd>F6.2. D: 867, svn-git 40.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="PTH" data-cls="data" data-src="both" data-live="0" id="PTH-3">
+    <div class="fh"><span class="fid">PTH-3</span><span class="ft">A write lands in another checkout</span><span class="tags"><span class="pill data">data</span><span class="pill src">F6.3</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>The friend's agents wrote into a mirror, another person's checkout and an ignored junction. Here, any path under <code>.claude/skills</code>, <code>.claude/tools/shared</code> or <code>Plugins/RiztazzDev</code> is the shared kit.</div>
+      <div class="chk"><span class="lab">Check</span>Allow writes only under the worktree, the scratchpad and the memory folder. For a junction, name the repository that really owns the file.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>Several checkouts and junctions on one drive.</dd>
+      <dt>Ours</dt><dd>The kit is linked into 4 repositories. CLICKER has 2 worktrees.</dd>
+      <dt>Friend</dt><dd>F6.3. 15,529 commands touched other checkouts, mostly reads.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="PTH" data-cls="time" data-src="both" data-live="0" id="PTH-4">
+    <div class="fh"><span class="fid">PTH-4</span><span class="ft">Git Bash rewrites arguments that start with a slash</span><span class="tags"><span class="pill time">time</span><span class="pill src">F6.4</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>Parameter error: C:/Program Files/Git/Game/NetSphere/FX/NS_NetSphere_Bolts.NS_NetSphere_Bolts is not valid NiagaraSystem</code>. The friend: <code>/nologo</code> became <code>C:/Program Files/Git/nologo</code>.</div>
+      <div class="chk"><span class="lab">Check</span>Set <code>MSYS_NO_PATHCONV=1</code> when Bash starts a native program. Convert paths with <code>cygpath -m</code>.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>MSYS path conversion of any argument that starts with a slash. Unreal asset paths such as <code>/Game/...</code> are exactly that.</dd>
+      <dt>Ours</dt><dd>37 results. CLICKER keeps a memory note for it and exports <code>MSYS_NO_PATHCONV=1</code> in later commands.</dd>
+      <dt>Friend</dt><dd>F6.4. G: 14.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="PTH" data-cls="data" data-src="his" data-live="0" id="PTH-5">
+    <div class="fh"><span class="fid">PTH-5</span><span class="ft">Reserved Windows names</span><span class="tags"><span class="pill data">data</span><span class="pill src">F6.5</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>2&gt;nul</code> in Git Bash creates a real file named nul that Windows tools cannot delete.</div>
+      <div class="chk"><span class="lab">Check</span>Refuse a path segment named nul, con, aux, prn, com1 to com9 or lpt1 to lpt9, with or without an extension. Rewrite <code>2&gt;nul</code> to <code>2&gt;/dev/null</code>.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>Windows device names.</dd>
+      <dt>Ours</dt><dd>Not measured.</dd>
+      <dt>Friend</dt><dd>F6.5.</dd>
+    </dl></details>
+  </article>
+</section>
+
+<section class="area" data-area="SHL">
+  <h3>Shells and interpreters</h3>
+  <p>The scripts that write files have to start, parse and print first.</p>
+
+  <article class="f" data-area="SHL" data-cls="time" data-src="both" data-live="0" id="SHL-1">
+    <div class="fh"><span class="fid">SHL-1</span><span class="ft">Shell dialect sent to the wrong tool</span><span class="tags"><span class="pill time">time</span><span class="pill src">F7.3</span><span class="pill src">F7.4</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>/usr/bin/bash: eval: line 1: syntax error near unexpected token `&amp;'</code> from PowerShell's call operator in the Bash tool. Bash syntax in the PowerShell tool fails with a parser error.</div>
+      <div class="chk"><span class="lab">Check</span>Detect the dialect before sending, and refuse a mismatch.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>Two shell tools with different grammars in one session.</dd>
+      <dt>Ours</dt><dd>5 Bash results of that form.</dd>
+      <dt>Friend</dt><dd>F7.3, and F7.4: <code>tail</code> does not exist in PowerShell.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="SHL" data-cls="time" data-src="both" data-live="1" id="SHL-2">
+    <div class="fh"><span class="fid">SHL-2</span><span class="ft">Python prints through the Windows code page</span><span class="tags"><span class="pill time">time</span><span class="pill live">live</span><span class="pill src">F7.2</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 22: character maps to &lt;undefined&gt;</code>. A bare <code>open()</code> reads a UTF-8 file as cp1252.</div>
+      <div class="chk"><span class="lab">Check</span>Start every Python with <code>PYTHONUTF8=1</code> and <code>PYTHONIOENCODING=utf-8</code>. Flag <code>open(</code> without <code>encoding=</code>.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>Python takes the Windows code page for the console and for <code>open()</code> without an encoding: cp1252 here, cp1250 on the friend's machine.</dd>
+      <dt>Ours</dt><dd>34 charmap errors, 4 UnicodeDecodeError, 6 ascii decode errors. Hit live while writing this page.</dd>
+      <dt>Friend</dt><dd>F7.2. G: 62 and 12, D: 5, svn-git 5.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="SHL" data-cls="time" data-src="his" data-live="0" id="SHL-3">
+    <div class="fh"><span class="fid">SHL-3</span><span class="ft">Interpreter or tool not found, or the wrong one</span><span class="tags"><span class="pill time">time</span><span class="pill src">F7.1</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>py</code> missing, <code>python</code> resolving to the Store stub or 2.7, tools only inside <code>.venv</code>, <code>clang-format: command not found</code> in Git Bash.</div>
+      <div class="chk"><span class="lab">Check</span>Resolve each program from a per-machine map before the call. Detect the Store stub by its exit code.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>No launcher, several Pythons, an inactive venv.</dd>
+      <dt>Ours</dt><dd>Our scripts hard-code the Visual Studio clang-format path.</dd>
+      <dt>Friend</dt><dd>F7.1. D: 79, G: 76.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="SHL" data-cls="time" data-src="his" data-live="0" id="SHL-4">
+    <div class="fh"><span class="fid">SHL-4</span><span class="ft">PowerShell parse traps</span><span class="tags"><span class="pill time">time</span><span class="pill src">F7.3</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>Nested double quotes inside <code>$( )</code>. A multi-line <code>python -c</code>. <code>&lt;&lt;'EOF'</code> does not exist. <code>-EncodedCommand</code> stops near 32 KB. A closing <code>'@</code> not alone at the start of its line.</div>
+      <div class="chk"><span class="lab">Check</span>Parse with the PowerShell parser before running. Use a script file for anything long.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>One-liner quoting against PowerShell grammar.</dd>
+      <dt>Friend</dt><dd>F7.3. D: about 20, G: 24.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="SHL" data-cls="time" data-src="his" data-live="0" id="SHL-5">
+    <div class="fh"><span class="fid">SHL-5</span><span class="ft">PowerShell cmdlet and variable traps</span><span class="tags"><span class="pill time">time</span><span class="pill src">F7.4</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>Select-String</code> has no <code>-Recurse</code>. <code>$Pid</code>, <code>$Args</code>, <code>$Input</code> and <code>$Host</code> are read-only. Output wraps at 120 columns. Module autoload writes CLIXML progress to stderr. Environment variables do not persist between calls.</div>
+      <div class="chk"><span class="lab">Check</span>Lint for these. Add <code>Out-String -Width 4096</code> and <code>$ProgressPreference='SilentlyContinue'</code>.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F7.4. svn-git about 60.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="SHL" data-cls="time" data-src="his" data-live="0" id="SHL-6">
+    <div class="fh"><span class="fid">SHL-6</span><span class="ft">PowerShell splits -name:value arguments</span><span class="tags"><span class="pill time">time</span><span class="pill src">F7.5</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>-verbosity:minimal</code> gave MSB1016, and <code>-p:BuildProjectReferences=false</code> gave MSB1006.</div>
+      <div class="chk"><span class="lab">Check</span>Quote such arguments, or use the <code>/p:</code> form.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F7.5. D: 6.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="SHL" data-cls="time" data-src="his" data-live="0" id="SHL-7">
+    <div class="fh"><span class="fid">SHL-7</span><span class="ft">PowerShell 7 syntax in scripts meant for 5.1</span><span class="tags"><span class="pill time">time</span><span class="pill src">F7.6</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>&amp;&amp;</code>, <code>||</code>, the ternary, <code>??</code> and <code>ConvertFrom-Json -AsHashtable</code> in scripts that other people run on 5.1.</div>
+      <div class="chk"><span class="lab">Check</span>Parse every shipped .ps1 file with <code>powershell.exe</code> 5.1 before it ships.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F7.6. D: 15 uses.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="SHL" data-cls="time" data-src="his" data-live="0" id="SHL-8">
+    <div class="fh"><span class="fid">SHL-8</span><span class="ft">cmd and batch quirks</span><span class="tags"><span class="pill time">time</span><span class="pill src">F7.7</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>A bare batch name in the current folder is "not recognized". A trailing <code>pause</code> blocks. <code>start "quoted exe"</code> takes the path as a window title. An unquoted path breaks at <code>C:\Program</code>.</div>
+      <div class="chk"><span class="lab">Check</span>Call <code>.\name.bat</code>, use <code>start ""</code>, and quote every path.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F7.7. D: 4.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="SHL" data-cls="noise" data-src="his" data-live="0" id="SHL-9">
+    <div class="fh"><span class="fid">SHL-9</span><span class="ft">A TMP override leaks into child tools</span><span class="tags"><span class="pill noise">noise</span><span class="pill src">F7.8</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>dotnet wrote its temp files into the new folder, which could not be removed afterwards.</div>
+      <div class="chk"><span class="lab">Check</span>Do not override TMP or TEMP. Pass an explicit output path.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F7.8.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="SHL" data-cls="time" data-src="his" data-live="0" id="SHL-10">
+    <div class="fh"><span class="fid">SHL-10</span><span class="ft">A define lost its quotes in a response file</span><span class="tags"><span class="pill time">time</span><span class="pill src">F7.9</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>False compile errors after response-file parsing stripped the quotes from a define holding a path.</div>
+      <div class="chk"><span class="lab">Check</span>Test the flag extractor against quoted defines, paths with spaces and long include lists.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F7.9 (x-graph R6).</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="SHL" data-cls="time" data-src="his" data-live="0" id="SHL-11">
+    <div class="fh"><span class="fid">SHL-11</span><span class="ft">Text matching picked the wrong XML block</span><span class="tags"><span class="pill time">time</span><span class="pill src">F7.10</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>A flag extractor read the Debug block instead of Release, and aborted on a project with no generated file.</div>
+      <div class="chk"><span class="lab">Check</span>Parse XML with an XML parser, never with awk or a regex. Skip missing files.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F7.10 (x-graph R7).</dd>
+    </dl></details>
+  </article>
+</section>
+
+<section class="area" data-area="OUT">
+  <h3>Exit codes and reading output</h3>
+  <p>A write is only as good as the check that reads its result.</p>
+
+  <article class="f" data-area="OUT" data-cls="data" data-src="both" data-live="0" id="OUT-1">
+    <div class="fh"><span class="fid">OUT-1</span><span class="ft">A pipe or chain hides the real exit code</span><span class="tags"><span class="pill data">data</span><span class="pill src">F8.1</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>The friend: <code>pytest | tail</code> reported exit 0 over "No module named pytest", and a commit went in over a red suite. A SmartTablesHost agent: "I reported "rebuilt" off a command that had failed."</div>
+      <div class="chk"><span class="lab">Check</span>Use <code>set -o pipefail</code>, or write the full output to a log, take the exit code alone, then read the log. Scan the whole output for error codes.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>A pipeline reports the exit code of its last command.</dd>
+      <dt>Ours</dt><dd>SmartTablesHost, 2026-08-26.</dd>
+      <dt>Friend</dt><dd>F8.1. svn-git about 95 exit-0 results that held errors.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="OUT" data-cls="data" data-src="his" data-live="0" id="OUT-2">
+    <div class="fh"><span class="fid">OUT-2</span><span class="ft">A filter cuts the lines that matter</span><span class="tags"><span class="pill data">data</span><span class="pill src">F8.2</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>Select-Object -First N</code> stops the pipeline and kills the native command, so a build died at step 137 of 341 with no error.</div>
+      <div class="chk"><span class="lab">Check</span>Write the full output to a log, then print the error lines, the last 20 lines and the exit code.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>A filter chosen before the output is known.</dd>
+      <dt>Ours</dt><dd>Agents save build output to scratchpad files to read it in parts: buildA.txt to buildZ.txt in one CLICKER session.</dd>
+      <dt>Friend</dt><dd>F8.2. D: 764 filtered builds, 150 of them errored.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="OUT" data-cls="noise" data-src="his" data-live="0" id="OUT-3">
+    <div class="fh"><span class="fid">OUT-3</span><span class="ft">Exit code 1 that is not an error</span><span class="tags"><span class="pill noise">noise</span><span class="pill src">F8.3</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>grep with no match returns 1, diff with a difference returns 1, and ls on a missing path returns 2. An <code>&amp;&amp;</code> chain stops on them.</div>
+      <div class="chk"><span class="lab">Check</span>Label the known exit codes, and do not stop a read-only chain on them.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F8.3. D: about 200, svn-git 73, G: about 415.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="OUT" data-cls="time" data-src="his" data-live="0" id="OUT-4">
+    <div class="fh"><span class="fid">OUT-4</span><span class="ft">Tool output in the system language</span><span class="tags"><span class="pill time">time</span><span class="pill src">F8.4</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>English-only filters such as <code>Build succeeded|Build FAILED</code> matched nothing on a Polish system.</div>
+      <div class="chk"><span class="lab">Check</span>Set <code>DOTNET_CLI_UI_LANGUAGE=en</code> and <code>VSLANG=1033</code>. Match error codes, not words.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F8.4. svn-git 449.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="OUT" data-cls="noise" data-src="both" data-live="1" id="OUT-5">
+    <div class="fh"><span class="fid">OUT-5</span><span class="ft">Mojibake in output</span><span class="tags"><span class="pill noise">noise</span><span class="pill live">live</span><span class="pill src">F8.5</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>An em dash in a transcript printed as <code>&#xFFFD;</code> from Python on a cp1252 console.</div>
+      <div class="chk"><span class="lab">Check</span>Run with <code>PYTHONIOENCODING=utf-8</code> and a UTF-8 console. Never copy mojibake back into a file.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>A console code page that does not match the text.</dd>
+      <dt>Ours</dt><dd>Seen live while writing this page.</dd>
+      <dt>Friend</dt><dd>F8.5. D: 426 outputs.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="OUT" data-cls="time" data-src="his" data-live="0" id="OUT-6">
+    <div class="fh"><span class="fid">OUT-6</span><span class="ft">The summary line is missing from test output</span><span class="tags"><span class="pill time">time</span><span class="pill src">F8.6</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>With warnings, <code>tail -1</code> of <code>pytest -q</code> showed dots, not the count.</div>
+      <div class="chk"><span class="lab">Check</span>Read results from a machine-readable report.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F8.6 (web W18).</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="OUT" data-cls="noise" data-src="both" data-live="0" id="OUT-7">
+    <div class="fh"><span class="fid">OUT-7</span><span class="ft">Log searches raise false alarms</span><span class="tags"><span class="pill noise">noise</span><span class="pill src">F8.7</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>A line that quotes the word being searched for counts as a hit. Our own first count of guard refusals matched 59 results, and 12 were real.</div>
+      <div class="chk"><span class="lab">Check</span>Anchor patterns at the line start, and prefer structured fields to text search.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Ours</dt><dd>This page, 2026-09-27.</dd>
+      <dt>Friend</dt><dd>F8.7. 219 of 310 alarms were false.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="OUT" data-cls="time" data-src="his" data-live="0" id="OUT-8">
+    <div class="fh"><span class="fid">OUT-8</span><span class="ft">A wrong guess about output structure</span><span class="tags"><span class="pill time">time</span><span class="pill src">F8.8</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>KeyError</code> and <code>IndexError</code> while parsing a JSON output that was never looked at.</div>
+      <div class="chk"><span class="lab">Check</span>Print the keys, or read the schema, before parsing.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F8.8. G: 32.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="OUT" data-cls="noise" data-src="his" data-live="0" id="OUT-9">
+    <div class="fh"><span class="fid">OUT-9</span><span class="ft">Locale number and name formats</span><span class="tags"><span class="pill noise">noise</span><span class="pill src">F8.9</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>Floats written with a decimal comma, and a localised name for the Administrators group.</div>
+      <div class="chk"><span class="lab">Check</span>Use the invariant culture for numbers written to data files, and SIDs for groups.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F8.9.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="OUT" data-cls="time" data-src="ours" data-live="0" id="OUT-10">
+    <div class="fh"><span class="fid">OUT-10</span><span class="ft">Long output is saved to a file the agent must read again</span><span class="tags"><span class="pill time">time</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>Output too large (41.2KB). Full output saved to: C:\Users\felia\.claude\projects\&lt;project&gt;\&lt;session&gt;\tool-results\&lt;file&gt;</code>. The agent needs a second call to read it.</div>
+      <div class="chk"><span class="lab">Check</span>Capture every long output to a log by design. Return a bounded summary: exit code, error lines, the last 20 lines and counts.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>The tool result has a size cap.</dd>
+      <dt>Ours</dt><dd>180 results.</dd>
+      <dt>Friend</dt><dd>Related: F8.2.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="OUT" data-cls="time" data-src="ours" data-live="0" id="OUT-11">
+    <div class="fh"><span class="fid">OUT-11</span><span class="ft">A growing log needs a "new lines since" reader</span><span class="tags"><span class="pill time">time</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>Agents re-read an editor log from the top, or wrote <code>logcheck.sh</code> to print the new warning lines after line N.</div>
+      <div class="chk"><span class="lab">Check</span>An incremental reader that remembers each file's last offset and filters known noise.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>No read primitive keeps an offset.</dd>
+      <dt>Ours</dt><dd><code>logcheck.sh</code> ran 54 times.</dd>
+      <dt>Friend</dt><dd>Not in his scan.</dd>
+    </dl></details>
+  </article>
+</section>
+
+<section class="area" data-area="RUN">
+  <h3>Waiting, long runs and searches</h3>
+  <p>Where a read waits on a process that is still writing.</p>
+
+  <article class="f" data-area="RUN" data-cls="time" data-src="his" data-live="0" id="RUN-1">
+    <div class="fh"><span class="fid">RUN-1</span><span class="ft">sleep chains are blocked</span><span class="tags"><span class="pill time">time</span><span class="pill src">F9.1</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>"Blocked: sleep 60 followed by: tail -20".</div>
+      <div class="chk"><span class="lab">Check</span>Use a monitor loop or a background run, with a "wait for this marker" helper.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F9.1. D: 30, G: 26.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="RUN" data-cls="data" data-src="his" data-live="0" id="RUN-2">
+    <div class="fh"><span class="fid">RUN-2</span><span class="ft">Background output read before the run ended</span><span class="tags"><span class="pill data">data</span><span class="pill src">F9.2</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>An empty output file was read as a finished run, and the next build hit a lock.</div>
+      <div class="chk"><span class="lab">Check</span>Track the process, not the file.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F9.2.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="RUN" data-cls="time" data-src="both" data-live="0" id="RUN-3">
+    <div class="fh"><span class="fid">RUN-3</span><span class="ft">Broad searches time out</span><span class="tags"><span class="pill time">time</span><span class="pill src">F9.3</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>Ripgrep search timed out after 20 seconds.</code> The friend: <code>grep -r</code> over build data ran past 120 s, and a recursive grep walked bin and obj into locked files.</div>
+      <div class="chk"><span class="lab">Check</span>Default excludes per repository, and no recursive search from a repository or drive root.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Ours</dt><dd>4 Grep and Glob timeouts.</dd>
+      <dt>Friend</dt><dd>F9.3. svn-git 153.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="RUN" data-cls="time" data-src="his" data-live="0" id="RUN-4">
+    <div class="fh"><span class="fid">RUN-4</span><span class="ft">Commands hit the ten-minute cap</span><span class="tags"><span class="pill time">time</span><span class="pill src">F9.4</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>"Exit code 143 | Command timed out after 10m 0s".</div>
+      <div class="chk"><span class="lab">Check</span>Detach long runs, poll a log, and give every wait a timeout.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F9.4.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="RUN" data-cls="time" data-src="his" data-live="0" id="RUN-5">
+    <div class="fh"><span class="fid">RUN-5</span><span class="ft">A silent long run looks hung</span><span class="tags"><span class="pill time">time</span><span class="pill src">F9.5</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>Ten minutes with no output.</div>
+      <div class="chk"><span class="lab">Check</span>Require progress lines and an estimate in long scripts.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F9.5.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="RUN" data-cls="data" data-src="his" data-live="0" id="RUN-6">
+    <div class="fh"><span class="fid">RUN-6</span><span class="ft">A script edited while a run used it</span><span class="tags"><span class="pill data">data</span><span class="pill src">F9.6</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>PowerShell re-reads a .ps1 on each invocation, so an edit changes a run half way through.</div>
+      <div class="chk"><span class="lab">Check</span>Copy the scripts into the run's own folder when it starts.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F9.6.</dd>
+    </dl></details>
+  </article>
+</section>
+
+<section class="area" data-area="LCK">
+  <h3>Locks and read-only files</h3>
+  <p>The write is refused by the file system, not by the tool.</p>
+
+  <article class="f" data-area="LCK" data-cls="time" data-src="both" data-live="0" id="LCK-1">
+    <div class="fh"><span class="fid">LCK-1</span><span class="ft">Edit fails because the file is locked</span><span class="tags"><span class="pill time">time</span><span class="pill src">F10.1</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>EPERM: operation not permitted, rename 'C:\Users\felia\Desktop\projs\unreal\CLICKER\Source\CLICKER\UI\Widgets\NetNodeWindow.cpp.tmp.35268.0f45da5b9576' -&gt; 'C:\Users\felia\Desktop\projs\unreal\CLICKER\Source\CLICKER\UI\Widgets\NetNodeWindow.cpp'</code></div>
+      <div class="chk"><span class="lab">Check</span>Name the process that holds the file, retry with backoff, then ask. Never fall back to a script write.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>The Edit tool writes a temp file and renames it over the original. An IDE, a build, an indexer or a scanner that holds the file blocks the rename.</dd>
+      <dt>Ours</dt><dd>3: the kit on 2026-09-12, CLICKER twice on 2026-09-26.</dd>
+      <dt>Friend</dt><dd>F10.1. D: 34, G: 6.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="LCK" data-cls="time" data-src="his" data-live="0" id="LCK-2">
+    <div class="fh"><span class="fid">LCK-2</span><span class="ft">Build output locked by a running program</span><span class="tags"><span class="pill time">time</span><span class="pill src">F10.2</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>MSB3027, MSB3026 and "lld-link: failed to write output". Two builds clash and show up as file-in-use.</div>
+      <div class="chk"><span class="lab">Check</span>Before a build, list processes whose image sits under the output folder. One build per checkout.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F10.2. D: 29, svn-git 26, G: 28.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="LCK" data-cls="data" data-src="his" data-live="0" id="LCK-3">
+    <div class="fh"><span class="fid">LCK-3</span><span class="ft">Killing by name hits the user's programs</span><span class="tags"><span class="pill data">data</span><span class="pill src">F10.3</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>By-name kills also stopped the user's own running copy of the app.</div>
+      <div class="chk"><span class="lab">Check</span>Stop only process ids the session started, and list what is still running at the end.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F10.3. svn-git 168.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="LCK" data-cls="time" data-src="ours" data-live="0" id="LCK-4">
+    <div class="fh"><span class="fid">LCK-4</span><span class="ft">A read-only file blocks the write, or hangs the editor</span><span class="tags"><span class="pill time">time</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>A write to an LFS-lockable asset that is still read-only raises an editor modal that blocks every later call. The session looks like a hung editor, not a lock problem.</div>
+      <div class="chk"><span class="lab">Check</span>Check the read-only bit before a write, and print the unlock step, such as <code>git lfs lock</code>.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd>Lockable LFS files stay read-only until someone takes the lock.</dd>
+      <dt>Ours</dt><dd>A standing rule in the kit's CLAUDE.md template.</dd>
+      <dt>Friend</dt><dd>Not in his scan.</dd>
+    </dl></details>
+  </article>
+</section>
+
+<section class="area" data-area="GRD">
+  <h3>Harness guards</h3>
+  <p>The harness itself refuses the call.</p>
+
+  <article class="f" data-area="GRD" data-cls="time" data-src="his" data-live="0" id="GRD-1">
+    <div class="fh"><span class="fid">GRD-1</span><span class="ft">A guard reads a path out of other tokens</span><span class="tags"><span class="pill time">time</span><span class="pill src">F11.1</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>"Remove-Item on system path '/c' is blocked" for a command whose <code>-replace '\\','/'</code> only looked like a path.</div>
+      <div class="chk"><span class="lab">Check</span>Run <code>Remove-Item</code> as a call of its own with one literal path. Hand the user the exact command when the guard refuses.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Ours</dt><dd>The same failure shape in our own guard: SHW-8.</dd>
+      <dt>Friend</dt><dd>F11.1. D: 18, svn-git 12, G: 38.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="GRD" data-cls="time" data-src="both" data-live="0" id="GRD-2">
+    <div class="fh"><span class="fid">GRD-2</span><span class="ft">The auto-mode classifier refuses or is down</span><span class="tags"><span class="pill time">time</span><span class="pill src">F11.2</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>claude-sonnet-5[1m] is temporarily unavailable, so auto mode cannot determine the safety of Edit right now.</code></div>
+      <div class="chk"><span class="lab">Check</span>Retry later, keep read-only work going meanwhile, and route destructive verbs to the user.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Ours</dt><dd>16 Edit calls.</dd>
+      <dt>Friend</dt><dd>F11.2. 22 outages in G:.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="GRD" data-cls="time" data-src="both" data-live="0" id="GRD-3">
+    <div class="fh"><span class="fid">GRD-3</span><span class="ft">The user stops the action</span><span class="tags"><span class="pill time">time</span><span class="pill src">F11.3</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>The user doesn't want to proceed with this tool use.</code></div>
+      <div class="chk"><span class="lab">Check</span>Treat those kinds of action as ask-first next time.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Ours</dt><dd>13 file-tool calls.</dd>
+      <dt>Friend</dt><dd>F11.3. D: 25.</dd>
+    </dl></details>
+  </article>
+</section>
+
+<section class="area" data-area="GIT">
+  <h3>Git around edits</h3>
+  <p>Where edits turn into commits, and where they get undone.</p>
+
+  <article class="f" data-area="GIT" data-cls="data" data-src="his" data-live="0" id="GIT-1">
+    <div class="fh"><span class="fid">GIT-1</span><span class="ft">Scratch files inside the repository</span><span class="tags"><span class="pill data">data</span><span class="pill src">F13.1</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>Helper scripts and <code>__pycache__</code> in the tree. One base move showed +4,482 lines.</div>
+      <div class="chk"><span class="lab">Check</span>Refuse new untracked scripts in the worktree. Block <code>git add -A</code> while a scratch file exists.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F13.1.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="GIT" data-cls="time" data-src="his" data-live="0" id="GIT-2">
+    <div class="fh"><span class="fid">GIT-2</span><span class="ft">A command created files</span><span class="tags"><span class="pill time">time</span><span class="pill src">F13.2</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>uv run pytest</code> created an untracked <code>uv.lock</code>.</div>
+      <div class="chk"><span class="lab">Check</span>Compare untracked files before and after each command, and report new ones.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F13.2 (web W16).</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="GIT" data-cls="data" data-src="his" data-live="0" id="GIT-3">
+    <div class="fh"><span class="fid">GIT-3</span><span class="ft">Broad staging</span><span class="tags"><span class="pill data">data</span><span class="pill src">F13.3</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>git add -A client server</code> staged everything untracked under both folders.</div>
+      <div class="chk"><span class="lab">Check</span>List new untracked and non-code files, and ask before a commit.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F13.3 (web W29).</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="GIT" data-cls="time" data-src="both" data-live="0" id="GIT-4">
+    <div class="fh"><span class="fid">GIT-4</span><span class="ft">No record of which edit belongs to which change</span><span class="tags"><span class="pill time">time</span><span class="pill src">F13.4</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>Splitting a session into commits needed the transcript. SmartTablesHost built <code>edits_log.py</code>, <code>writers.py</code>, <code>replayB.py</code>, <code>reverseD.py</code> and <code>stageA.py</code> to replay Edit calls and rebuild each stage's files.</div>
+      <div class="chk"><span class="lab">Check</span>Keep a journal of every write, with file, hunk and task tag. Ship a non-interactive hunk stager.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Cause</dt><dd><code>git add -p</code> is interactive, and nothing records which hunk came from which task.</dd>
+      <dt>Ours</dt><dd>SmartTablesHost, 2026-09-23.</dd>
+      <dt>Friend</dt><dd>F13.4. A <code>stage_hunks.py</code> helper built for the same reason.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="GIT" data-cls="data" data-src="his" data-live="0" id="GIT-5">
+    <div class="fh"><span class="fid">GIT-5</span><span class="ft">Shared stash across worktrees</span><span class="tags"><span class="pill data">data</span><span class="pill src">F13.5</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>Another session can pop your stash.</div>
+      <div class="chk"><span class="lab">Check</span>Allow only <code>git stash push -u -m &lt;tag&gt;</code>, applied by SHA.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F13.5 (x-graph G2).</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="GIT" data-cls="data" data-src="his" data-live="0" id="GIT-6">
+    <div class="fh"><span class="fid">GIT-6</span><span class="ft">Whole-file undo loses other edits</span><span class="tags"><span class="pill data">data</span><span class="pill src">F13.6</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>git checkout -- file</code>, used to undo one mistake, threw away every other uncommitted edit of that file.</div>
+      <div class="chk"><span class="lab">Check</span>Copy the file to the scratchpad first, and prefer undoing one hunk.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Ours</dt><dd>62 single-file checkout or restore commands. Agents keep before-copies against this: 722 files in one CLICKER session.</dd>
+      <dt>Friend</dt><dd>F13.6.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="GIT" data-cls="noise" data-src="his" data-live="0" id="GIT-7">
+    <div class="fh"><span class="fid">GIT-7</span><span class="ft">git status lists files that did not change</span><span class="tags"><span class="pill noise">noise</span><span class="pill src">F13.7</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>Files whose modification time moved show up as changed.</div>
+      <div class="chk"><span class="lab">Check</span>Use <code>git diff --name-only</code> to answer "what did I change".</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F13.7.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="GIT" data-cls="time" data-src="his" data-live="0" id="GIT-8">
+    <div class="fh"><span class="fid">GIT-8</span><span class="ft">Commit rules</span><span class="tags"><span class="pill time">time</span><span class="pill src">F13.8</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>Message format, one change per commit, each commit building alone, no Co-Authored-By line.</div>
+      <div class="chk"><span class="lab">Check</span>A commit-msg hook for the format, and a per-commit build or syntax check.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F13.8.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="GIT" data-cls="data" data-src="his" data-live="0" id="GIT-9">
+    <div class="fh"><span class="fid">GIT-9</span><span class="ft">Junk in the staged diff</span><span class="tags"><span class="pill data">data</span><span class="pill src">F13.9</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>U+FFFD headers, ending churn, scratch files, <code>.rej</code> files, files that were dirty before the session, build output and debug lines.</div>
+      <div class="chk"><span class="lab">Check</span>A pre-commit hook that runs the byte guard and the junk checks on the staged diff.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F13.9.</dd>
+    </dl></details>
+  </article>
+</section>
+
+<section class="area" data-area="INP">
+  <h3>Tool input and limits</h3>
+  <p>The call is malformed or too large before it does anything.</p>
+
+  <article class="f" data-area="INP" data-cls="time" data-src="both" data-live="0" id="INP-1">
+    <div class="fh"><span class="fid">INP-1</span><span class="ft">Tool input that is not valid JSON</span><span class="tags"><span class="pill time">time</span><span class="pill src">F14.1</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>InputValidationError: Read was called with input that could not be parsed as JSON.</code> The friend: a doubled comma, an unescaped backslash in a Windows path, a control character in long text.</div>
+      <div class="chk"><span class="lab">Check</span>Validate and repair the arguments before the call.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Ours</dt><dd>8 Read calls. 1 Write refused for an unexpected <code>description</code> parameter.</dd>
+      <dt>Friend</dt><dd>F14.1. D: about 25, G: 45.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="INP" data-cls="time" data-src="his" data-live="0" id="INP-2">
+    <div class="fh"><span class="fid">INP-2</span><span class="ft">MCP call shape errors</span><span class="tags"><span class="pill time">time</span><span class="pill src">F14.2</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>A body of 20,565 characters against a limit of 20,000, missing required fields, and calls with no open session.</div>
+      <div class="chk"><span class="lab">Check</span>Check required fields, text length and session state before the call.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F14.2. G: 148.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="INP" data-cls="noise" data-src="both" data-live="0" id="INP-3">
+    <div class="fh"><span class="fid">INP-3</span><span class="ft">File too big for one Read</span><span class="tags"><span class="pill noise">noise</span><span class="pill src">F14.3</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>File content (29201 tokens) exceeds maximum allowed tokens (25000).</code> <code>File content (375.1KB) exceeds maximum allowed size (256KB).</code></div>
+      <div class="chk"><span class="lab">Check</span>Check the size first, then read with offset and limit, or search.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Ours</dt><dd>15 token-limit and 5 size-limit errors.</dd>
+      <dt>Friend</dt><dd>F14.3. D: 2, G: 8.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="INP" data-cls="time" data-src="his" data-live="0" id="INP-4">
+    <div class="fh"><span class="fid">INP-4</span><span class="ft">Read refuses a text file as binary</span><span class="tags"><span class="pill time">time</span><span class="pill src">F14.4</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>A plain ASCII <code>.dat</code> file was refused because of its extension.</div>
+      <div class="chk"><span class="lab">Check</span>Sniff the bytes, not the extension.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Friend</dt><dd>F14.4. D: 4.</dd>
+    </dl></details>
+  </article>
+
+  <article class="f" data-area="INP" data-cls="time" data-src="both" data-live="0" id="INP-5">
+    <div class="fh"><span class="fid">INP-5</span><span class="ft">Grep pattern rejected</span><span class="tags"><span class="pill time">time</span><span class="pill src">F14.5</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>Search failed &mdash; ripgrep rejected the pattern, glob, or file type without searching: rg: regex parse error</code></div>
+      <div class="chk"><span class="lab">Check</span>Lint the pattern first. Look-around and backreferences need PCRE2.</div>
+    </div>
+    <details class="ev"><summary>Cause and evidence</summary><dl>
+      <dt>Ours</dt><dd>7.</dd>
+      <dt>Friend</dt><dd>F14.5. D: 9, G: 6.</dd>
+    </dl></details>
+  </article>
+</section>
+
+<section class="area" data-area="EXT">
+  <h3>Outside file IO</h3>
+  <p>The friend's test-helper rows. They are not read or write failures, and they stay here so nothing from his scan is lost.</p>
+
+  <article class="f" data-area="EXT" data-cls="time" data-src="his" data-live="0" id="EXT-1">
+    <div class="fh"><span class="fid">EXT-1</span><span class="ft">A fixture reused from a failed run</span><span class="tags"><span class="pill time">time</span><span class="pill src">F12.2</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>A UI-test fixture left by a failed run caused a false failure.</div>
+      <div class="chk"><span class="lab">Check</span>A fresh fixture per run, or check its age and origin first.</div>
+    </div>
+  </article>
+
+  <article class="f" data-area="EXT" data-cls="data" data-src="his" data-live="0" id="EXT-2">
+    <div class="fh"><span class="fid">EXT-2</span><span class="ft">A locator matched more than one element</span><span class="tags"><span class="pill data">data</span><span class="pill src">F12.3</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>get_by_label("Note")</code> also matched "Refresh Notes".</div>
+      <div class="chk"><span class="lab">Check</span>Require <code>exact=True</code>, or flag loose role and label names.</div>
+    </div>
+  </article>
+
+  <article class="f" data-area="EXT" data-cls="time" data-src="his" data-live="0" id="EXT-3">
+    <div class="fh"><span class="fid">EXT-3</span><span class="ft">The wrong wait for an in-page address change</span><span class="tags"><span class="pill time">time</span><span class="pill src">F12.4</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span><code>wait_for_url</code> waits for a page load, and a hash change never loads.</div>
+      <div class="chk"><span class="lab">Check</span>Flag <code>wait_for_url</code> on hash routes, and suggest waiting on <code>location.hash</code>.</div>
+    </div>
+  </article>
+
+  <article class="f" data-area="EXT" data-cls="data" data-src="his" data-live="0" id="EXT-4">
+    <div class="fh"><span class="fid">EXT-4</span><span class="ft">Media emulation dropped</span><span class="tags"><span class="pill data">data</span><span class="pill src">F12.5</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>A new context and a navigation dropped the emulated pointer, so buttons measured 24 px, not 44.</div>
+      <div class="chk"><span class="lab">Check</span>Set the emulation, then confirm it with <code>matchMedia</code> before measuring.</div>
+    </div>
+  </article>
+
+  <article class="f" data-area="EXT" data-cls="noise" data-src="his" data-live="0" id="EXT-5">
+    <div class="fh"><span class="fid">EXT-5</span><span class="ft">A screenshot looked wrong while the app was fine</span><span class="tags"><span class="pill noise">noise</span><span class="pill src">F12.6</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>Full-page captures put a sticky header mid-page. Frames came out black once the display blanked.</div>
+      <div class="chk"><span class="lab">Check</span>Capture at scroll 0, keep the display awake, and reject all-black frames.</div>
+    </div>
+  </article>
+
+  <article class="f" data-area="EXT" data-cls="data" data-src="his" data-live="0" id="EXT-6">
+    <div class="fh"><span class="fid">EXT-6</span><span class="ft">A test assumed a calendar layout</span><span class="tags"><span class="pill data">data</span><span class="pill src">F12.7</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>A 7-day window reached the same weekday twice, so 5 sessions showed where 4 were expected.</div>
+      <div class="chk"><span class="lab">Check</span>Freeze the clock in date-based tests.</div>
+    </div>
+  </article>
+
+  <article class="f" data-area="EXT" data-cls="data" data-src="his" data-live="0" id="EXT-7">
+    <div class="fh"><span class="fid">EXT-7</span><span class="ft">Unpinned timing on a hybrid CPU</span><span class="tags"><span class="pill data">data</span><span class="pill src">F12.8</span></span></div>
+    <div class="fgrid">
+      <div><span class="lab">What happens</span>Timing runs of the same graph varied up to 6 times, and once flipped the old-to-new ratio.</div>
+      <div class="chk"><span class="lab">Check</span>A benchmark wrapper that refuses unpinned runs on hybrid CPUs.</div>
+    </div>
+  </article>
+</section>
+</section>
+
+<section class="block" id="built">
+  <h2>What the agents built, and why</h2>
+  <p class="note">The scratchpad tools, taken apart. Each family is a primitive the agents rebuilt again and again because no tool offered it. Counts come from the scripts' own code and from the commands that ran them.</p>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Family</th><th>How much</th><th>Works around</th><th>What the tool should offer</th></tr></thead>
+      <tbody>
+        <tr><td>CRLF-aware batch edit: <code>edit()</code>, <code>sub()</code>, <code>swap()</code>, <code>rep()</code></td><td class="num">138 scripts define <code>edit()</code> in 73 bodies. 47 <code>sub()</code>, 22 <code>swap()</code>, 11 <code>rep()</code>. 306 read with <code>newline=''</code>. 194 assert exactly one match.</td><td>ANC-1, ANC-2, ANC-3, BYT-1, BYT-2</td><td>Batch edit: all or none, each anchor matched exactly once, the file's endings, BOM and encoding kept.</td></tr>
+        <tr><td>Replace between two markers: <code>cut()</code>, <code>splice()</code>, <code>apply_block.py</code></td><td class="num">117 scripts anchor on <code>str.index</code> start and end markers</td><td>Pasting a whole old block as the anchor costs tokens and misses on one changed character</td><td>Replace the text between a start and an end anchor.</td></tr>
+        <tr><td>Append a dated entry: <code>tlog.py</code></td><td class="num">Ran 420 times</td><td>Appending with Edit needs the file's last lines as the anchor, and they change after every append</td><td>Append, wrapped to the file's column limit, endings kept.</td></tr>
+        <tr><td>Format changed lines only: <code>fmt_hunks.py</code>, <code>unformat.py</code></td><td class="num">Ran 197 times</td><td>BYT-12, BYT-11</td><td>Run the formatter over the changed hunks only.</td></tr>
+        <tr><td>Ending tools: <code>endings.py</code>, <code>to_crlf.py</code>, <code>normalise.py</code></td><td class="num"><code>endings.py</code> ran 40 times</td><td>BYT-1, BYT-2, BYT-3, BYT-4</td><td>An ending, BOM and encoding line in every read, and the byte guard around every write.</td></tr>
+        <tr><td>Snapshot and prove: <code>source_backup</code>, <code>p3_guard.py</code>, <code>strip_compare.py</code>, <code>check77.py</code>, <code>verify_sort.py</code></td><td class="num">722, 105, 79 and 37-file before-copies. 7 comment-strip checkers.</td><td>VFY-6, GIT-6, BYT-9</td><td>An automatic before-snapshot per task with restore, and "code unchanged" diff modes that ignore comments or includes.</td></tr>
+        <tr><td>Transcript forensics: <code>edits_log.py</code>, <code>writers.py</code>, <code>replayB.py</code>, <code>reverseD.py</code>, <code>stageA.py</code>, and <code>tx_scan.py</code>, <code>tx_report.py</code>, <code>tx_eof.py</code> for this page</td><td class="num">8 scripts, in two sessions</td><td>GIT-4, STL-3</td><td>A journal of every write: who, when, which hunk, which task.</td></tr>
+        <tr><td>Argument files: <code>variants.py</code> and the kit's <code>bridge.py</code></td><td class="num">Every editor call with multi-line code</td><td>SHW-2, SHW-4, INP-1</td><td>Pass structured arguments as a file or a tool argument, never inside a shell string.</td></tr>
+        <tr><td>Log readers: <code>logcheck.sh</code>, saved <code>build*.txt</code> logs</td><td class="num"><code>logcheck.sh</code> ran 54 times</td><td>OUT-10, OUT-11, OUT-2</td><td>Capture to a log, a bounded summary, and an incremental "since last read" reader.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="block" id="repos">
+  <h2>Repo bytes: nothing is uniform</h2>
+  <p class="note">Every tracked text file, surveyed on 2026-09-27. Endings, BOM and indent differ per file inside one repository, and the formatter config contradicts the files in three of four. A tool has to read each file's own convention.</p>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Repository</th><th>Git and editor config</th><th>Formatter config</th><th>C++ endings CRLF / LF / mixed</th><th>C++ with BOM</th><th>C++ indent tab / space / both</th><th>Markdown CRLF / LF</th><th>Also</th></tr></thead>
+      <tbody>
+        <tr><td>CLICKER</td><td>autocrlf=true. No eol rules. No .editorconfig.</td><td>UseTab: Never</td><td class="num">2,541 / 102 / 0</td><td class="num">5</td><td class="num">926 / 1,360 / 237</td><td class="num">2 / 23</td><td>Trailing whitespace in 1,254 C++ files</td></tr>
+        <tr><td>OrbitalDrift</td><td>autocrlf=true. .editorconfig: tabs, crlf, utf-8.</td><td>UseTab: Always, LineEnding: CRLF</td><td class="num">2,286 / 0 / 0</td><td class="num">31</td><td class="num">1,323 / 589 / 253</td><td class="num">14 / 0</td><td>7 of 26 .ini files mixed</td></tr>
+        <tr><td>SmartTablesHost</td><td>autocrlf=true. No eol rules.</td><td>UseTab: Never, LineEnding: CRLF</td><td class="num">217 / 0 / 0</td><td class="num">0</td><td class="num">0 / 206 / 0</td><td class="num">23 / 37</td><td>1 .cpp with a lone CR. Python 11 CRLF / 14 LF.</td></tr>
+        <tr><td>UNREAL-SHARED (kit)</td><td>autocrlf=true. No .gitattributes.</td><td>UseTab: Always, LineEnding: CRLF (copied 2026-09-27)</td><td class="num">0 / 74 / 0</td><td class="num">0</td><td class="num">71 / 0 / 0</td><td class="num">1 / 183</td><td>Python 2 CRLF / 45 LF</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="block" id="tool">
+  <h2>The tool: checks by hook point</h2>
+  <p class="note">Design rule: the tool adds no escaping layer of its own. Content keeps travelling as a tool argument, byte for byte, and the checks run as hooks around it. Primitives take structured arguments, never a shell string.</p>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>When</th><th>What runs</th><th>Stops</th></tr></thead>
+      <tbody>
+        <tr><td>Session start</td><td>Set <code>PYTHONUTF8=1</code> and <code>PYTHONIOENCODING=utf-8</code>, and <code>MSYS_NO_PATHCONV=1</code> for native programs. Snapshot git status, the dirty files and the process list. Map junctions to the repositories that own them.</td><td>SHL-2, OUT-5, PTH-4, STL-3, PTH-3, LCK-3</td></tr>
+        <tr><td>Before Read</td><td>Size check, then offset and limit.</td><td>INP-3</td></tr>
+        <tr><td>After Read</td><td>A header line with ending style, BOM, encoding, indent character and size. Store the hash of what the agent saw.</td><td>BYT-4, STL-1</td></tr>
+        <tr><td>Before Edit or Write</td><td>Freshness gate against the stored hash. Allowed write roots, reserved names, the read-only bit and the lock holder. Whitespace at either end of new_string. Take the byte snapshot.</td><td>STL-1, STL-2, STL-4, ANC-4, PTH-3, PTH-5, LCK-1, LCK-4</td></tr>
+        <tr><td>After Edit or Write</td><td>Byte guard against the snapshot: endings, BOM, encoding, NUL and C0 bytes, size collapse, untouched lines identical. Indent and non-ASCII on added lines. Format the changed lines. Per-language verify.</td><td>BYT-1 to BYT-13, ANC-5, VFY-1 to VFY-5</td></tr>
+        <tr><td>Before Bash or PowerShell</td><td>Refuse over 6 KB. Refuse <code>\\</code> in the body. Refuse shell writes to tracked files. Flag backticks in double quotes, a backslash before a closing quote, the wrong dialect, <code>2&gt;nul</code>, and a build or test piped into a filter.</td><td>SHW-1 to SHW-7, SHL-1, PTH-5, OUT-1, OUT-2</td></tr>
+        <tr><td>After Bash or PowerShell</td><td>Real exit code, an error scan of the full output, a bounded summary of long output. Mark files the command touched as "re-read needed" and run the byte guard on them. Alarm on <code>Binary file matches</code>.</td><td>OUT-1 to OUT-10, STL-1, SHW-2</td></tr>
+        <tr><td>New primitives</td><td>Batch edit, replace between markers, append, format hunks, snapshot and restore, an edit journal with a hunk stager, an incremental log reader, argument files.</td><td>ANC-3, BYT-12, GIT-4, GIT-6, OUT-11, VFY-6</td></tr>
+        <tr><td>Git hooks</td><td>Byte guard on the staged diff, scratch and junk checks, message format.</td><td>GIT-1, GIT-9, BYT-1</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>First scope</h3>
+  <ol class="first">
+    <li><span class="t">Command preflight before every Bash call: size, double backslash, shell writes to tracked files.</span><span class="d">Stops SHW-4, SHW-2 and SHW-1, the three largest token sinks in our data.</span></li>
+    <li><span class="t">Byte guard around Edit and Write, and the header line on every read.</span><span class="d">Stops every silent change of endings, BOM, encoding and size.</span></li>
+    <li><span class="t">Freshness gate, and a batch-edit primitive with exact-once anchors.</span><span class="d">Replaces the 73 <code>edit()</code> variants and most of the 417 writer scripts.</span></li>
+    <li><span class="t">Output capture with the real exit code.</span><span class="d">Stops OUT-1, OUT-2 and OUT-10.</span></li>
+  </ol>
+  <p class="note">The friend's first scope was the freshness gate, the byte guard, the shell-write policy and the exit-status wrapper. This one moves the command-size check to the front, because it is the largest token sink in our data and the cheapest check to build.</p>
+</section>
+
+<section class="block" id="method">
+  <h2>Method and limits</h2>
+  <div class="scroll">
+    <table>
+      <tbody>
+        <tr><td>Our scan</td><td>738 transcript files, main sessions and sub-agents, from CLICKER and its 2 worktrees, OrbitalDrift, SmartTablesHost and UNREAL-SHARED: 6.4 GB, 2026-06-20 to 2026-09-27. Every tool call was paired with its result. Counts are per call, so a failure retried three times counts three times.</td></tr>
+        <tr><td>Tool calls seen</td><td>26,098 Edit, 10,920 Write, 27,858 Read, 8,894 Grep, 938 Glob, 5,565 PowerShell.</td></tr>
+        <tr><td>Scratchpads</td><td>1,819 scripts, 6.6 MB, grouped by the helper functions they define. 417 of them write files outside the editor.</td></tr>
+        <tr><td>Byte survey</td><td>Every tracked text file of the four repositories, read as bytes on 2026-09-27.</td></tr>
+        <tr><td>Friend's scan</td><td>146 rows on his page. All 86 general rows are here under new ids, with his id kept on each. The 60 project rows are left out. His machine runs Polish Windows with cp1250. His counts are taken as given.</td></tr>
+        <tr><td>Not verified</td><td>Why commands fail near 7.8 KB: the cmd.exe limit fits the numbers, but the mechanism is inferred. The mixed endings from clang-format in BYT-3 come from an agent's own measurement. Heredoc and <code>python -c</code> counts include read-only commands. Token figures are bytes divided by 4.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+</div>
+
+<script>
+(function () {
+  var q = document.getElementById("q");
+  var area = document.getElementById("area");
+  var liveOnly = document.getElementById("liveonly");
+  var count = document.getElementById("count");
+  var expand = document.getElementById("expand");
+  var items = Array.prototype.slice.call(document.querySelectorAll("article.f"));
+  var areas = Array.prototype.slice.call(document.querySelectorAll("section.area"));
+  var chips = Array.prototype.slice.call(document.querySelectorAll(".chip"));
+  var texts = items.map(function (a) { return a.textContent.toLowerCase(); });
+
+  function active(kind) {
+    var set = {};
+    chips.forEach(function (c) {
+      if (c.dataset.kind === kind && c.getAttribute("aria-pressed") === "true") { set[c.dataset.val] = true; }
+    });
+    return set;
+  }
+
+  function apply() {
+    var text = q.value.trim().toLowerCase();
+    var cls = active("cls");
+    var src = active("src");
+    var shown = 0;
+    items.forEach(function (a, i) {
+      var ok = (!text || texts[i].indexOf(text) !== -1)
+        && cls[a.dataset.cls] && src[a.dataset.src]
+        && (!liveOnly.checked || a.dataset.live === "1")
+        && (area.value === "all" || a.dataset.area === area.value);
+      a.hidden = !ok;
+      if (ok) { shown += 1; }
+    });
+    areas.forEach(function (s) { s.hidden = !s.querySelector("article.f:not([hidden])"); });
+    count.textContent = shown + " of " + items.length + " findings";
+  }
+
+  chips.forEach(function (c) {
+    c.addEventListener("click", function () {
+      c.setAttribute("aria-pressed", c.getAttribute("aria-pressed") === "true" ? "false" : "true");
+      apply();
+    });
+  });
+  q.addEventListener("input", apply);
+  area.addEventListener("change", apply);
+  liveOnly.addEventListener("change", apply);
+  expand.addEventListener("click", function () {
+    var all = document.querySelectorAll("details.ev");
+    var open = expand.textContent.indexOf("Open") === 0;
+    Array.prototype.forEach.call(all, function (d) { d.open = open; });
+    expand.textContent = open ? "Close all evidence" : "Open all evidence";
+  });
+  apply();
+})();
+</script>

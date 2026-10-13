@@ -37,6 +37,10 @@ plugins/io-guard/
         writes.py                  Host, Write, located, resolve, targets, bash_writes, powershell_writes: the
                                    files a shell command writes, and the folder each of its commands runs in.
                                    powershell_writes reads each { } script block too (task 163)
+        deletes.py                 Delete, Resolved, bash_deletes, powershell_deletes, cmd_deletes, resolve,
+                                   makes_link: the files and folders a shell command deletes, and the real
+                                   paths each target names, expanded as its shell expands it, with Git Bash's
+                                   U+F000 + c names read as c (#2272). paths.temp_folders names the temp roots
         commands.py                command_for, filled: the user's verify and format commands per extension
         anchors.py                 find, blind, closest, unique_anchor, edit_view, file_view, joins: where an
                                    old_string is, or nearly is, and where an Edit joins two words
@@ -112,6 +116,9 @@ plugins/io-guard/
         location.py                write.location: RESERVED_NAME, READ_ONLY, LINKED_PATH, dirty files.
                                    write.locks: FILE_LOCKED after a failed write
         transport_body.py          BODY_MOVED_TO_FILE, TRANSPORT_BUDGET, BACKSLASH_TRANSPORT
+        shell_deletes.py           shell.deletes: SHELL_DELETE for a delete outside the repository, the
+                                   scratchpad, the temp folder and checks.shell.deletes.roots, a recursive
+                                   delete of one of them or of .git, or a target with no path before the run
         shell_writes.py            SHELL_WRITE for a tracked file lib.writes finds, the scratch script warning
                                    for a script git neither tracks nor ignores, and a script file given a
                                    tracked file
@@ -302,6 +309,7 @@ class FsPort(Protocol):
     def holders(self, path: Path) -> tuple[Process, ...]: ...     # OSError when the platform cannot answer
     def make_folders(self, path: Path) -> None: ...
     def list_dir(self, path: Path) -> tuple[Path, ...]: ...   # the files in a folder, sorted, () when none
+    def entries(self, path: Path) -> tuple[Path, ...]: ...    # its files and folders, sorted, OSError unread
     def link_target(self, path: Path) -> Optional[Path]: ...  # where a path through a link really is
     def find_named(self, root: Path, name: str, limit: int) -> tuple[Path, ...]: ...  # a bounded walk
 
@@ -516,6 +524,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Location | `LINKED_PATH`, `READ_ONLY`, `FILE_LOCKED`. `OUTSIDE_WRITE_ROOT` was dropped with the write-roots rule (D27) | 19, in `CODES` |
 | Transport | `BODY_MOVED_TO_FILE`, `TRANSPORT_BUDGET`, `BACKSLASH_TRANSPORT`, the last a warning (D25) | 11, in `CODES` |
 | Transport | `SHELL_WRITE`, a warning for a new script inside a repository (GIT-1) | 12, in `CODES` |
+| Transport | `SHELL_DELETE` | #2272, in `CODES` |
 | Transport | `BACKTICK_IN_DOUBLE_QUOTES`, `TRAILING_BACKSLASH_QUOTE`, `DIALECT_MISMATCH`, `POWERSHELL_TRAP`, `PIPE_HIDES_EXIT`, `INLINE_SCRIPT_INVALID` | 13, in `CODES` |
 | Transport | `MSYS_PATH`, `RESERVED_NAME` | 14, in `CODES` |
 | Transport | `NOT_PORTABLE`, a warning for bash 4 syntax under bash 3.2 and GNU options on macOS | 36, in `CODES` |
@@ -733,8 +742,9 @@ of that type, none of them named `enabled`, which every check gets. A check that
 `CHECKS` after it, so the order has no cycle by construction. `writes` is enforced when the check runs: a
 rewrite whose fields are not all in `writes` is a bug, and the pipeline fails open around it. Each check joins
 `CHECKS` in the task that builds it. A test registers one class into an empty registry to test a check alone.
-No import-time discovery, no decorators, one list. `transport.body` runs after `shell.writes`, so a command
-refused for its write never has a body moved into a file first. `shell.lint` runs after `transport.body`, so it
+No import-time discovery, no decorators, one list. `shell.deletes` runs before `shell.writes`, so a command
+that deletes outside the allowed folders is refused for that first. `transport.body` runs after
+`shell.writes`, so a command refused for its write never has a body moved into a file first. `shell.lint` runs after `transport.body`, so it
 compiles a moved body from its file, as Python will read it. `win.paths` runs after `shell.lint`, so its
 rewrite lands on a command nothing refused. `verify.write` runs after `conform.write` and `conform.edit`, so
 its snapshot holds the input the tool runs with. `verify.command` runs after `verify.write`, so a command

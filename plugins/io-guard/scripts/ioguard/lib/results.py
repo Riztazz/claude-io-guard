@@ -260,6 +260,12 @@ CODES: tuple[CodeSpec, ...] = (
              "The Edit deletes old_string and the line break after it, so the lines around it would join.",
              "Move old_string one line break later, so it ends with the line break instead of opening with "
              "it.", "0.1"),
+    CodeSpec("SHELL_DELETE", Layer.TRANSPORT, Severity.REFUSED,
+             "The command deletes a path outside the repository, the session scratchpad and the temp folder, "
+             "deletes one of those folders or the repository's .git whole, or names a path io-guard cannot "
+             "resolve before it runs.",
+             "Name each path to delete literally, inside those folders, or ask the user to run the command.",
+             "0.1"),
 )
 Code = Enum("Code", {spec.code: spec.code for spec in CODES})
 SPECS: dict[Code, CodeSpec] = {Code[spec.code]: spec for spec in CODES}
