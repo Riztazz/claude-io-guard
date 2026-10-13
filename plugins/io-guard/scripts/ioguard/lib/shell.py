@@ -423,6 +423,7 @@ class SimpleCommand:
     redirects: tuple[Redirect, ...]   # the output redirects to a file, never a duplicated stream
     inputs: tuple[str, ...]      # the files a < redirect reads
     span: tuple[int, int]
+    raw: tuple[str, ...] = ()    # each of words as written, quotes kept, which says what the shell expands
 
     @property
     def name(self) -> str:
@@ -449,19 +450,22 @@ def split(command: str) -> tuple[SimpleCommand, ...]:
     states, text = found.states, command
     parsed, at, start = [], 0, 0
     words: list[str] = []
+    raws: list[str] = []
     redirects: list[Redirect] = []
     inputs: list[str] = []
 
     def finish(end: int) -> None:
-        nonlocal words, redirects, inputs
-        kept = list(words)
+        nonlocal words, raws, redirects, inputs
+        kept, written = list(words), list(raws)
         # A loop head keeps its keyword first, so it never names a program after its variable, and its values
         # stay words, since each reaches the loop's commands as $f.
         while kept and (ASSIGNMENT.match(kept[0]) or kept[0] in RESERVED - LOOP_HEADS):
             kept.pop(0)
+            written.pop(0)
         if kept or redirects:
-            parsed.append(SimpleCommand(tuple(kept), tuple(redirects), tuple(inputs), (start, end)))
-        words, redirects, inputs = [], [], []
+            parsed.append(SimpleCommand(tuple(kept), tuple(redirects), tuple(inputs), (start, end),
+                                        tuple(written)))
+        words, raws, redirects, inputs = [], [], [], []
 
     while at < len(text):
         char = text[at]
@@ -504,6 +508,7 @@ def split(command: str) -> tuple[SimpleCommand, ...]:
             end = word_end(text, found, at)
             if words or states[at] != ARITH:        # (( )) alone is arithmetic, and runs no program
                 words.append(unquote(text, states, at, end))
+                raws.append(text[at:end])
             at = end
     finish(len(text))
     return tuple(parsed)

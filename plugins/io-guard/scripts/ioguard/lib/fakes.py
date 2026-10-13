@@ -75,6 +75,15 @@ class FakeFs:
     def list_dir(self, path: Path) -> tuple[Path, ...]:
         return tuple(sorted(file for file in self.files if file.parent == path))
 
+    def entries(self, path: Path) -> tuple[Path, ...]:
+        """The files and folders directly in path, made or holding a file. FileNotFoundError for a folder the
+        fake does not have."""
+        if not self.is_dir(path):
+            raise FileNotFoundError(path)
+        held = {path / held.relative_to(path).parts[0] for held in (*self.files, *self.folders, *self.links)
+                if path in held.parents}
+        return tuple(sorted(held))
+
     def read_tail(self, path: Path, limit: int) -> bytes:
         data = self.read_bytes(path)
         if len(data) <= limit:

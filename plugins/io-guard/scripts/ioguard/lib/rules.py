@@ -246,7 +246,9 @@ def wrapped(words: Sequence[str]) -> Wrapped | None:
         return Wrapped(f"{program} with a command", text, Dialect.POWERSHELL, text) \
             if rest and program == "powershell" else None
     if program == "cmd":
-        at = next((index for index, word in enumerate(rest) if word.lower() in ("/c", "/k")), None)
+        # Git Bash turns a lone /c into the drive C:/, so cmd is given //c there.
+        at = next((index for index, word in enumerate(rest)
+                   if word.lower() in ("/c", "/k", "//c", "//k")), None)
         return None if at is None else Wrapped("cmd /c", None, Dialect.NONE, " ".join(rest[at + 1:]))
     flags = CODE_FLAGS.get(program, ())
     while rest and rest[0].startswith("-") and rest[0] not in flags:

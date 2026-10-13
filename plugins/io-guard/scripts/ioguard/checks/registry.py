@@ -16,6 +16,7 @@ from ioguard.checks.restore_ask import RestoreAsk
 from ioguard.checks.trust_ask import TrustAsk
 from ioguard.checks.run_rules import RunRules
 from ioguard.checks.session_probe import SessionProbe
+from ioguard.checks.shell_deletes import ShellDeletes
 from ioguard.checks.shell_writes import ShellWrites
 from ioguard.checks.transport_body import TransportBody
 from ioguard.checks.touched import Touched
@@ -88,10 +89,11 @@ class Registry:
                      if check.options.get("enabled", True) and check.applies(event, ctx))
 
 
-CHECKS: tuple[type[Check], ...] = (SessionProbe, Location, LockHolders, ShellWrites, TransportBody, Lint,
-                                   WinPaths, ConformWrite, ConformEdit, JournalWrite, VerifyWrite,
-                                   VerifyCommand, Touched, ReadProfile, DiagnoseFailure, DiagnoseRefused,
-                                   CommandResults, Heartbeat, RunRules, CommitPolicy, RestoreAsk, TrustAsk)
+CHECKS: tuple[type[Check], ...] = (SessionProbe, Location, LockHolders, ShellDeletes, ShellWrites,
+                                   TransportBody, Lint, WinPaths, ConformWrite, ConformEdit, JournalWrite,
+                                   VerifyWrite, VerifyCommand, Touched, ReadProfile, DiagnoseFailure,
+                                   DiagnoseRefused, CommandResults, Heartbeat, RunRules, CommitPolicy,
+                                   RestoreAsk, TrustAsk)
 
 
 def default_registry() -> Registry:

@@ -131,6 +131,7 @@ A refused call did not run. A warning, or a note that io-guard fixed something, 
 | `RULE_DENIED` | One of the user's permission rules denies this command, so io.run did not run it. | Leave the command out, or ask the user whether the rule should change. |
 | `SEARCH_TOO_BROAD` | The search ran out of time before it finished. | Search a narrower folder, or add a glob or type filter. |
 | `SERVER_DOWN` | io-guard's io server stopped, so tool calls ran without its checks. | Claude Code starts it again at the next tool call, and /mcp shows why when it cannot. |
+| `SHELL_DELETE` | The command deletes a path outside the repository, the session scratchpad and the temp folder, deletes one of those folders or the repository's .git whole, or names a path io-guard cannot resolve before it runs. | Name each path to delete literally, inside those folders, or ask the user to run the command. |
 | `SHELL_WRITE` | The command writes a file git tracks through the shell, around io-guard's checks. | Use the Edit tool to change the file, or the Write tool to replace it whole. |
 | `SIZE_COLLAPSED` | The file holds far fewer bytes than the call should have left in it. | Read the file, and write the missing text back. |
 | `SNAPSHOT_TOO_LARGE` | The paths hold more files or bytes than one snapshot keeps, so io.snapshot kept nothing. | Call io.snapshot on fewer paths, such as only the folders the task changes. |

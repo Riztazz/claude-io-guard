@@ -6,7 +6,7 @@ import posixpath
 import re
 import threading
 import unicodedata
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from pathlib import Path
 
 from ioguard.lib.platform import Platform, detect
@@ -81,6 +81,16 @@ class LockTable:
     def lock(self, path: Path) -> threading.Lock:
         with self.guard:
             return self.locks.setdefault(resolved(path), threading.Lock())
+
+
+def temp_folders(platform: Platform, env: Mapping[str, str]) -> tuple[Path, ...]:
+    """The system's temp folders: TEMP, else TMP, on Windows, which Git Bash also calls /tmp, and TMPDIR and
+    /tmp elsewhere. () on Windows when neither variable is set."""
+    if platform.windows:
+        named = env.get("TEMP") or env.get("TMP")
+        return (normalise(named, Path(named), platform),) if named else ()
+    found = [normalise(env["TMPDIR"], Path("/"), platform)] if env.get("TMPDIR") else []
+    return (*found, Path("/tmp"))
 
 
 def inside(path: Path, roots: Collection[Path], platform: Platform) -> Path | None:

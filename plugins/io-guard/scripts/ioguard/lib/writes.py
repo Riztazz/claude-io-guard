@@ -84,6 +84,11 @@ def resolve(raw: str, cwd: Path | None, host: Host) -> Path | None:
         raw = home + raw[1:]
     if host.platform.windows and (drive := re.match(r"^/([a-zA-Z])(/|$)", raw)):
         raw = f"{drive[1].upper()}:/{raw[3:]}"
+    elif host.platform.windows and re.match(r"^/tmp(/|$)", raw):
+        temps = paths.temp_folders(host.platform, host.env)
+        if not temps:
+            return None
+        raw = temps[0].as_posix() + raw[4:]
     absolute = re.match(r"^(?:[A-Za-z]:)?[\\/]", raw)
     if cwd is None and not absolute:
         return None

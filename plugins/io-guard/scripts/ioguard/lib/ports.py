@@ -58,6 +58,7 @@ class FsPort(Protocol):
     def holders(self, path: Path) -> tuple[Process, ...]: ...  # OSError when the platform cannot answer
     def make_folders(self, path: Path) -> None: ...
     def list_dir(self, path: Path) -> tuple[Path, ...]: ...    # the files in a folder, sorted, () when none
+    def entries(self, path: Path) -> tuple[Path, ...]: ...     # its files and folders, sorted, OSError unread
     def link_target(self, path: Path) -> Path | None: ...      # where a path through a link really is
     def find_named(self, root: Path, name: str, limit: int) -> tuple[Path, ...]: ...
                                                                # files named name under root, in limit entries
@@ -127,6 +128,12 @@ class LiveFs:
                 return tuple(sorted(Path(entry.path) for entry in entries if entry.is_file()))
         except OSError:
             return ()
+
+    def entries(self, path: Path) -> tuple[Path, ...]:
+        """Every file and folder in path, links among them, sorted. OSError when path cannot be listed, so a
+        caller tells a missing folder from one it may not read."""
+        with os.scandir(path) as found:
+            return tuple(sorted(Path(entry.path) for entry in found))
 
     def link_target(self, path: Path) -> Path | None:
         return paths.link_target(path)
