@@ -12,7 +12,6 @@ __pycache__/
 .claude/settings.local.json
 .claude/shared-install.json
 .claude/skills/engineering
-.claude/skills/prose
 .claude/skills/testing
 .claude/skills/verification
 .claude/tools/shared
