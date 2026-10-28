@@ -6,7 +6,8 @@ description: How io-guard's own code is laid out, written, tested and verified. 
 # Working on io-guard
 
 The design is `docs/design/architecture.md`, and every signature there is a contract. The decisions behind it are
-D1 to D28 in `.claude/tasks/context.md`. This page is how the code gets written and proved. The kit's generic
+D1 onward in `docs/design/decisions.md`. The work and every bug are issues on the Wire hub, repo
+`claude-io-guard`, and a bug is filed with `issue_open` the moment it is met. This page is how the code gets written and proved. The kit's generic
 skills hold the rules for every project: `engineering` (with `references/python.md`), `testing`, `verification`
 and `prose`.
 
@@ -97,18 +98,18 @@ live checks.
 - **A replay with test checks** times the harness under load: put `tests/support/inject` on `PYTHONPATH` and name
   the checks in `IOGUARD_TEST_CHECKS`, as the live probes do.
 - **Before a rule ships, read every refusal of a call that succeeded.** The false-refusal rate stays under 0.1% per
-  rule, and the numbers go into the task's `## What changed`.
+  rule, and the numbers go into the Wire issue's closing resolution.
 - **`corpus/` never leaves the machine** (D8).
 
 ## Live checks
 
 - **Check in the desktop app's Code tab first, then the CLI.** Record the Claude Code version with every result.
-- **Windows only until the Mac is back** (D21). A task's macOS live check moves to task 36, and the task says so in
-  its `## What changed`.
+- **Windows only until the Mac is back** (D21). A macOS live check goes into Wire #3658, and the issue's closing
+  resolution says so.
 - **Reload after every change:** `/reload-plugins`, or a new session. A change that seems to do nothing may not be
   loaded yet.
-- **Record each confirmed harness fact** in `docs/live-checks.md` and `docs/compat.md` (task 04), and in
-  `context.md`.
+- **Record each confirmed harness fact** in `docs/live-checks.md` and `docs/compat.md`, and in
+  `docs/design/decisions.md`. A fact that stopped holding is a Wire issue too.
 - **Run io-guard live from this checkout with a `live-*` probe** in `tools/probes/run_probe.py`. It starts
   `claude -p --plugin-dir plugins/io-guard` with `IOGUARD_PYTHON` naming this Python, puts `tests/support/inject` on
   `PYTHONPATH`, and names the test checks from `tests/support/injected.py` in `IOGUARD_TEST_CHECKS`. The plugin
@@ -129,5 +130,6 @@ live checks.
 ## Related
 
 - `docs/design/architecture.md`: the design and every contract.
-- `.claude/tasks/README.md` and `.claude/tasks/context.md`: the plan, the decisions and the evidence.
+- `docs/design/decisions.md`: the decisions and the evidence.
+- The Wire hub, repo `claude-io-guard`: the open work and every bug.
 - `engineering`, `testing`, `verification` and `prose`: the kit's rules for every project.

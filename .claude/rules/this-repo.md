@@ -1,13 +1,17 @@
 # This repository
 
-- **Read `.claude/tasks/README.md`, `.claude/tasks/context.md` and `docs/design/architecture.md` before the first
-  task.** The `io-guard-dev` skill says how code here is written, tested and verified.
+- **Read `docs/design/decisions.md` and `docs/design/architecture.md` before the first piece of work.** The
+  `io-guard-dev` skill says how code here is written, tested and verified.
+- **The work and every bug live on Wire, repo `claude-io-guard`, never in a file here.** Pick work with `issues`.
+  File each bug when you meet it with `issue_open`, then carry on: a fault in io-guard, a wrong or missing code in
+  any session, a harness fact that stopped holding, a doc that is wrong. `.claude/tasks/` is gitignored, and no
+  task file is ever written. The lead set this on 2026-10-28.
 - **Shipped code is Python standard library only, Python 3.14 or later** (D4, D15). Claude Code installs no Python
   packages for a plugin.
 - **One codebase for Windows and macOS.** Never hard-code a path separator, a shell or an interpreter name. The
   platform is detected at run time.
 - **The lead's Mac is down** (D21). Live checks run on Windows, CI runs both platforms, and every macOS live check
-  waits in task 36.
+  waits in Wire #3658.
 - **The plugin ships only `plugins/io-guard/`.** It has no top-level `bin/`, and its manifest paths use forward
   slashes.
 - **io-guard is for anyone's projects, not only the lead's Unreal ones.** Nothing it ships or tells a model names
@@ -19,11 +23,13 @@
   holds each copy's hash as it left the source project. It stays on the machine and out of git, like the corpus.
 - **The kit's skills, rules and tools arrive through gitignored links** (D11). Git writes through a tracked link
   into the kit, so a link is never added to git, not even with `-f`.
-- **Before any push that makes content public, task 34's scrub runs first.**
+- **Before any push that makes content public, the scrub in Wire #3656 runs first.** `git grep` finds no `EXT-`
+  id and no name of the other person's scan, no file under `corpus/`, `workbench/` or `reports/` is tracked, and
+  no token or key pattern is.
 - **At the end of every task, read what io-guard told every session on this machine.** Run
   `python tools/report.py --days 1`, with more days for a longer task. The lead's other projects run the installed
   plugin, and a code this session never got can still be wrong there. The messages themselves are the
   `hook_additional_context` attachments in each session's transcript. For each code, check that it was right and
   that the agent acted on it. Then ask what should have fired and did not. Each wrong code, each code repeated with
-  no effect, and each missing one becomes a task in `.claude/tasks/open/`. The lead set this on 2026-09-28, after
+  no effect, and each missing one becomes a Wire issue. The lead set this on 2026-09-28, after
   another project's session filed six bugs that this repository's own session had not reported.

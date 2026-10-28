@@ -66,7 +66,7 @@ class ResultsRender(unittest.TestCase):
         shape = result.to_json()
         self.assertEqual(sorted(shape), sorted(["ok", "code", "severity", "tool", "platform", "file",
                                                 "message", "evidence", "fix", "auto_fixed"]),
-                         "a result's JSON has the fields context.md documents")
+                         "a result's JSON has the fields decisions.md documents")
         self.assertEqual((shape["ok"], shape["file"]), (False, "C:/p/a.txt"),
                          "a refused result is not ok, and its file uses forward slashes")
 

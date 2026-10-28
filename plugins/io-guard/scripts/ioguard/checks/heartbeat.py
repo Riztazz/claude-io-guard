@@ -1,7 +1,7 @@
 """Tell the user once, at the start of a turn, that the io server is not running, so tool calls go unchecked.
 
 Claude Code restarts a server that exited on the next hook call, and one that cannot start leaves every hook
-failing open with nothing said to the model (context.md, "Hooks and MCP", row 18). So a command hook on
+failing open with nothing said to the model (decisions.md, "Hooks and MCP", row 18). So a command hook on
 UserPromptSubmit, which needs no server, reads the heartbeat the server keeps. A beat older than stale_s with
 no clean stop means the server died and the calls since then ran unchecked. With no heartbeat at all, the
 server never started this session, and Claude Code's own cache says when it gave up on it: a plugin server

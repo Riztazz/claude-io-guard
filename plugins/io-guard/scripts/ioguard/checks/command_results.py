@@ -2,7 +2,7 @@
 report errors, what a long saved output holds, and when the text came through the wrong code page.
 
 A failed Bash call's output arrives in the event's error, after its "Exit code N" line, and a call that ran
-brings stdout and stderr in tool_response (context.md, "Hooks and MCP", row 32). Exit code 1 from grep, diff
+brings stdout and stderr in tool_response (decisions.md, "Hooks and MCP", row 32). Exit code 1 from grep, diff
 or test is an answer (OUT-3), and when it stopped an && chain the model learns that the rest never ran. Error
 lines count only when a pattern matches from the line's start, and never in the output of a command that
 reads a file or a log, because that output quotes errors rather than raising them (OUT-7). A pipe that ends

@@ -6,7 +6,7 @@ deleted by Windows tools (PTH-5), so it is refused on Windows. A read-only file 
 fails on it or an editor stops the session at a prompt (LCK-4), with git lfs lock as the step when git
 marks the file lockable. A path that runs through a junction or symbolic link into another repository goes
 ahead with a note naming that repository, and when the session's own repository tracks the path, a discard,
-stash or branch switch there writes through the link (context.md, "Git through a junction"), so that gets a
+stash or branch switch there writes through the link (decisions.md, "Git through a junction"), so that gets a
 warning once per session. The first write to a file that already had changes when the session started gets
 a line saying so, because those changes are not the agent's (STL-3). A write outside the project goes ahead
 with nothing said (D27).

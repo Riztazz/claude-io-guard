@@ -1,6 +1,6 @@
 # Review of the io-guard plan
 
-Written on 2026-09-27 against `.claude/tasks/context.md`, the 35 open tasks, the rules, the skills and
+Written on 2026-09-27 against `docs/design/decisions.md`, the 35 open tasks, the rules, the skills and
 `baseline/fable_review.md`. Every doc claim below was re-read today at code.claude.com/docs and
 modelcontextprotocol.io. `architecture.md` beside this file holds the design the review points at.
 
@@ -150,8 +150,8 @@ The single source is right. Five consequences follow.
 
 ## The lead's answers, 2026-09-27
 
-The task numbers above are the ones before the renumbering. `.claude/tasks/README.md` maps them to the new ones,
-and `.claude/tasks/context.md` records each answer as a decision. Task 03's item 13 above is item 12 in the
+The task numbers above are the ones before the renumbering. `.claude/tasks/README.md`, which git history holds, maps them to the new ones,
+and `docs/design/decisions.md` records each answer as a decision. Task 03's item 13 above is item 12 in the
 renumbered task 03, and its macOS items moved to task 36.
 
 | Question | Answer | Decision |

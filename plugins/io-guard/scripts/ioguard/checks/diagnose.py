@@ -2,9 +2,9 @@
 
 Two routes reach one diagnosis, lib.diagnosis. A Read, Grep or Glob that fails while it runs fires
 PostToolUseFailure, and diagnose.failure answers there. An Edit or Write that Claude Code rejects before it
-runs fires no hook at all (context.md, "Hooks and MCP", row 30), so diagnose.refused finds the refusal at the
-end of the transcript at the session's next hook, and answers once per refused call, before the model tries
-again. A lock is write.locks' to name.
+runs fires no hook at all (decisions.md, "Hooks and MCP", row 30), so diagnose.refused finds the refusal at
+the end of the transcript at the session's next hook, and answers once per refused call, before the model
+tries again. A lock is write.locks' to name.
 """
 import logging
 from pathlib import Path

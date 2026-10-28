@@ -6,9 +6,9 @@ plugin's marketplace: github.com/Riztazz/claude-io-guard.
 
 ## Layout
 
-The tasks build most of this. Today the marketplace, the plugin's manifest, hooks, launcher, skills, the
-`ioguard` package's runtime core (`lib/` and the pipeline in `checks/`, with twenty-two checks: the session
-probe, `write.location`, `write.locks`, `shell.writes`, `transport.body`, `shell.lint`, `win.paths`, `conform.write`,
+The marketplace, the plugin's manifest, hooks, launcher, skills, the `ioguard` package's runtime core (`lib/` and
+the pipeline in `checks/`, with twenty-three checks: the session probe, `write.location`, `write.locks`,
+`shell.deletes`, `shell.writes`, `transport.body`, `shell.lint`, `win.paths`, `conform.write`,
 `conform.edit`, `verify.write`, `verify.command`, `shell.touched`, `read.profile`, `diagnose.failure`,
 `diagnose.refused`, `shell.results`, `server.heartbeat`, `run.rules`, `commit.policy`, `restore.ask`,
 `trust.ask` and `journal.write`), the hook entry point and bridge in `hooks/`, the io MCP server in `mcp/` with
@@ -26,7 +26,8 @@ tests/                            the unittest suite, the byte fixtures, and sup
 tools/                            corpus, replay, report, measure, the ioguard command line, and probes/
 tools/probes/                     the harness probes: run_probe.py and the one-off plugin it builds per probe
 workbench/                        copies of the lead's project files to test on, local and gitignored
-docs/design/architecture.md       the design every task builds from, with every contract
+docs/design/architecture.md       the design, with every contract
+docs/design/decisions.md          the decisions D1 onward, and every harness fact checked live
 docs/design/review.md             Fable's review of the plan, and the lead's answers
 docs/architecture.svg             the architecture drawn, interactive on GitHub Pages or served from localhost
 docs/settings.md                  every setting, its default, and what io-guard keeps in its folder
@@ -34,7 +35,6 @@ docs/tools.md                     every io tool and what it does
 docs/compat.md                    each Claude Code feature io-guard uses, the version, the probe, the fallback
 docs/live-checks.md               each live fact, with the platform, the version and the date last confirmed
 docs/launcher.md                  how io-guard starts Python on each platform, and what each hook path costs
-.claude/tasks/                    the build plan: README.md, context.md, open/, done/, baseline/
 .claude/rules/this-repo.md        the rules for this repository
 .claude/rules/docs.md             which doc each kind of change must update, the drawing included
 .claude/skills/io-guard-dev/      how code here is laid out, written, tested and verified
@@ -54,13 +54,25 @@ installer therefore approves imports from outside the project for this folder, i
 that approval gone, the seven shared rules silently stop loading.
 
 Every link is gitignored, and a public clone has none of them. **Never edit a linked file here**, and never add
-one to git: git writes through a tracked link into the kit. A change to them is a task in the kit's `tasks/open/`.
+one to git: git writes through a tracked link into the kit. A change to them is a Wire issue on `UNREAL-SHARED`.
+
+## The work lives on Wire
+
+- **Every piece of work and every bug is an issue on the Wire hub, repo `claude-io-guard`.** There is no task
+  file in this repository, and `.claude/tasks/` is gitignored so none comes back. The lead set this on
+  2026-10-28.
+- **File a bug the moment you meet it**, with `issue_open`: one in io-guard's code, a wrong or missing code in
+  another project's session, a harness fact that stopped holding, a doc that is wrong. Name the exact command,
+  the full error text and what done looks like. Then carry on with what you were doing.
+- **A decision or a fact checked live also gets a row in `docs/design/decisions.md`**, because the code and the
+  docs cite those rows by number.
 
 ## Start here
 
-1. Read `.claude/tasks/README.md`, `.claude/tasks/context.md` and `docs/design/architecture.md`.
-2. Pick the lowest-numbered open task whose `depends-on` tasks are all done.
-3. Read the skills the task needs:
+1. Read `docs/design/decisions.md` and `docs/design/architecture.md`.
+2. Pick work with `issues` on `claude-io-guard`, which lists what is ready, and open the session against it with
+   `session_open` and its `issue_id`.
+3. Read the skills the work needs:
    - `io-guard-dev` before any work here
    - `engineering` before writing code
    - `testing` before writing a test
@@ -68,8 +80,6 @@ one to git: git writes through a tracked link into the kit. A change to them is 
    - `prose` before any comment, docstring, message or page
 
 ## Running things
-
-Each line works once the task that builds it has landed.
 
 - Tests: `python -m unittest discover -s tests -t .`. CI runs `python tests/run_all.py`, the same suite, which
   also fails when no test ran
@@ -92,8 +102,8 @@ Each line works once the task that builds it has landed.
 - The week's telemetry on one screen: `python tools/report.py`, from `~/.claude/io-guard`, or `--data
   <folder>` for another folder, such as `workbench/io-guard-home`, where the probes' sessions write. `--html
   <file>` writes the settings page's stats into one file instead
-- Task 31's measurement: `python tools/measure.py CLICKER=<folder> ...`, the same `NAME=FOLDER` pairs as the
-  corpus, split at `--since`, 2026-09-28 by default
+- The measurement against the baseline (Wire #3655): `python tools/measure.py CLICKER=<folder> ...`, the same
+  `NAME=FOLDER` pairs as the corpus, split at `--since`, 2026-09-28 by default
 - The plugin in the desktop app, which is the lead's main surface: run
   `claude plugin marketplace add <path to this clone>`, then `claude plugin install io-guard@claude-io-guard`
 
@@ -107,7 +117,7 @@ Keep:
 
 - **The recent context, close to word for word.** The lead's last requests and answers in the lead's own words, and
   the last things you reported.
-- **The task in progress:** its file, its phase, and what was under way.
+- **The Wire issue in progress:** its number, its phase, and what was under way.
 - **What no file holds yet:** a choice the lead made, a thing promised and not done, and the last test result with
   its numbers. A commit or push grant never carries over.
 - **Errors and refusals, word for word.**
@@ -118,9 +128,9 @@ End the summary with this section:
 
 ```
 Resume
-Task: <the task file's path, or none>
+Issue: <the Wire issue number, or none>
 Phase: <one line>
-Files: <every file to re-read, by path, the task file first>
-Skills: <every skill the task needs, by name>
+Files: <every file to re-read, by path>
+Skills: <every skill the work needs, by name>
 Waiting on the lead: <each open question and grant, or nothing>
 ```

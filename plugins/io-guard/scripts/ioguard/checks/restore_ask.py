@@ -3,7 +3,7 @@ hook on its own call.
 
 A restore writes a file back to the bytes it held before a task, so every edit made to it since is lost. The
 check answers ask with RESTORE_ASKED, naming the files, so Claude Code shows its own permission prompt, which
-the desktop renders where it declines an elicitation form (context.md, "Hooks and MCP", row 16). It records
+the desktop renders where it declines an elicitation form (decisions.md, "Hooks and MCP", row 16). It records
 each restore it put to the user, and io.restore writes only a restore this hook asked about, so a hook that
 failed open lets none through.
 """

@@ -11,11 +11,11 @@
 A run writes to workbench/probes/<id>/<time>/: the plugin it loaded, the work folder the session ran in, the
 session's stream-json output, the debug log, the hook and server log, and summary.json. workbench/ is
 gitignored, because the logs hold local paths. brief, timing, verdicts and show read the latest run of a
-probe. verdicts prints pass or FAIL per probe against the result context.md records. run all runs every probe
-that has a verdict. The launch probes, which time 100 hook calls each for docs/launcher.md, run by name.
+probe. verdicts prints pass or FAIL per probe against the result decisions.md records. run all runs every
+probe that has a verdict. The launch probes, which time 100 hook calls each for docs/launcher.md, run by name.
 assemble builds the plugin alone, wrapped in a local marketplace, for a probe a person runs by hand in the
 desktop app. IOPROBE_CLAUDE names the claude binary to run, for example the desktop app's bundled copy, and
-defaults to claude on PATH. context.md, "Hooks and MCP", records what each probe found.
+defaults to claude on PATH. decisions.md, "Hooks and MCP", records what each probe found.
 
 A live-* probe runs io-guard itself from plugins/io-guard instead of a one-off plugin, with IOGUARD_PYTHON
 naming this Python and tests/support/inject on PYTHONPATH, so the test checks its guard field names run in the

@@ -151,7 +151,8 @@ From 110,379 file and shell calls in 738 real agent sessions, 2026-06-20 to 2026
 
 This repository is also the plugin's marketplace. Only `plugins/io-guard/` ships.
 
-- Start with [`.claude/tasks/README.md`](.claude/tasks/README.md), then `context.md` beside it, then the design.
+- Start with [`docs/design/decisions.md`](docs/design/decisions.md), then the design beside it,
+  [`architecture.md`](docs/design/architecture.md). The open work is tracked outside this repository.
 - Run the tests with `python -m unittest discover -s tests -t .`.
 - Check one command offline with `python tools/ioguard.py check "<command>"`. It runs nothing.
 - After adding a code or a tool, run `python tools/skill.py`. A test fails until you do.

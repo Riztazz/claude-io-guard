@@ -6,14 +6,14 @@ lines that do not is a warning. The indent of a missing or repeated match, or of
 The Edit tool keeps a file's line endings, its BOM and the whitespace at the end of new_string, and matches
 old_string against the file with every ending read as LF, so the check reads the file the same way.
 
-A space or tab at the end of new_string is gone from the model's own call before any hook sees it (context.md,
-"Hooks and MCP", row 28). So an old_string that ends in one, beside a new_string that ends in none, joins
-new_string to the text after the match wherever the line goes on: .Branch, 1 becomes .Branch.ToInt(),1. The
-check refuses that Edit, with the joined lines and the strings that end one character later. Those carry the
-model's intent either way, since the space inside them survives: .Branch, 1 to .Branch.ToInt(), 1 keeps it,
-and .Branch, 1 to .Branch.ToInt(),1 drops it.
+A space or tab at the end of new_string is gone from the model's own call before any hook sees it
+(decisions.md, "Hooks and MCP", row 28). So an old_string that ends in one, beside a new_string that ends in
+none, joins new_string to the text after the match wherever the line goes on: .Branch, 1 becomes
+.Branch.ToInt(),1. The check refuses that Edit, with the joined lines and the strings that end one character
+later. Those carry the model's intent either way, since the space inside them survives: .Branch, 1 to
+.Branch.ToInt(), 1 keeps it, and .Branch, 1 to .Branch.ToInt(),1 drops it.
 
-An Edit with an empty new_string also loses the line break after its match (context.md, "Hooks and MCP", row
+An Edit with an empty new_string also loses the line break after its match (decisions.md, "Hooks and MCP", row
 41). So a deletion whose old_string opens with a line break, and ends on one, its own or that one, joins the
 line before it to the line after. The check refuses it when both lines hold text, with the same lines'
 old_string moved one line break later, which deletes them and joins nothing.

@@ -1,7 +1,7 @@
 # io-guard architecture
 
-The design a new agent builds from. Written on 2026-09-27 for the plan in `.claude/tasks/`, after the review in
-`review.md`, with the lead's decisions D12 to D21 from `.claude/tasks/context.md` folded in. Standard library
+The design a new agent builds from. Written on 2026-09-27, after the review in `review.md`, with the lead's
+decisions D12 to D21 from `decisions.md` folded in. Standard library
 Python 3.14 or later, one codebase for Windows and macOS. `lib` is mechanism and holds nothing. `checks`, the
 config and the tool contracts are policy. Every signature below is a contract, and a task that changes one updates
 this page in the same change. The signatures write `Optional[X]` for readability, and the code writes `X | None`.
@@ -444,10 +444,10 @@ The hooks' context is built again when `probe.json` changes, as when a config fi
 session on a machine has the probe's bash and git from its next hook call on (task 151).
 A budget learned that way applies on a platform whose probe found no cut. The halving takes half the backslashes of a run
 that a double quote does not follow: 4 become 2 and 3 become 2, while a run before `"` arrives whole
-(`context.md`, row 25). `shell.scan` flags a pair as a hazard only where that changes what bash reads, and
+(`decisions.md`, row 25). `shell.scan` flags a pair as a hazard only where that changes what bash reads, and
 `transport_body` moves a quoted heredoc or `python -c` body byte-exact when the command is over the budget or the
 body holds a hazard (D25). The probe then appends `export` lines for the shell
-defaults to `CLAUDE_ENV_FILE`, which reaches Bash calls and not PowerShell ones (`context.md`, row 23). A
+defaults to `CLAUDE_ENV_FILE`, which reaches Bash calls and not PowerShell ones (`decisions.md`, row 23). A
 session's first probe took 143 ms on Windows, and one that keeps every version about 55 ms.
 
 ### Result and the codes
@@ -1266,28 +1266,28 @@ no advice for the model. The mode comes from `transport.rewrite_mode[permission_
 applies to shell rewrites. A file-tool rewrite from `conform_write` and `conform_edit` answers with
 `updatedInput`, the notes in `additionalContext`, and no `permissionDecision`. The harness then applies the
 conformed input and asks or approves as it would have for the original call: task 17's `write-quiet` probe saw
-the permission prompt show the rewritten content, BOM and CRLF, on 2.1.281 and 2.1.283 (`context.md`, "Hooks
+the permission prompt show the rewritten content, BOM and CRLF, on 2.1.281 and 2.1.283 (`decisions.md`, "Hooks
 and MCP", row 27). A check's own ASK or DENY still outranks it.
 
 `verify.write` is the one check that writes after a tool has. It puts back a BOM or line endings the write
 lost, through `write_atomic` inside `lib.locks.file_lock`, as the io tools write (D13). It gives up, and
 reports the loss instead, when the lock stays held past `REPAIR_WAIT_S`, 2 s, or when the file changed since
 the check read it (task 119). Its answer tells the agent to read the file again. An Edit straight after
-such a repair succeeded without a new Read on 2.1.281 and 2.1.283 (`context.md`, "Hooks and MCP", row 29).
+such a repair succeeded without a new Read on 2.1.281 and 2.1.283 (`decisions.md`, "Hooks and MCP", row 29).
 
 PostToolUse answers carry `additionalContext`, `classifierContext` and `updatedToolOutput`. An
 `updatedToolOutput` has the tool's own output shape: for Bash and PowerShell, the `tool_response` object with
 `stdout` replaced. A plain string there fails the harness's schema check and changes nothing. `shell.results`
 replaces a saved output with its first and last lines and its error lines, and drops `persistedOutputPath` and
 `persistedOutputSize` from it, because with them Claude Code shows the replacement only as the 2 KB preview of
-the saved file (`context.md`, "Hooks and MCP", row 32). It reads a saved file only inside the session's
+the saved file (`decisions.md`, "Hooks and MCP", row 32). It reads a saved file only inside the session's
 `<Claude Code's folder>/projects/<project>/<session>/tool-results`, after `..` and links, since the notice
 that names it is the command's own output and can name any file (task 98). A failed Bash or PowerShell call brings no
 `tool_response`, and its output follows the `Exit code N` line in `error`. PostToolUseFailure answers carry
 `additionalContext`. SessionStart answers carry `additionalContext` and write `CLAUDE_ENV_FILE`. The
 user's `systemMessage` is the outcome's `user_message` on every event. PreToolUse `additionalContext` reaches
 the model with and without a permission decision, as a `hook_additional_context` attachment in the transcript
-(`context.md`, "Hooks and MCP", row 22).
+(`decisions.md`, "Hooks and MCP", row 22).
 
 ### The mcp_tool alternative
 
@@ -1337,11 +1337,11 @@ map, and their matchers leave the io tools out. The PreToolUse matcher names the
 `io.restore`, `io.trust` and `io.config`, in full, so `run.rules` holds `io.run` to the user's Bash and
 PowerShell rules (task 25), and `restore.ask` and `trust.ask` put the other three to the user (tasks 32, 80
 and 82). The hook on the plugin's own tool fires,
-and its `ask` brings up the permission prompt although `--allowedTools` allowed the tool (`context.md`, "Hooks
+and its `ask` brings up the permission prompt although `--allowedTools` allowed the tool (`decisions.md`, "Hooks
 and MCP", row 36).
 
 An Edit or Write that Claude Code rejects as a `<tool_use_error>`, such as an `old_string` it cannot find, fires
-no hook at all (`context.md`, "Hooks and MCP", row 30). The transcript still records the call and its error.
+no hook at all (`decisions.md`, "Hooks and MCP", row 30). The transcript still records the call and its error.
 So at the session's next hook, `diagnose.refused` reads the transcript's last 256 KB from `transcript_path`,
 takes the refusals after the last call that ran, and answers each once, before the model tries again (D28).
 It reads a transcript only under Claude Code's `projects` folder (task 99).
@@ -1360,7 +1360,7 @@ probe writes `sessions/<session>.dirty` once, at the session's first start: the 
 changed then. A resume and a compaction keep the session id, so they keep that list, and `write.location` reads
 it through `SessionState.dirty_at_start()`. `probe.json` holds only what is true of the machine (task 51).
 
-Task 03 checked this path live on Windows with Claude Code 2.1.283 (`context.md`, "Hooks and MCP"):
+Task 03 checked this path live on Windows with Claude Code 2.1.283 (`decisions.md`, "Hooks and MCP"):
 
 - **Substitution gives strings.** `${tool_input}` becomes the compact JSON text of the whole object. A number
   becomes its digits, a boolean `true` or `false`, and an absent field an empty string. A multi-line `content`
@@ -1498,7 +1498,7 @@ class ToolCall:                                           # the context, built o
     spill: Optional[Path]                                 # the folder a long result is saved in
     session: str                                          # CLAUDE_CODE_SESSION_ID, for telemetry, task 38
     traceparent: Optional[str]                            # from the request's _meta, task 38
-    tool_use_id: Optional[str]                            # _meta claudecode/toolUseId, context.md row 38
+    tool_use_id: Optional[str]                            # _meta claudecode/toolUseId, decisions.md row 38
 
 class ToolRegistry:
     def register(self, spec: ToolSpec) -> None: ...
@@ -1523,7 +1523,7 @@ Each tool is one module with its input and output dataclasses, its `ToolSpec` an
 takes the input dataclass and a `ToolCall` holding the `Context`, the `CancelToken` and the
 `ProgressReporter`, and returns the output dataclass. The `hook.*` tools are registered last, with the
 description "Called by Claude Code hooks. Not for the model." A hook's `tools/call` carries no `_meta`
-`claudecode/toolUseId` and a model's does (`context.md`, "Hooks and MCP", row 42), so a hook tool called
+`claudecode/toolUseId` and a model's does (`decisions.md`, "Hooks and MCP", row 42), so a hook tool called
 with one answers an error and runs nothing, and the model cannot hand the pipeline an event it wrote (task
 99).
 
@@ -1665,7 +1665,7 @@ io.format(paths, lines = {path: [Place]}, dry_run = false)
 
 Over 12 C++ files copied from one of the lead's projects, 8 CRLF and 4 LF, each given one new badly formatted
 line and one line with doubled spaces, `io.format` wrote the same bytes as the script agents there ran 128
-times to format changed hunks, with the same clang-format (`context.md`, task 26).
+times to format changed hunks, with the same clang-format (`decisions.md`, task 26).
 
 ### Change a setting
 
@@ -1813,7 +1813,7 @@ arrives, with a timeout of five minutes. Under `MODERN` the tool returns `Pendin
 the step reached, and the retry with `inputResponses` resumes from that state without any memory in the
 server. URL mode exists on 2026-07-28 connections only.
 
-Task 03 found that no probed surface shows the user a form (`context.md`, "Hooks and MCP", row 16). The desktop
+Task 03 found that no probed surface shows the user a form (`decisions.md`, "Hooks and MCP", row 16). The desktop
 Code tab on 2.1.281 declines a legacy request without showing it, and `claude -p` cancels it. A modern
 connection never answers a server-sent `elicitation/create`, so `ModernElicitor` is the only way to ask there.
 A user decision therefore goes through a PreToolUse hook on the io tool's own call: the bridge answers `ask`,
@@ -1938,7 +1938,7 @@ call inside a hook tool has a 500 ms timeout and a cache miss counts as unknown,
 Crash safety has four parts. `dispatch` wraps every message in the fail-open boundary, so a bug answers `{}`
 or an `isError` result and the loop continues. The reader answers a malformed line with `-32700` and reads on.
 The watchdog writes `sessions/<session>.alive` in io-guard's folder, named by `CLAUDE_CODE_SESSION_ID` from
-the server's environment, with its process, era and time (`context.md`, "Hooks and MCP", row 34). The
+the server's environment, with its process, era and time (`decisions.md`, "Hooks and MCP", row 34). The
 `server.heartbeat` check runs in a `UserPromptSubmit` command hook and warns once when the beat is older than
 30 seconds with no clean stop. Claude Code restarts a server that exited on the next hook call, but one that
 cannot start leaves every hook failing open and tells the model nothing (row 18). Worse, Claude Code then

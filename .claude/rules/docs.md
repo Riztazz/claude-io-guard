@@ -12,7 +12,7 @@
 | `docs/settings.md` | changes a setting, a default, or a file in io-guard's folder |
 | `docs/tools.md` | adds, removes or changes an io tool |
 | `docs/compat.md`, `docs/live-checks.md` | runs a live check, or starts relying on a harness feature |
-| `.claude/tasks/context.md` | makes a decision or verifies a fact |
+| `docs/design/decisions.md` | makes a decision or verifies a fact |
 | `CLAUDE.md` | changes the repository's layout or how to run something |
 
 - **In the drawing, one fact has several copies, and they change together:** the box and its hover text in `<title>`,
@@ -23,4 +23,4 @@
   `xml.dom.minidom`, and it is ASCII. Then serve `docs/` on localhost with `python -m http.server` and open
   `architecture.svg` there: the browser pane shows a local file only as a static snapshot. Pick each flow, press
   Play, and hover a box.
-- **A task's `## What changed` names each doc it updated**, or says that none needed it.
+- **The Wire issue's closing resolution names each doc the change updated**, or says that none needed it.

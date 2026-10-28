@@ -31,7 +31,7 @@ def session_file(data_dir: Path, session_id: str, kind: str) -> Path:
 
 def memory_file(path: Path, env: Mapping[str, str]) -> bool:
     """Whether path is a note of Claude Code's memory, projects/<project>/memory/<name>.md in its folder,
-    whose frontmatter the desktop app rewrites after every write (context.md, "Hooks and MCP", row 39)."""
+    whose frontmatter the desktop app rewrites after every write (decisions.md, "Hooks and MCP", row 39)."""
     try:
         parts = path.relative_to(claude_folder(env) / "projects").parts
     except ValueError:

@@ -3,7 +3,7 @@
 Claude Code's settings cannot match an MCP tool's arguments, so io.run(["git", "push"]) would otherwise run
 past a Bash(git push *) rule (D14). A deny rule refuses the call with RULE_DENIED. An ask rule answers ask
 with RULE_ASKED as the reason, so Claude Code shows its own permission prompt, which the desktop renders where
-it declines an elicitation form (context.md, "Hooks and MCP", row 16). The check records each call it put to
+it declines an elicitation form (decisions.md, "Hooks and MCP", row 16). The check records each call it put to
 the user, and io.run itself runs a command an ask rule names only when this hook asked about it, so a hook
 that failed open lets none through. The rules come from every settings file Claude Code reads, as lib.rules
 says. A command a shell string runs meets the rules too. A code body, or a string io-guard cannot read, asks

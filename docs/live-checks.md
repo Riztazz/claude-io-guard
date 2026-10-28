@@ -15,8 +15,7 @@ The macOS column waits for the author's Mac, which is down. Task 36 holds every 
 ## The file and shell tools
 
 Confirmed on Windows 10, in the desktop app's Code tab on its bundled 2.1.281, with Git Bash, PowerShell 7 and a
-cp1252 console. The probes are in `.claude/tasks/baseline/eol_probe.py`, which stays local until task 34
-publishes it.
+cp1252 console. The probe was `.claude/tasks/baseline/eol_probe.py`, which git history holds.
 
 | Fact | Windows | macOS | Confirmed |
 |---|---|---|---|
@@ -66,7 +65,7 @@ Confirmed with the `claude` CLI at 2.1.283 and the desktop app on 2.1.281, durin
 ## Hooks and MCP
 
 Confirmed with `tools/probes/run_probe.py`, whose `verdicts` command rechecks every row below. The numbers match
-`.claude/tasks/context.md`, "Hooks and MCP", which holds the full results.
+`docs/design/decisions.md`, "Hooks and MCP", which holds the full results.
 
 | Fact | Probe | Windows | macOS | Confirmed |
 |---|---|---|---|---|
@@ -116,7 +115,7 @@ Confirmed with `tools/probes/run_probe.py`, whose `verdicts` command rechecks ev
 ## io-guard itself
 
 Confirmed with the `live-*` probes, which run io-guard from this checkout with test checks added. The numbers
-match `.claude/tasks/context.md`, "The hook entry point".
+match `docs/design/decisions.md`, "The hook entry point".
 
 | Fact | Probe | Windows | macOS | Confirmed |
 |---|---|---|---|---|

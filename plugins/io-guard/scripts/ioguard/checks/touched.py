@@ -1,7 +1,7 @@
 """Tell the agent which files a shell command changed, and what it did to the bytes of the ones it had read.
 
 A formatter, a script or git can change a file behind the agent's back (STL-1, BYT-2), and an Edit after
-that still applies (context.md, "Hooks and MCP", row 5), so this is the one warning the agent gets. Before a
+that still applies (decisions.md, "Hooks and MCP", row 5), so this is the one warning the agent gets. Before a
 Bash or PowerShell command the check keeps git status for the session's repository, and the size and time of
 each file the agent has read or written. After it, a read file whose size or time moved is named with the step
 to read it again, and verify.write's comparison with its last profile names what the command did to its

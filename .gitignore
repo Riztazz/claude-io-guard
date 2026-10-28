@@ -5,6 +5,8 @@ __pycache__/
 /events/
 /reports/
 /workbench/
+# The open work and every bug found are issues on the Wire hub, never task files here.
+.claude/tasks/
 
 # install.ps1 manages every line down to the closing line. A hand edit here is lost.
 .claude/_replaced/

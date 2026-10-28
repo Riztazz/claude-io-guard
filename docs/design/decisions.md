@@ -1,12 +1,14 @@
-# Context
+# Decisions and evidence
 
-Everything the tasks rest on, gathered on 2026-09-27 from four Unreal Engine projects (CLICKER, OrbitalDrift,
-SmartTablesHost, UNREAL-SHARED), a design review, and the Claude Code docs.
-The full catalog with evidence is `baseline/io_traps.html`, published privately at
-https://claude.ai/artifact/NDhF5JoHcXy6mDDPSecZLu. The first design review and the checks on it are
-`baseline/fable_review.md`. The design a task builds from is `docs/design/architecture.md`, and Fable's second review,
-which it answers, is `docs/design/review.md`. Both reviews use the task numbers from before the renumbering of
-2026-09-27, and `.claude/tasks/README.md` maps them.
+The decisions io-guard is built on and the harness facts checked live, gathered from 2026-09-27 on from four
+Unreal Engine projects (CLICKER, OrbitalDrift, SmartTablesHost, UNREAL-SHARED), two design reviews, and the
+Claude Code docs. A new decision or a newly checked fact gets a row here. The open work and every bug found are
+issues on the lead's Wire hub, not files in this repository.
+
+The full catalog with evidence is published privately at https://claude.ai/artifact/NDhF5JoHcXy6mDDPSecZLu.
+The design is `docs/design/architecture.md`, and Fable's second review, which it answers, is
+`docs/design/review.md`. A task number below names a task file that git history holds, from before the commit
+that deleted `.claude/tasks/`.
 
 ## Decisions
 
@@ -30,7 +32,7 @@ which it answers, is `docs/design/review.md`. Both reviews use the task numbers 
 | D16 | Every policy value is a config key with its default in code. The time budget defaults to 300 ms, past which checks that run a subprocess are skipped, and a 2,000 ms cap, past which every remaining check is skipped | The lead: "configurable as everything else should be" |
 | D17 | Python lines stop at 110 characters, code and comments alike | The width the rules and skills already wrap at |
 | D18 | Until 1.0, `plugin.json` has no `version` and installs track commits. From 1.0 on, semantic version tags with release notes | Fast iteration now, a known-good version for users later |
-| D19 | Everything is published except the rows that came from another person's scan of their own projects. The publish scrub (task 34) took them out of the tracked files on 2026-09-28, and they stay in the untracked `baseline/` folder | Those findings are third-party content |
+| D19 | Everything is published except the rows that came from another person's scan of their own projects. The publish scrub (task 34) took them out of the tracked files on 2026-09-28, and they stayed in the untracked `baseline/` folder. On 2026-10-28 that folder was found published on `main` (#3652), and the lead had it deleted from the repository and the disk | Those findings are third-party content |
 | D20 | The task files are numbered in build order, and every dependency points to a lower number. Hunk staging and the dashboard come after the measured result | The lead asked for one linear order |
 | D21 | The lead's Mac is down from 2026-09-27 for the foreseeable future. Live checks run on Windows only, CI still runs macOS on GitHub's runners, and the live macOS checks wait in task 36. Code assumes the Mac has Python 3.14 | Nothing can be checked live on a Mac until it is back |
 | D22 | Telemetry copied into a clone goes in `events/`, and a report page written into a clone goes in `reports/`. Both are gitignored at the root, beside `corpus/`. Chosen by the lead on 2026-09-27 | No task named an export path, and D8 keeps telemetry out of git. A bare `*.jsonl` would also hide the conformance scripts in `tests/mcp/requests/` |
@@ -101,7 +103,7 @@ Windows 10, Claude Code desktop (bundled 2.1.281), Git Bash, PowerShell 7, Pytho
 | Read hides endings and BOM | Read of CRLF, LF and CRLF-with-BOM probes | Three identical outputs |
 | Python prints through cp1252 | `print()` of U+2192 | `UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 22: character maps to <undefined>` |
 
-The probes are `baseline/eol_probe.py`.
+The probes were `.claude/tasks/baseline/eol_probe.py`, which git history holds.
 
 Task 13 checked, through the PowerShell tool on PowerShell 7.6.6, the PowerShell calls `shell.lint` refuses: an
 assignment to one of 12 read-only automatic variables such as `$PID` or `$HOME`, `Select-String -Recurse`,

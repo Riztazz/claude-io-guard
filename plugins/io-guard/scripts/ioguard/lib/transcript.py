@@ -1,7 +1,7 @@
 """The calls Claude Code refused before any hook ran, read from the end of the session's transcript.
 
 Claude Code checks an Edit's or a Write's input before its hooks run, and a call it rejects there, such as an
-old_string it cannot find, reaches no hook (context.md, "Hooks and MCP", row 30). The transcript still holds
+old_string it cannot find, reaches no hook (decisions.md, "Hooks and MCP", row 30). The transcript still holds
 the call's tool_use and its tool_result, whose text is wrapped in <tool_use_error>. The session's next hook
 reads the transcript's last part and takes the refusals after the last tool result that was not one, so a
 diagnosis reaches the model before it tries again. The transcript is Claude Code's own file, in a format it

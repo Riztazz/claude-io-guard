@@ -19,7 +19,7 @@ TITLES = {"hook.pre_tool_use": "Hook: before a tool call", "hook.post_tool_use":
 def hook(name: str) -> ToolSpec:
     def answered(arguments: dict, given: ToolCall) -> dict:
         """The pipeline's answer to a hook's call. A hook's tools/call carries no tool use id and a model's
-        carries one (context.md, "Hooks and MCP", row 38), so a call with one runs nothing."""
+        carries one (decisions.md, "Hooks and MCP", row 38), so a call with one runs nothing."""
         if given.tool_use_id is not None:
             text = f"{name} answers Claude Code's hooks only, and ran nothing. Call the tool the task needs."
             return {"content": [{"type": "text", "text": text}], "isError": True}

@@ -14,7 +14,7 @@ python tools/probes/run_probe.py verdicts
 ```
 
 Each probe starts a headless session with a one-off plugin, then prints `pass` or `FAIL` against the result
-recorded in `.claude/tasks/context.md`, "Hooks and MCP". To test the desktop app's own copy, set `IOPROBE_CLAUDE`
+recorded in `docs/design/decisions.md`, "Hooks and MCP". To test the desktop app's own copy, set `IOPROBE_CLAUDE`
 to its `claude.exe`, which on Windows sits in `%APPDATA%\Claude\claude-code\<version>\`.
 
 A `FAIL` means a row below changed. Update the row, what io-guard does without the feature, and the date in

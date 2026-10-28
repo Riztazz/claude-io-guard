@@ -4,7 +4,7 @@ stdio server by default, and the stateless 2026-07-28 protocol, which carries _m
 The era is decided once per process. initialize makes it legacy, and the first request that carries a protocol
 version in _meta makes it modern. server/discover answers in either and changes neither. A modern result
 carries resultType and the server's info in _meta, because Claude Code's modern client rejects a result
-without resultType, and its tools/list carries ttlMs and cacheScope for the same reason (context.md, "Hooks
+without resultType, and its tools/list carries ttlMs and cacheScope for the same reason (decisions.md, "Hooks
 and MCP", row 15). A legacy result carries none of them. A protocol failure is a JSON-RPC error. A tool's own
 failure is a result with isError set, which ToolRegistry builds.
 """
