@@ -64,7 +64,7 @@ class ShellDeletes(Check):
         host, powershell = Host.of(ctx), event.tool is Tool.POWERSHELL
         found = (powershell_deletes(command, event.cwd, host) if powershell
                  else bash_deletes(command, event.cwd, host))
-        if not found:
+        if all(delete.moved for delete in found):
             return [], []
         repository = self.repository(event, ctx)
         roots = self.roots(repository, event, ctx)
@@ -104,6 +104,8 @@ class ShellDeletes(Check):
         such as one too long or with a character Windows refuses, is refused with the system's words."""
         try:
             resolved = resolve(delete, host)
+            if delete.moved and resolved.unresolved:
+                return []                     # a move from a variable is too common to refuse
             if resolved.unresolved:
                 return [f"{delete.how} {delete.target or '(no path)'}: {resolved.unresolved}"]
             return [f"{delete.how} {path.as_posix()}: {why}" for path in resolved.paths
@@ -118,7 +120,11 @@ class ShellDeletes(Check):
         real = ShellDeletes.real(delete, path, ctx)
         through = "" if real == path else f", through a link to {real.as_posix()}"
         if paths.inside(real, roots, ctx.platform) is None:
+            if delete.moved:
+                return f"it moves a path from outside the allowed folders, and a delete follows{through}"
             return f"it is outside the allowed folders{through}"
+        if delete.moved:
+            return None
         in_git = paths.inside(real, [git_folder], ctx.platform) is not None
         if in_git and (delete.recursive or globbed):
             return f"it is the repository's .git folder or inside it{through}"

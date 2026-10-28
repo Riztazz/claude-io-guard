@@ -24,6 +24,7 @@ from ioguard.lib.program import program_name
 
 DEVICES = {"/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty", "nul", "$null", "con"}
 SCRIPT_BYTES = 1024 * 1024       # a script file past this is not read
+ENV_VALUED = frozenset({"-u", "--unset", "-C", "--chdir", "-a", "--argv0", "-S", "--split-string"})
 SCRIPT_WRITE = re.compile(
     r"open\(\s*r?(['\"])(?P<open>[^'\"]+)\1\s*,\s*(?:mode\s*=\s*)?r?['\"][wax]"
     r"|Path\(\s*r?(['\"])(?P<path>[^'\"]+)\3\s*\)\.write_(?:text|bytes)\("
@@ -210,11 +211,12 @@ def delegated_writes(under: tuple[list[str], list[str], str], where: Path | None
 
 
 def without_env(words: list[str]) -> list[str]:
-    """words without a leading env and its options and settings."""
+    """words without a leading env and its options, their values and its settings. The command env -S splits
+    from its value is not among them."""
     if words[:1] == ["env"]:
         words = words[1:]
         while words and (words[0].startswith("-") or shell.ASSIGNMENT.match(words[0])):
-            words = words[1:]
+            words = words[2:] if words[0] in ENV_VALUED else words[1:]
     return words
 
 

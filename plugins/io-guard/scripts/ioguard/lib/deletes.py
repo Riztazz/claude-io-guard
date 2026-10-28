@@ -1,13 +1,17 @@
 """The files and folders a shell command deletes, and the real paths each target names before it runs.
 
-A delete is rm, rmdir or unlink, alone, after a wrapper such as sudo, exec, command or busybox, or run by
-find -exec or xargs; a bash -c, sh -c or eval string, a $( ) or backtick part, a heredoc or here-string a
-shell reads, that holds one; PowerShell's Remove-Item and its aliases rm, ri, del, erase, rd and rmdir,
-[IO.Directory]::Delete and [IO.File]::Delete, in a script block or an Invoke-Expression string too; cmd /c
-or //c del, erase, rd and rmdir; git clean with --force, and git rm without --cached. Some deletes name no
-target before the command runs: xargs takes its targets from stdin, Remove-Item with no path takes them from
-the pipeline, a shell fed by a pipe reads commands nobody wrote down, and a string nested past rules.NESTED
-is not read. Each of those is a Delete with no target and the reason in unnamed.
+A delete is rm, rmdir or unlink, alone, after env or a wrapper such as sudo, exec, command, busybox,
+setsid, flock, caffeinate, ionice or wsl, or run by find -exec or xargs; a bash -c, sh -c, su -c, env -S or
+eval string, a $( ) or backtick part, a heredoc or here-string a shell reads, or a shell script the command
+runs, that holds one; PowerShell's Remove-Item and its aliases rm, ri, del, erase, rd and rmdir,
+[IO.Directory]::Delete, [IO.File]::Delete and a .Delete() method, in a script block, an Invoke-Expression
+string, a Start-Process command line or a .ps1 script too; cmd /c or //c del, erase, rd and rmdir; git
+clean with --force, git rm without --cached, and git worktree remove. A mv or Move-Item that a delete
+follows is a Delete marked moved, since it can bring a path from outside to where the delete reaches. Some
+deletes name no target before the command runs: xargs takes its targets from stdin, Remove-Item with no path
+takes them from the pipeline, a shell fed by a pipe reads commands nobody wrote down, a program held in a
+variable given rm's options can be rm, and a string nested past rules.NESTED is not read. Each of those is a
+Delete with no target and the reason in unnamed.
 
 A target resolves the way its shell expands it. Bash matches an unquoted * ? or [ against each folder, with
 case and leaving out the names that start with a dot, unless the command turns on dotglob, nocaseglob,
@@ -22,18 +26,26 @@ HKCU:, has no path before the command runs, and Resolved says why.
 """
 import fnmatch
 import re
+import shlex
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
 
 from ioguard.lib import paths, pwsh, rules, shell
 from ioguard.lib.program import program_name
-from ioguard.lib.writes import (CHANGE_DIRECTORY, POP_DIRECTORY, PUSH_DIRECTORY, Host, located, moved_to,
-                                without_env)
+from ioguard.lib.writes import (CHANGE_DIRECTORY, ENV_VALUED, POP_DIRECTORY, PUSH_DIRECTORY, SCRIPT_BYTES,
+                                Host, located, moved_to, without_env)
+from ioguard.lib.writes import resolve as resolve_write
 
 RM_PROGRAMS = frozenset({"rm", "rmdir", "unlink"})
 REMOVE_ITEM = frozenset({"remove-item", "rm", "ri", "del", "erase", "rd", "rmdir"})
 INVOKE_EXPRESSION = frozenset({"invoke-expression", "iex"})
+MOVE_ITEM = frozenset({"move-item", "mi", "move", "mv"})
+START_PROCESS = frozenset({"start-process", "saps", "start"})
+METHOD_DELETE = re.compile(r"(?<!:)\.Delete\s*\([^)]*\)", re.I)
+GET_ITEM_DELETE = re.compile(r"\(\s*(?:Get-Item|gi)\s+(?:-(?:(?P<literal>LiteralPath|lp)|Path)\s+)?"
+                             r"(?P<path>'(?:[^']|'')*'|\"[^\"]*\"|[^\s)]+)\s*\)(?P<call>\.Delete\s*\("
+                             r"(?P<arguments>[^)]*)\))", re.I)
 CMD_DELETES = {"del": "/s", "erase": "/s", "rd": "/s", "rmdir": "/s"}   # each program, its recursive switch
 CMD_DELETE_WORD = re.compile(r"(?<![\w.\\/:%-])(del|erase|rd|rmdir)(?=[\s/]|$)", re.I)
 CMD_MOVES = re.compile(r"^\s*\(?\s*(?:cd|chdir|pushd|popd)(?=[\s/\\.]|$)", re.I)
@@ -44,6 +56,13 @@ PS_VALUED = ("-path", "-literalpath", "-lp", "-pspath", "-include", "-exclude", 
 SUDO_VALUED = frozenset({"-u", "-g", "-h", "-p", "-C", "-D", "-r", "-t", "-U", "-T", "--user", "--group",
                          "--host", "--prompt", "--close-from", "--chdir", "--role", "--type", "--other-user",
                          "--command-timeout"})
+SKIPPED = {"setsid": frozenset(), "caffeinate": frozenset({"-t", "-w"}),   # each wrapper, its valued options
+           "ionice": frozenset({"-c", "-n", "-p", "-P", "-u", "--class", "--classdata"}),
+           "flock": frozenset({"-w", "--wait", "--timeout", "-E", "--conflict-exit-code"}),
+           "wsl": frozenset({"-d", "--distribution", "-u", "--user", "--cd", "-cd", "--shell-type"})}
+MOUNTED = re.compile(r"^(['\"]?)/mnt/([A-Za-z])(?=/|['\"]?$)")      # wsl's mount of a Windows drive
+VARIABLE_PROGRAM = re.compile(r"^\"?\$")
+RM_OPTIONS = re.compile(r"^(?:-[dfivIR]*[rRf][dfivrIR]*|--recursive|--force)$")
 XARGS_VALUED = frozenset({"-I", "-n", "-d", "-P", "-L", "-s", "-E", "-a"})
 FIND_NAMING = frozenset({"-name", "-iname", "-path", "-ipath", "-wholename", "-iwholename"})
 FIND_NARROWING = FIND_NAMING | {"-regex", "-iregex"}     # the tests that pick names, not ages or sizes
@@ -88,6 +107,7 @@ class Delete:
     literal: bool = False        # PowerShell's -LiteralPath, which matches no wildcard
     wide: bool = False           # the command widens bash's wildcards to dot names and any case
     unnamed: str = ""            # why the delete names no target, such as xargs reading them from stdin
+    moved: bool = False          # mv or Move-Item takes the target away, and a delete comes after it
 
 
 @dataclass(frozen=True)
@@ -157,22 +177,30 @@ def links_before_delete(command: str, powershell: bool) -> bool:
 def bash_deletes(command: str, cwd: Path | None, host: Host, depth: int = 0) -> list[Delete]:
     """Every delete the Bash command run in cwd makes. cwd is None for a string that runs after a cd
     io-guard cannot follow."""
-    placed = located(command, cwd, host)
+    placed, code = located(command, cwd, host), shell.blanked(command)
     found: list[Delete] = []
     for simple, where in placed:
-        found += simple_deletes(simple, where, host, depth, stripped_wrapper(command, simple))
+        made = simple_deletes(simple, where, host, depth, stripped_wrapper(command, simple))
+        found += deleted_after(made, command, simple.span[1], code)
     for at, inner in substitutions(command):
         found += nested_bash(inner, folder_at(at, placed, cwd), host, depth, "a $( ) part")
     found += stdin_shells(command, placed, host, depth)
     if shell.scan(command).too_deep:
         found += unread(command, "a nested part", cwd)
-    code = shell.blanked(command)
     if EXTGLOB.search(code):
         found = [replace(delete, unnamed="the command turns on extglob, whose patterns io-guard does not "
                                          "expand") for delete in found]
     elif WIDE_GLOB.search(code):
         found = [replace(delete, wide=True) for delete in found]
     return list(dict.fromkeys(found))
+
+
+def deleted_after(made: list[Delete], command: str, end: int, code: str) -> list[Delete]:
+    """made without the moves that no delete follows: a move counts only when a delete word comes after the
+    command that makes it, or when a loop or a function runs it again."""
+    if REPEATS.search(code) or DELETE_WORDS.search(command, end):
+        return made
+    return [delete for delete in made if not delete.moved]
 
 
 def nested_bash(text: str, where: Path | None, host: Host, depth: int, how: str) -> list[Delete]:
@@ -287,6 +315,13 @@ def here_strings(command: str, span: tuple[int, int]) -> list[str]:
 def simple_deletes(simple: shell.SimpleCommand, where: Path | None, host: Host, depth: int,
                    wrapper: str = "") -> list[Delete]:
     """The deletes of one simple command that runs in where, after the wrapper the parser dropped."""
+    if simple.words[:1] == ("env",):
+        options = env_options(list(simple.words))
+        if (split := option_value(options, "-S", "--split-string")) is not None:
+            rest = simple.words[1 + len(options):]
+            return nested_bash(f"{split} {rules.command_text(rest)}", where, host, depth, "env -S")
+        if option_value(options, "-C", "--chdir") is not None:
+            where = None
     words = without_env(list(simple.words))
     raws = list(simple.raw[len(simple.words) - len(words):]) if simple.raw else list(words)
     if wrapper:
@@ -303,15 +338,30 @@ def simple_deletes(simple: shell.SimpleCommand, where: Path | None, host: Host, 
         return xargs_deletes(peeled[1:], where, host, depth)
     if name in RM_PROGRAMS:
         return rm_deletes(name, peeled[1:], raws[1:], where)
+    if name == "mv":
+        return mv_moves(peeled[1:], raws[1:], where)
     if name == "find":
         return find_deletes(peeled, raws, where, host, depth)
     if name == "git":
         return git_deletes(peeled[1:], raws[1:], where, host)
     if name == "eval":
         return nested_bash(" ".join(peeled[1:]), where, host, depth, "eval")
-    wrapped = rules.wrapped(peeled)
+    if VARIABLE_PROGRAM.match(raws[0]) and RM_OPTIONS.match(peeled[1] if len(peeled) > 1 else ""):
+        return [unnamed(raws[0], "the program is a variable, given the options of rm", where)]
+    if (script := bash_script(peeled, raws)) is not None:
+        return script_deletes(script, where, host, depth, Shell.BASH)
+    if peeled[0].lower().endswith(".ps1"):
+        return script_deletes(raws[0], where, host, depth, Shell.POWERSHELL)
+    return wrapped_deletes(peeled, where, host, depth)
+
+
+def wrapped_deletes(words: list[str], where: Path | None, host: Host, depth: int) -> list[Delete]:
+    """The deletes of the string a shell among words runs, of cmd /c, or of a PowerShell script file it
+    runs with -File."""
+    wrapped = rules.wrapped(words)
     if wrapped is None:
-        return []
+        script = powershell_file(words)
+        return [] if script is None else script_deletes(script, where, host, depth, Shell.POWERSHELL)
     if wrapped.dialect is rules.Dialect.BASH and wrapped.text is not None:
         return nested_bash(wrapped.text, where, host, depth, wrapped.what)
     if wrapped.dialect is rules.Dialect.POWERSHELL and wrapped.text is not None:
@@ -323,13 +373,126 @@ def simple_deletes(simple: shell.SimpleCommand, where: Path | None, host: Host, 
     return []
 
 
+def env_options(words: list[str]) -> list[str]:
+    """The options, their values and the settings between env and the program it runs."""
+    at = 1
+    while at < len(words) and (words[at].startswith("-") or shell.ASSIGNMENT.match(words[at])):
+        at += 2 if words[at] in ENV_VALUED else 1
+    return words[1:at]
+
+
+def option_value(options: list[str], short: str, long: str) -> str | None:
+    """The value options give the option named short or long, as -S value, -Svalue or --long=value."""
+    for index, word in enumerate(options):
+        if word in (short, long) and index + 1 < len(options):
+            return options[index + 1]
+        if word.startswith(f"{long}="):
+            return word.split("=", 1)[1]
+        if word.startswith(short) and len(word) > len(short) and not word.startswith("--"):
+            return word[len(short):]
+    return None
+
+
+def bash_script(words: list[str], raws: list[str]) -> str | None:
+    """The script file, as written, that a shell with no command string, source or . runs, or a program
+    named like a shell script such as ./build.sh."""
+    name = program_name(words[0])
+    if name in ("source", "."):
+        return raws[1] if len(raws) > 1 else None
+    if words[0].endswith(".sh"):
+        return raws[0]
+    if name not in rules.SHELLS or rules.wrapped(words) is not None:
+        return None
+    at = 1
+    while at < len(words) and words[at].startswith(("-", "+")) and words[at] != "--":
+        if re.match(r"^-[A-Za-z]*s", words[at]):
+            return None                               # -s reads the commands from input, its words are $1 on
+        at += 2 if words[at] in rules.SHELL_VALUED else 1
+    at += words[at:at + 1] == ["--"]
+    return raws[at] if at < len(words) else None
+
+
+def powershell_file(words: list[str]) -> str | None:
+    """The script file pwsh or powershell runs with -File, as written, or None."""
+    if not words or program_name(words[0]).lower() not in rules.POWERSHELLS:
+        return None
+    for index, word in enumerate(words[1:-1], 1):
+        flag = word.lower()
+        if flag in ("-f", "-file") or (len(flag) >= 3 and "-file".startswith(flag)):
+            return words[index + 1]
+    return None
+
+
+def script_deletes(raw: str, where: Path | None, host: Host, depth: int, dialect: Shell) -> list[Delete]:
+    """The deletes of a script file the command runs, read as it is now. A script that cannot be read, or is
+    larger than writes.SCRIPT_BYTES, is one delete with no target when its name says it runs."""
+    text = powershell_text(raw) if dialect is Shell.POWERSHELL else bash_word(raw)
+    path = None if text is None else resolve_write(text, where, host)
+    how = f"the script {raw}"
+    if path is None:
+        return []
+    try:
+        data = host.fs.read_bytes(path, SCRIPT_BYTES + 1)
+    except FileNotFoundError:
+        return []
+    except OSError as error:
+        return [unnamed(how, f"io-guard cannot read it: {error.strerror or error}", where, dialect)]
+    if len(data) > SCRIPT_BYTES:
+        return [unnamed(how, f"it is larger than the {SCRIPT_BYTES:,} bytes io-guard reads", where, dialect)]
+    body = data.decode("utf-8", "replace")
+    found = (nested_powershell(body, where, host, depth, how) if dialect is Shell.POWERSHELL
+             else nested_bash(body, where, host, depth, how))
+    return [delete if delete.how == how else replace(delete, how=f"{how}: {delete.how}") for delete in found]
+
+
+def bash_word(raw: str) -> str | None:
+    """The text a Bash word passes, or None when it has no value before the command runs."""
+    pieces = bash_pieces(raw)
+    return None if isinstance(pieces, str) else "".join(char for char, _ in pieces)
+
+
+def mv_moves(words: list[str], raws: list[str], where: Path | None) -> list[Delete]:
+    """The paths mv takes away: every operand but the last, or every operand when -t names the folder."""
+    operands, into, ended, skip = [], False, False, False
+    for word, raw in zip(words, raws):
+        if skip:
+            skip = False
+        elif not ended and word == "--":
+            ended = True
+        elif not ended and word.startswith("-") and word != "-":
+            into = into or word.startswith(("-t", "--target-directory"))
+            skip = word in ("-t", "--target-directory", "-S", "--suffix")
+        else:
+            operands.append(raw)
+    sources = operands if into else operands[:-1]
+    return [Delete("mv", raw, False, Shell.BASH, where, moved=True) for raw in sources]
+
+
 def unwrapped_further(words: list[str], raws: list[str],
                       where: Path | None) -> tuple[list[str], list[str], Path | None]:
-    """words, their raw forms and the folder, past sudo, doas, exec, command -p and busybox and their
-    options. sudo -D runs in a folder io-guard does not follow, and command -v runs nothing."""
+    """words, their raw forms and the folder, past sudo, doas, exec, command -p, busybox, setsid, caffeinate,
+    ionice, flock and wsl and their options. su -c and flock -c become sh -c with the same string. sudo -D
+    and wsl --cd run in a folder io-guard does not follow, and command -v runs nothing. wsl's /mnt/c/ is
+    Git Bash's /c/, the same folder."""
     while words:
         head = program_name(words[0])
-        if words[0].startswith("-"):                  # what rules.unwrapped leaves of command -p
+        if head in ("su", "flock") and (text := command_option(words)) is not None:
+            return ["sh", "-c", text], ["sh", "-c", text], where
+        if head == "su":
+            return [], [], where                      # su with no -c starts a shell that reads the terminal
+        if head in SKIPPED:
+            valued, at = SKIPPED[head], 1
+            while at < len(words) and words[at].startswith("-") and words[at] != "--":
+                if words[at] in ("--cd", "-cd"):
+                    where = None
+                at += 2 if words[at] in valued else 1
+            at += words[at:at + 1] == ["--"]
+            at += head == "flock"                     # the lock file
+            words, raws = words[at:], raws[at:]
+            if head == "wsl":
+                raws = [MOUNTED.sub(r"\1/\2", raw) for raw in raws]
+                words = [MOUNTED.sub(r"\1/\2", word) for word in words]
+        elif words[0].startswith("-"):                # what rules.unwrapped leaves of command -p
             words, raws = words[1:], raws[1:]
         elif head in ("sudo", "doas", "exec"):
             words, raws = words[1:], raws[1:]
@@ -347,6 +510,16 @@ def unwrapped_further(words: list[str], raws: list[str],
         else:
             break
     return words, raws, where
+
+
+def command_option(words: list[str]) -> str | None:
+    """The command string su or flock is given with -c or --command, or None."""
+    for index, word in enumerate(words[1:], 1):
+        if word in ("-c", "--command") and index + 1 < len(words):
+            return words[index + 1]
+        if word.startswith("--command="):
+            return word.split("=", 1)[1]
+    return None
 
 
 def xargs_deletes(words: list[str], where: Path | None, host: Host, depth: int) -> list[Delete]:
@@ -415,14 +588,18 @@ def find_deletes(words: list[str], raws: list[str], where: Path | None, host: Ho
 
 
 def git_deletes(words: list[str], raws: list[str], where: Path | None, host: Host) -> list[Delete]:
-    """The paths git clean --force or git rm deletes: its pathspecs, or the folder it runs in. git -C moves
-    that folder first. git clean removes only what git does not track, never the folder it cleans or .git,
-    so it is never a recursive delete of its target."""
+    """The paths git clean --force, git rm or git worktree remove deletes: its pathspecs, or the folder it
+    runs in. git -C moves that folder first. git clean removes only what git does not track, never the folder
+    it cleans or .git, so it is never a recursive delete of its target. git worktree remove deletes the
+    worktree's folder whole."""
     index = 0
     while index < len(words) and words[index].startswith("-"):
         if words[index] == "-C" and index + 1 < len(words):
             where = moved_to(shell.SimpleCommand(("cd", words[index + 1]), (), (), (0, 0)), where, host)
         index += 2 if words[index] in GIT_VALUED else 1
+    if words[index:index + 2] == ["worktree", "remove"]:
+        named = [raw for word, raw in zip(words[index + 2:], raws[index + 2:]) if not word.startswith("-")]
+        return [Delete("git worktree remove", raw, True, Shell.BASH, where) for raw in named[:1]]
     if index >= len(words) or words[index] not in ("clean", "rm"):
         return []
     sub, rest, rest_raw = words[index], words[index + 1:], raws[index + 1:]
@@ -451,7 +628,9 @@ def powershell_deletes(command: str, cwd: Path | None, host: Host, depth: int = 
     command runs in. A block that changes the folder leaves it changed, so after one the folder is not
     known."""
     where = cwd
+    code = pwsh.blanked(command)
     found = [io_delete(match, where) for match in IO_DELETE.finditer(command)]
+    found += method_deletes(command, code, cwd)
     if pwsh.too_deep(command):
         found += unread(command, "a nested string", cwd)
     spans = pwsh.script_block_spans(command)
@@ -470,20 +649,9 @@ def powershell_deletes(command: str, cwd: Path | None, host: Host, depth: int = 
             if name in PUSH_DIRECTORY:
                 pushed.append(where)
             where = moved_to(simple, where, host)
-        elif name in REMOVE_ITEM:
-            found += remove_item(simple, where)
-        elif name in INVOKE_EXPRESSION:
-            found += invoke_expression(simple, where, host, depth)
-        elif name in rules.SHELLS and all(word.startswith(("-", "+")) for word in simple.words[1:]) \
-                and not any(word in ("--version", "--help", "-h") for word in simple.words[1:]):
-            found.append(unnamed(name, "the shell reads its commands from a pipe", where, Shell.POWERSHELL))
-        elif (wrapped := rules.wrapped(list(simple.words))) is not None:
-            if wrapped.dialect is rules.Dialect.BASH and wrapped.text is not None:
-                found += nested_bash(wrapped.text, where, host, depth, wrapped.what)
-            elif wrapped.dialect is rules.Dialect.POWERSHELL and wrapped.text is not None:
-                found += nested_powershell(wrapped.text, where, host, depth, wrapped.what)
-            elif wrapped.what == "cmd /c":
-                found += cmd_deletes(wrapped.raw, where)
+        else:
+            made = powershell_simple(simple, where, host, depth)
+            found += deleted_after(made, command, simple.span[1], code)
     for begin, end in spans:
         block = command[begin:end]
         folder = next((held for start, held in reversed(folders) if start <= begin), cwd)
@@ -492,6 +660,107 @@ def powershell_deletes(command: str, cwd: Path | None, host: Host, depth: int = 
         else:
             found += powershell_deletes(block, folder, host, depth + 1)
     return list(dict.fromkeys(found))
+
+
+def powershell_simple(simple: shell.SimpleCommand, where: Path | None, host: Host,
+                      depth: int) -> list[Delete]:
+    """The deletes of one PowerShell simple command that runs in where."""
+    name, words = simple.name.lower(), list(simple.words)
+    raws = list(simple.raw or simple.words)
+    if not words:
+        return []
+    if name in REMOVE_ITEM:
+        return remove_item(simple, where)
+    if name in MOVE_ITEM:
+        return move_item(simple, where)
+    if name in INVOKE_EXPRESSION:
+        return invoke_expression(simple, where, host, depth)
+    if name in START_PROCESS:
+        started = started_words(simple)
+        return [] if started is None else wrapped_deletes(started, where, host, depth)
+    if words[0].lower().endswith(".ps1"):
+        return script_deletes(raws[0], where, host, depth, Shell.POWERSHELL)
+    if name in rules.SHELLS and all(word.startswith(("-", "+")) for word in words[1:]) \
+            and not any(word in ("--version", "--help", "-h") for word in words[1:]):
+        return [unnamed(name, "the shell reads its commands from a pipe", where, Shell.POWERSHELL)]
+    if name in rules.SHELLS and (script := bash_script(words, raws)) is not None:
+        return script_deletes(pwsh.unquote(script), where, host, depth, Shell.BASH)
+    return wrapped_deletes(words, where, host, depth)
+
+
+def started_words(simple: shell.SimpleCommand) -> list[str] | None:
+    """The program and the arguments Start-Process runs, from -FilePath and -ArgumentList or the first two
+    positional values, or None when the program is not written out. An argument list written as one string
+    is split at its spaces, its quotes kept together, and a list of strings is one argument each."""
+    words, program, arguments, index = list(simple.raw[1:] or simple.words[1:]), None, [], 0
+    positional: list[str] = []
+    while index < len(words):
+        flag = words[index].lower()
+        value = words[index + 1] if index + 1 < len(words) else ""
+        if flag.startswith("-") and len(flag) > 1 and "-filepath".startswith(flag) or flag == "-path":
+            program, index = value, index + 2
+        elif flag.startswith("-a") and "-argumentlist".startswith(flag) or flag == "-args":
+            arguments, index = [value], index + 2
+        elif flag.startswith("-") and len(flag) > 1:
+            index += 2 if flag in ("-verb", "-workingdirectory", "-redirectstandardoutput",
+                                   "-redirectstandarderror", "-redirectstandardinput", "-windowstyle",
+                                   "-credential") else 1
+        else:
+            positional.append(words[index])
+            index += 1
+    program = program or (positional[0] if positional else None)
+    arguments = arguments or positional[1:2]
+    if program is None or "$" in program:
+        return None
+    split: list[str] = []
+    for given in arguments:
+        parts = comma_parts(given)
+        if len(parts) > 1:
+            split += [pwsh.unquote(part) for part in parts]
+            continue
+        try:
+            split += [pwsh.unquote(word) for word in shlex.split(pwsh.unquote(given), posix=False)]
+        except ValueError:
+            split += pwsh.unquote(given).split()
+    return [pwsh.unquote(program), *split]
+
+
+def method_deletes(command: str, code: str, where: Path | None) -> list[Delete]:
+    """The deletes of a .Delete() method call outside [IO.Directory]::Delete: (Get-Item path).Delete() names
+    its path, recursive when it is given a true first argument, and any other has no target."""
+    found, named = [], {item.end("call"): item for item in GET_ITEM_DELETE.finditer(command)}
+    for match in METHOD_DELETE.finditer(code):
+        if (item := named.get(match.end())) is not None:
+            first = (item["arguments"] or "").split(",")[0].strip().lower()
+            recursive = first not in ("", "$false", "0")
+            found.append(Delete(".Delete()", item["path"], recursive, Shell.POWERSHELL, where,
+                                literal=item["literal"] is not None))
+        else:
+            found.append(unnamed(".Delete()", "it calls .Delete() on an object io-guard cannot place", where,
+                                 Shell.POWERSHELL))
+    return found
+
+
+def move_item(simple: shell.SimpleCommand, where: Path | None) -> list[Delete]:
+    """The paths Move-Item takes away: its -Path, -LiteralPath or first positional value."""
+    words, raws = list(simple.words[1:]), list(simple.raw[1:] or simple.words[1:])
+    given, literal, skip, positional = [], False, False, 0
+    for index, (word, raw) in enumerate(zip(words, raws)):
+        if skip:
+            skip = False
+            continue
+        flag = word.partition(":")[0].lower()
+        if word.startswith("-") and len(flag) > 1:
+            if flag in ("-path", "-literalpath", "-lp", "-pspath") and index + 1 < len(words):
+                given.append(raws[index + 1])
+                literal = literal or flag != "-path"
+            skip = flag in PS_VALUED or flag == "-destination"
+        else:
+            positional += 1
+            if positional == 1 and not given:
+                given.append(raw)
+    return [Delete("Move-Item", target, False, Shell.POWERSHELL, where, literal, moved=True)
+            for text in given for target in comma_parts(text)]
 
 
 def moves_folder(block: str) -> bool:

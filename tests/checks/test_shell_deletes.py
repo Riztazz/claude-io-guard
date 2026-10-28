@@ -223,6 +223,61 @@ class ACommandNestedPastWhatIoGuardReads(Table):
         self.assert_refused_for({f"Remove-Item x; echo {self.POWERSHELL}": DEEP}, "PowerShell")
 
 
+SCRIPTS = {ROOT / "evil.sh": b"echo start\nrm -rf /c/x\n", ROOT / "ok.sh": b"rm -rf build\n",
+           ROOT / "evil.ps1": b"Remove-Item -Recurse C:/x\n"}
+
+
+def scripted_context() -> Context:
+    return windows_context(fs=FakeFs({**FILES, **SCRIPTS}, links=LINKS))
+
+
+class EachDeleteFormTheReviewsLeftUnreadIsRead(Table):
+    def test_each_bash_wrapper_and_form_is_refused(self):
+        self.assert_refused_for({
+            "wsl rm -rf /mnt/c/x": OUTSIDE, "wsl -d Ubuntu -- rm -rf /mnt/c/x": OUTSIDE,
+            "wsl --cd /mnt/c rm -rf x": "after a cd io-guard cannot follow",
+            "git worktree remove --force C:/x": OUTSIDE, "git worktree remove ../other": OUTSIDE,
+            "su -c 'rm -rf /c/x'": OUTSIDE, "su root -c 'rm -rf /c/x'": OUTSIDE,
+            "setsid rm -rf /c/x": OUTSIDE, "setsid -f rm -rf /c/x": OUTSIDE,
+            "flock /tmp/l rm -rf /c/x": OUTSIDE, "flock -w 5 /tmp/l -c 'rm -rf /c/x'": OUTSIDE,
+            "caffeinate -i rm -rf /c/x": OUTSIDE, "ionice -c 3 rm -rf /c/x": OUTSIDE,
+            "env -u X rm -rf /c/x": OUTSIDE, "env -S 'rm -rf /c/x'": OUTSIDE,
+            "env -C /c/Users rm -rf x": "after a cd io-guard cannot follow",
+            "$RM -rf /c/x": "the program is a variable", '"$RM" -r build': "the program is a variable",
+            "mv /c/x inbox && rm -rf inbox": "moves a path from outside",
+            "for d in a b; do rm -rf inbox; mv /c/x inbox; done": "moves a path from outside"})
+
+    def test_a_shell_script_the_command_runs_is_read(self):
+        self.assert_refused_for({"bash evil.sh": OUTSIDE, "sh -e evil.sh arg": OUTSIDE,
+                                 "./evil.sh": OUTSIDE, "source evil.sh": OUTSIDE, ". ./evil.sh": OUTSIDE},
+                                ctx=scripted_context())
+        self.assert_passed(("bash ok.sh", "bash missing.sh", "bash -s < evil.sh"), ctx=scripted_context())
+
+    def test_each_powershell_form_is_refused(self):
+        self.assert_refused_for({
+            "(Get-Item C:\\x).Delete($true)": OUTSIDE, "(Get-Item -LiteralPath 'C:/x').Delete()": OUTSIDE,
+            "$d = Get-Item C:\\x; $d.Delete($true)": "on an object io-guard cannot place",
+            "Start-Process cmd -ArgumentList '/c rd /s /q C:\\x'": OUTSIDE,
+            "Start-Process bash -ArgumentList '-c','rm -rf /c/x'": OUTSIDE,
+            "saps -FilePath pwsh -ArgumentList '-Command Remove-Item -Recurse C:/x'": OUTSIDE,
+            "Move-Item C:/x inbox; Remove-Item -Recurse inbox": "moves a path from outside"}, "PowerShell")
+        self.assert_refused_for({"& ./evil.ps1": OUTSIDE, ".\\evil.ps1": OUTSIDE,
+                                 "pwsh -File evil.ps1": OUTSIDE, "bash evil.sh": OUTSIDE},
+                                "PowerShell", ctx=scripted_context())
+
+    def test_the_same_forms_inside_the_roots_pass(self):
+        self.assert_passed((
+            "wsl rm -rf /mnt/c/project/build", "git worktree remove .claude/worktrees/x",
+            "su -c 'rm -rf build'", "setsid rm -rf build", "env -u X rm -rf build", "env -S 'rm -f src/a.py'",
+            "$PYTHON script.py", "$PYTHON -m pytest -rf", "mv /c/Users/u/Downloads/a.zip .",
+            "rm -f old.zip && mv /c/Users/u/Downloads/new.zip .", 'mv "$src" inbox && rm -rf inbox',
+            "mv build out && rm -rf out"))
+        self.assert_passed((
+            "(Get-Item build).Delete($true)", "Start-Process cmd -ArgumentList '/c rd /s /q build'",
+            "Start-Process notepad", "Move-Item C:/Users/u/Downloads/a.zip .",
+            "Remove-Item old.zip; Move-Item C:/Users/u/Downloads/a.zip ."), "PowerShell")
+
+
 class ARecursiveDeleteOfARootOrOfGitIsRefused(Table):
     def test_each_fenced_target(self):
         self.assert_refused_for({
