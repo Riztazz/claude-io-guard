@@ -38,6 +38,11 @@ body = [line.upper() if any(first <= number <= last for first, last in ranges) e
         for number, line in enumerate(lines, 1)]
 if "--closer" in sys.argv:
     body.insert(-1, "// END")
+if "--sort-includes" in sys.argv:
+    body = list(lines)
+    spots = [number for number, line in enumerate(body) if line.startswith("#include")]
+    for number, line in zip(spots, sorted(body[number] for number in spots)):
+        body[number] = line
 sys.stdout.buffer.write("\\r\\n".join(body).encode("utf-8"))
 """
 BOM = chr(0xFEFF)
@@ -114,6 +119,18 @@ class OnlyTheChangedLinesAreFormatted(FormatTest):
             self.assertEqual(((root / "a.cpp").read_bytes(), found.left), (b"A1\nb\nc\nd\n", [Place(4, 4)]),
                              "BYT-12: the line the formatter added far from line 1 is left out, and the "
                              "result names where")
+
+    def test_a_new_include_that_sorting_moves_away_is_kept_where_it_was_written(self):
+        committed = b'#include "a.h"\n#include "c.h"\n#include "d.h"\n#include "e.h"\nint x;\n'
+        changed = committed.replace(b"int x;", b'#include "b.h"\nint x;')
+        with TemporaryProject({"a.cpp": committed}, git=True) as root:
+            (root / "a.cpp").write_bytes(changed)
+            ctx = self.context(**{".cpp": self.command("--sort-includes")})
+            found = self.call(root, FormatInput(["a.cpp"]), ctx).files[0]
+            self.assertEqual(((root / "a.cpp").read_bytes(), found.asked, Place(5, 5) in found.left),
+                             (changed, [Place(5, 5)], True),
+                             "#3603: the formatter sorts the new include on line 5 up to line 2. That move "
+                             "leaves the lines asked, so io.format keeps the include on line 5 and names it")
 
 
 class AFileWithNothingToFormatStaysAsItIs(FormatTest):

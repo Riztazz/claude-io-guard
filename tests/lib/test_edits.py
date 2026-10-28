@@ -103,6 +103,25 @@ class AFormattersOutputKeepsTheFilesEndings(unittest.TestCase):
                          "BYT-12: a run that meets line 2 lands whole, and the far run, a namespace closer "
                          "included, stays as the file had it")
 
+    def test_a_line_the_formatter_moves_away_from_the_lines_asked_stays_where_it_was(self):
+        text = '#include "a.h"\n#include "c.h"\n#include "d.h"\n#include "e.h"\n#include "b.h"\nint x;\n'
+        formatted = '#include "a.h"\n#include "b.h"\n#include "c.h"\n#include "d.h"\n#include "e.h"\nint x;\n'
+        carried = edits.carried(text, formatted, Eol.LF, within=[(5, 5)])
+        self.assertEqual((carried.text, carried.lines), (text, ()),
+                         "#3603: sorting moved the asked line 5 up to line 2, away from the lines asked. The "
+                         "move stays as the file had it, so the include is neither lost nor doubled")
+        self.assertIn((5, 5), carried.left, "the result names the line the formatter would have moved")
+
+    def test_a_moved_line_that_was_also_re_spaced_is_the_same_line(self):
+        text = "a\nc\nd\ne\nb  =  1\n"
+        carried = edits.carried(text, "a\nb = 1\nc\nd\ne\n", Eol.LF, within=[(5, 5)])
+        self.assertEqual(carried.text, text, "a line is matched by its words, whatever its spacing")
+
+    def test_a_change_inside_the_lines_asked_that_moves_nothing_still_lands(self):
+        carried = edits.carried("a\nb\nc\nb\n", "a\nb\nC\nb\n", Eol.LF, within=[(3, 3)])
+        self.assertEqual(carried.text, "a\nb\nC\nb\n",
+                         "a blank or repeated line elsewhere does not hold back a change in place")
+
     def test_an_insertion_meets_the_lines_on_either_side_of_it(self):
         for within, landed in (([(1, 1)], True), ([(2, 2)], True), ([(3, 3)], False)):
             with self.subTest(within=within):

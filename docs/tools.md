@@ -32,7 +32,9 @@ After one of them changes a file, the built-in Edit tool needs a fresh Read of i
 `io.format` hands the formatter only the lines `git diff` says changed, or the whole file when git has no
 commit of it, or the lines the call names. The file keeps its line endings and BOM whatever the formatter's
 config says, and a change the formatter makes away from those lines, such as a `// namespace` closer at the
-end of the file, stays out. When the formatter fails on one file, no file is written. With `dry_run` set, it
+end of the file, stays out. So does a line the formatter moves away from those lines, such as a new
+`#include` that sorting would carry up its block: it stays where it was written, so no line is lost or
+doubled, and the result names it under `left`. When the formatter fails on one file, no file is written. With `dry_run` set, it
 writes nothing and returns each file's diff, so you see what the formatter would change first, and `lines`
 takes each file's own lines in one call.
 

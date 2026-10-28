@@ -123,27 +123,53 @@ def lines_of(text: str) -> list[tuple[str, str]]:
 def carried(text: str, other: str, eol: Eol, within: Sequence[tuple[int, int]] | None = None) -> Carried:
     """other, such as a formatter's output for text, in text's own endings. A line other kept as it was keeps
     its ending from text, and a line other changed or added takes eol. With within, the first and last lines
-    of text a caller asked about, a run of changed lines that touches none of them stays as text has it. A
-    run that only removes lines is placed at the line above them."""
+    of text a caller asked about, a run of changed lines that touches none of them stays as text has it, and
+    so does a run that moves a line to or from such a run, as sorting a block of includes does, so no line
+    is lost or doubled. A run that only removes lines is placed at the line above them."""
     before, after = lines_of(text), lines_of(other)
     ending = convert_eol("\n", eol)
     matcher = difflib.SequenceMatcher(None, [line for line, _ in before], [line for line, _ in after],
                                       autojunk=False)
+    opcodes = matcher.get_opcodes()
+    held = set() if within is None else kept_runs(opcodes, before, after, within)
     out: list[str] = []
     runs: list[tuple[int, int]] = []
     left: list[tuple[int, int]] = []
-    for tag, first, last, start, end in matcher.get_opcodes():
+    for index, (tag, first, last, start, end) in enumerate(opcodes):
         if tag == "equal":
             out += [line + kept for line, kept in before[first:last]]
             continue
         at = len(out) + 1
-        if within is not None and not touches(within, first, last):
+        if index in held:
             out += [line + kept for line, kept in before[first:last]]
             left.append(span(at, len(out)))
             continue
         out += [line + (ending if given else "") for line, given in after[start:end]]
         runs.append(span(at, len(out)))
     return Carried("".join(out), tuple(runs), tuple(left))
+
+
+def kept_runs(opcodes: list[tuple[str, int, int, int, int]], before: list[tuple[str, str]],
+              after: list[tuple[str, str]], within: Sequence[tuple[int, int]]) -> set[int]:
+    """The opcodes, by index, that stay as text has them: each run that touches none of within, and each run
+    that removes a line another kept run adds, or adds a line another kept run removes. A line counts by its
+    words, so a moved line that was also re-spaced is still the same line, and a blank line never counts."""
+    def words(lines: list[tuple[str, str]]) -> set[str]:
+        return {" ".join(line.split()) for line, _ in lines if line.strip()}
+
+    changed = [index for index, (tag, *_) in enumerate(opcodes) if tag != "equal"]
+    removed = {index: words(before[opcodes[index][1]:opcodes[index][2]]) for index in changed}
+    added = {index: words(after[opcodes[index][3]:opcodes[index][4]]) for index in changed}
+    kept = {index for index in changed if not touches(within, opcodes[index][1], opcodes[index][2])}
+    grown = True
+    while grown:
+        held_removed = set().union(*(removed[index] for index in kept))
+        held_added = set().union(*(added[index] for index in kept))
+        moving = {index for index in changed if index not in kept
+                  and (removed[index] & held_added or added[index] & held_removed)}
+        kept |= moving
+        grown = bool(moving)
+    return kept
 
 
 def touches(within: Sequence[tuple[int, int]], first: int, last: int) -> bool:
