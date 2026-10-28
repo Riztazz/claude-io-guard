@@ -6,6 +6,16 @@ import unittest
 from ioguard.lib import pwsh
 
 
+class AStringNestedPastTheLimitIsMarked(unittest.TestCase):
+    def test_strings_and_subexpressions_nested_past_the_limit_are_too_deep(self):
+        for depth, deep in ((pwsh.MAX_NESTING, False), (3000, True)):
+            with self.subTest(depth=depth):
+                command = 'echo ' + '"$(' * depth + "x" + ')"' * depth + "; ls"
+                self.assertEqual(pwsh.too_deep(command), deep,
+                                 "the reader follows MAX_NESTING levels and marks the rest of a deeper "
+                                 "command, never raising RecursionError")
+
+
 class PowerShellCommands(unittest.TestCase):
     def test_commands_split_at_pipes_semicolons_and_chains(self):
         found = pwsh.commands("Get-Item 'a;b' | Select-Object -First 1; git status && echo 'it''s'")

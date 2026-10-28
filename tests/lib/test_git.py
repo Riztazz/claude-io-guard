@@ -156,6 +156,17 @@ class LiveGitAnswers(unittest.TestCase):
         with TemporaryProject({"a.txt": b"x"}) as root:
             self.assertIsNone(Git().root(root), "a folder outside every repository has no root")
 
+    def test_a_submodule_names_the_repository_holding_it(self):
+        with TemporaryProject({"a.txt": b"x"}, git=True) as outer, \
+                TemporaryProject({"b.txt": b"y"}, git=True) as inner:
+            Git().checked(outer, "-c", "protocol.file.allow=always", "submodule", "add", "-q",
+                          inner.as_posix(), "sub")
+            found = (Git().superproject(outer / "sub"), Git().superproject(outer))
+        self.assertEqual([path and Path(os.path.normcase(path)) for path in found],
+                         [Path(os.path.normcase(outer)), None],
+                         "a submodule's superproject is the repository that holds it, and a repository "
+                         "that is no submodule has none")
+
     def test_a_failed_git_call_raises_rather_than_answering(self):
         with TemporaryProject({"a.txt": b"x"}) as root:
             with self.assertRaises(GitError, msg="status outside a repository is a failure, not an empty "

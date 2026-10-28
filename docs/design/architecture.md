@@ -284,6 +284,7 @@ come flat. `tool_input` and `tool_response` come whole, as the compact JSON text
 ```python
 class GitPort(Protocol):
     def root(self, path: Path) -> Optional[Path]: ...
+    def superproject(self, root: Path) -> Optional[Path]: ...     # the repository holding root as a submodule
     def is_tracked(self, path: Path) -> bool: ...
     def is_ignored(self, path: Path) -> bool: ...          # task 144: check-ignore, of a path not made yet too
     def status(self, root: Path) -> GitStatus: ...
@@ -530,7 +531,7 @@ list below, and a task that needs a code not on it adds it here in the same chan
 | Transport | `NOT_PORTABLE`, a warning for bash 4 syntax under bash 3.2 and GNU options on macOS | 36, in `CODES` |
 | Transport | `STOPS_BY_MATCH`, a warning for a stop by a shared runtime's name or by a command-line match | 64, in `CODES` |
 | Transport | `CR_QUOTE_UNPARSED`, a warning on Windows for a `$'...'` that makes a carriage return in the second or a later `$()` of one word outside every `$()`, which Git Bash fails to parse | 159, in `CODES` |
-| Transport | `COMMAND_TOO_DEEP`, a command whose `$()` nests past `shell.MAX_NESTING` (100), which the scanner stops reading | 100, in `CODES` |
+| Transport | `COMMAND_TOO_DEEP`, a command whose `$()` and `${ }` nest past `shell.MAX_NESTING` (100), which the scanner stops reading | 100, in `CODES` |
 | Bytes | `EOL_CONVERTED`, `BOM_RESTORED`, `EOL_MISMATCH`, `INDENT_MISMATCH` | 17, in `CODES` |
 | Bytes | `BOM_CHANGED`, `ENCODING_INVALID`, `NON_ASCII_ADDED`, `CONTROL_BYTES_ADDED`, `SIZE_COLLAPSED`, `UNINTENDED_CHANGE`, all warnings | 18, in `CODES` |
 | Stale | `ANCHOR_NOT_FOUND`, `ANCHOR_AMBIGUOUS`, `STALE_VIEW`, all warnings on a call that already failed, and refusals when an io tool of task 24 answers with them | 20, in `CODES` |
@@ -892,7 +893,7 @@ def fitted(new: str, near: str, width: Optional[int]) -> Optional[str]   # None 
 
 # shell.py, task 11
 def scan(command: str) -> Scan              # heredocs, python -c bodies, halving hazards, quoting states,
-                                            # and too_deep past MAX_NESTING levels of $(), task 100. A -c
+                                            # and too_deep past MAX_NESTING levels of $() and ${ }. A -c
                                             # body is found behind -X and -W values and in -Bc, task 108.
                                             # carriage_returns, task 159, and a $() inside $(( )) is
                                             # scanned as one. Kept per command (lru_cache, 64), so every

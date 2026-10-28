@@ -20,12 +20,15 @@ from ioguard.lib import paths
 from ioguard.lib.config import ConfigKey
 from ioguard.lib.context import Context
 from ioguard.lib.decisions import Decision, Verdict
-from ioguard.lib.deletes import DELETE_WORDS, Delete, bash_deletes, makes_link, powershell_deletes, resolve
+from ioguard.lib.deletes import (DELETE_WORDS, Delete, bash_deletes, link_itself, links_before_delete,
+                                 powershell_deletes, resolve)
 from ioguard.lib.events import Event, HookEvent, Tool
 from ioguard.lib.git import GitError
 from ioguard.lib.platform import EVERY_PLATFORM
 from ioguard.lib.results import Code, Fix, Layer, Result, Severity
 from ioguard.lib.writes import Host
+
+SUBMODULE_LEVELS = 8            # submodules in submodules climbed, past which one counts as the top
 
 
 class ShellDeletes(Check):
@@ -65,7 +68,7 @@ class ShellDeletes(Check):
             return [], []
         repository = self.repository(event, ctx)
         roots = self.roots(repository, event, ctx)
-        if makes_link(command, powershell):
+        if links_before_delete(command, powershell):
             return ["the command makes a link or a junction, which can lead a path it deletes elsewhere by "
                     "the time the delete runs"], roots
         git_folder = (ctx.fs.link_target(repository) or repository) / ".git"
@@ -73,9 +76,17 @@ class ShellDeletes(Check):
 
     @staticmethod
     def repository(event: Event, ctx: Context) -> Path:
-        """The top of the git repository holding the working folder, or the folder itself outside git."""
+        """The top of the git repository holding the working folder, climbing from a submodule to the
+        repository that holds it, or the folder itself outside git. A repository that is not a submodule is
+        its own top, so a home folder kept in git never becomes a root."""
         try:
-            return ctx.git.root(event.cwd) or event.cwd
+            top = ctx.git.root(event.cwd) or event.cwd
+            for _ in range(SUBMODULE_LEVELS):
+                above = ctx.git.superproject(top)
+                if above is None or above == top:
+                    break
+                top = above
+            return top
         except GitError:
             return event.cwd
 
@@ -104,7 +115,7 @@ class ShellDeletes(Check):
     def refusal(delete: Delete, path: Path, globbed: bool, roots: list[Path], git_folder: Path,
                 ctx: Context) -> str | None:
         """Why deleting path is refused, or None when it is allowed."""
-        real = ctx.fs.link_target(path) or path
+        real = ShellDeletes.real(delete, path, ctx)
         through = "" if real == path else f", through a link to {real.as_posix()}"
         if paths.inside(real, roots, ctx.platform) is None:
             return f"it is outside the allowed folders{through}"
@@ -119,6 +130,14 @@ class ShellDeletes(Check):
         if held:
             return f"it holds an allowed folder{through}"
         return None
+
+    @staticmethod
+    def real(delete: Delete, path: Path, ctx: Context) -> Path:
+        """Where the path a delete removes really is. A target that deletes a link itself is the link, in the
+        real folder above it."""
+        if link_itself(delete) and path.parent != path:
+            return (ctx.fs.link_target(path.parent) or path.parent) / path.name
+        return ctx.fs.link_target(path) or path
 
     def result(self, refused: list[str], roots: list[Path], event: Event, ctx: Context) -> Result:
         shown = max(1, int(self.options.get("shown", 5)))

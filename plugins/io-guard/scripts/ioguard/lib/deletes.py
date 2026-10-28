@@ -58,6 +58,9 @@ DELETE_WORDS = re.compile(r"(?<![\w.-])(?:rm|rmdir|unlink|del|erase|rd|ri|remove
                           r"invoke-expression|iex)(?![\w-])", re.I)
 WIDE_GLOB = re.compile(r"\bshopt\s+-s\b[^;&|\n]*\b(?:dotglob|nocaseglob|globstar)\b|\bGLOBIGNORE=")
 EXTGLOB = re.compile(r"\bshopt\s+-s\b[^;&|\n]*\bextglob\b")
+REPEATS = re.compile(r"(?<![\w-])(?:for|while|until|select|foreach|foreach-object|function)(?![\w-])"
+                     r"|\(\s*\)\s*\{|%\s*\{", re.I)     # a loop or a function, which runs its body again
+BACKGROUND = re.compile(r"(?<![&>|<])&(?![&>])")      # a bash & that runs what comes before it alongside
 MAKES_LINK = re.compile(r"-(?:Item)?Type[:\s]\s*['\"]?(?:Junction|SymbolicLink|HardLink)\b", re.I)
 NOT_FILES = re.compile(r"^(?:env|variable|function|alias):", re.I)   # PowerShell drives that hold no files
 BRACE_LIST = re.compile(r"\{[^{}\s]*(?:,|\.\.)[^{}\s]*\}")
@@ -136,6 +139,21 @@ def makes_link(command: str, powershell: bool, depth: int = 0) -> bool:
     return any(makes_link(inner, False, depth + 1) for _, inner in substitutions(command))
 
 
+def links_before_delete(command: str, powershell: bool) -> bool:
+    """Whether the command makes a link before a delete can run: a delete word comes after the first command
+    that makes one. A link made inside a loop or a function, beside a command bash runs in the background,
+    or in a part io-guard cannot place, comes before every delete."""
+    if not makes_link(command, powershell):
+        return False
+    code = pwsh.blanked(command) if powershell else shell.blanked(command)
+    if REPEATS.search(code) or (not powershell and BACKGROUND.search(code)):
+        return True
+    simples = pwsh.commands(command) if powershell else shell.commands(command)
+    ends = [simple.span[1] for simple in simples
+            if makes_link(command[simple.span[0]:simple.span[1]], powershell)]
+    return DELETE_WORDS.search(command, min(ends, default=0)) is not None
+
+
 def bash_deletes(command: str, cwd: Path | None, host: Host, depth: int = 0) -> list[Delete]:
     """Every delete the Bash command run in cwd makes. cwd is None for a string that runs after a cd
     io-guard cannot follow."""
@@ -146,6 +164,8 @@ def bash_deletes(command: str, cwd: Path | None, host: Host, depth: int = 0) -> 
     for at, inner in substitutions(command):
         found += nested_bash(inner, folder_at(at, placed, cwd), host, depth, "a $( ) part")
     found += stdin_shells(command, placed, host, depth)
+    if shell.scan(command).too_deep:
+        found += unread(command, "a nested part", cwd)
     code = shell.blanked(command)
     if EXTGLOB.search(code):
         found = [replace(delete, unnamed="the command turns on extglob, whose patterns io-guard does not "
@@ -432,6 +452,8 @@ def powershell_deletes(command: str, cwd: Path | None, host: Host, depth: int = 
     known."""
     where = cwd
     found = [io_delete(match, where) for match in IO_DELETE.finditer(command)]
+    if pwsh.too_deep(command):
+        found += unread(command, "a nested string", cwd)
     spans = pwsh.script_block_spans(command)
     moving = [start for start, end in spans if moves_folder(command[start:end])]
     folders: list[tuple[int, Path | None]] = [(0, cwd)]
@@ -573,6 +595,13 @@ def cmd_deletes(line: str, where: Path | None) -> list[Delete]:
         found += [Delete(how, word, recursive, Shell.CMD, where)
                   for word in words if not word.startswith("/")]
     return found
+
+
+def link_itself(delete: Delete) -> bool:
+    """Whether a target that is a link deletes the link and not what it leads to: a Bash target with no
+    trailing slash. In Git Bash rm -rf link removes a junction, and rm -rf link/ empties the folder it leads
+    to."""
+    return delete.shell is Shell.BASH and not delete.target.rstrip("'\"").endswith("/")
 
 
 def resolve(delete: Delete, host: Host) -> Resolved:

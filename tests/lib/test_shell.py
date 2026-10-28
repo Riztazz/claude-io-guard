@@ -82,6 +82,14 @@ class HeredocsAreFound(unittest.TestCase):
                                      "the scanner reads MAX_NESTING levels and marks a deeper command, never "
                                      "running out of stack")
 
+    def test_a_parameter_expansion_nested_past_the_limit_is_marked_too_deep(self):
+        for depth, deep in ((shell.MAX_NESTING - 1, False), (3000, True)):
+            with self.subTest(depth=depth):
+                command = "echo " + '"${a:-' * depth + "x" + '}"' * depth + "; ls"
+                self.assertEqual(shell.scan(command).too_deep, deep,
+                                 "a ${ } inside a string inside a ${ } is a level too, and the scan stops "
+                                 "past MAX_NESTING instead of raising RecursionError")
+
     def test_a_body_with_no_delimiter_line_is_unterminated(self):
         self.assertFalse(only_heredoc("cat <<'EOF'\none\n").terminated, "a missing delimiter is marked")
 

@@ -177,6 +177,52 @@ class EachWayTheSecondReviewFoundIsClosed(Table):
         self.assert_passed(("bash --version",), "PowerShell")
 
 
+class WhatTheShippedCheckRefusedByMistakePasses(Table):
+    def test_a_link_made_after_every_delete_passes(self):
+        self.assert_passed(("rm -rf dist && ln -s build dist",))
+        self.assert_passed(("Remove-Item -Recurse dist; New-Item -Type SymbolicLink -Path dist -Target b",),
+                           "PowerShell")
+
+    def test_a_link_made_before_beside_or_around_a_delete_is_refused(self):
+        self.assert_refused_for({
+            "ln -s /c/Users here && rm -rf here/*": "makes a link",
+            "for i in 1 2; do rm -rf here/*; ln -s /c/Users here; done": "makes a link",
+            "rm -rf here/* & ln -s /c/Users here": "makes a link"})
+
+    def test_a_bash_delete_of_a_link_itself_is_judged_where_the_link_is(self):
+        self.assert_passed(("rm link", "rm -rf link", "rm -f 'link'", "unlink link"))
+        refused = message("rm -rf link/")
+        self.assertIsNotNone(refused, "a trailing slash empties the folder the link leads to")
+        self.assertIn("C:/elsewhere", refused, "and the message names that folder")
+
+    def test_powershell_judges_a_link_by_where_it_leads(self):
+        self.assert_refused_for({"Remove-Item -Recurse link": OUTSIDE}, "PowerShell")
+
+    def test_a_working_folder_in_a_submodule_takes_the_repository_above_it(self):
+        sub = ROOT / "sub"
+        ctx = windows_context(git=FakeGit(root=sub, superprojects={sub: ROOT}))
+        self.assert_passed(("rm -f ../src/a.py", "rm -rf ../build"), cwd=sub, ctx=ctx)
+        self.assert_refused_for({"rm -rf ..": ITSELF, "rm -rf ../.git": GIT}, cwd=sub, ctx=ctx)
+
+    def test_a_repository_that_is_not_a_submodule_is_its_own_top(self):
+        sub = ROOT / "sub"
+        self.assert_refused_for({"rm -f ../src/a.py": OUTSIDE}, cwd=sub,
+                                ctx=windows_context(git=FakeGit(root=sub)))
+
+
+class ACommandNestedPastWhatIoGuardReads(Table):
+    BASH = '"${a:-' * 3000 + "x" + '}"' * 3000
+    POWERSHELL = '"$(' * 3000 + "x" + ')"' * 3000
+
+    def test_it_passes_when_it_names_no_delete(self):
+        self.assert_passed((f"echo {self.BASH}",))
+        self.assert_passed((f"echo {self.POWERSHELL}",), "PowerShell")
+
+    def test_it_is_refused_as_unread_when_it_names_a_delete(self):
+        self.assert_refused_for({f"rm -f x; echo {self.BASH}": DEEP})
+        self.assert_refused_for({f"Remove-Item x; echo {self.POWERSHELL}": DEEP}, "PowerShell")
+
+
 class ARecursiveDeleteOfARootOrOfGitIsRefused(Table):
     def test_each_fenced_target(self):
         self.assert_refused_for({

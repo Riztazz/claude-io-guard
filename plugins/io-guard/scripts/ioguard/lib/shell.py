@@ -17,7 +17,7 @@ from types import MappingProxyType
 from ioguard.lib.program import program_name
 
 NORMAL, SINGLE, DOUBLE, ANSI, COMMENT, BODY, ARITH = range(7)
-MAX_NESTING = 100                       # $( ... ) levels read, well inside Python's stack
+MAX_NESTING = 100                       # $( ) and ${ } levels read, well inside Python's stack
 ESCAPED_IN_DOUBLE = "$`\"\\\n"          # a backslash escapes only these inside double quotes
 ESCAPED_IN_BODY = "$`\\\n"              # and only these in a heredoc body bash expands
 WORD_END = " \t\n;&|<>()"
@@ -63,7 +63,7 @@ class Scan:
     states: bytes                # the quoting state at each offset
     backticks: tuple[int, ...] = ()   # offsets of unescaped backticks inside double quotes
     unterminated: bool = False        # a quote, $( or backtick runs to the end: bash stops at unexpected EOF
-    too_deep: bool = False            # $( ... ) nests past MAX_NESTING, and the scan stopped there
+    too_deep: bool = False            # $( ) or ${ } nests past MAX_NESTING, and the scan stopped there
     carriage_returns: tuple[int, ...] = ()   # offsets of the $'...' Git Bash fails to parse, see ansi()
     closes: Mapping[int, int] = MappingProxyType({})   # after each $(), $(( )) and unquoted ${ }, by its $
 
@@ -83,6 +83,7 @@ class Scanner:
         self.heredocs: list[Heredoc] = []
         self.pending: list[tuple[int, int, str, bool, bool]] = []
         self.depth, self.too_deep = 0, False
+        self.braces = 0                     # the ${ } open around the scan, each read by its own call
         self.word_start, self.word_substitutions = 0, 0     # of the word being read outside every $()
         self.late = 0                       # the open $() inside a word's second or later $()
         self.carriage_returns: list[int] = []
@@ -176,8 +177,9 @@ class Scanner:
 
     def substitution(self, at: int) -> int:
         """The $( ... ) at at, one level deeper. Past MAX_NESTING levels the scan stops there, marked too
-        deep, so the scanner never runs out of stack. Returns the offset after."""
-        if self.depth >= MAX_NESTING:
+        deep, so the scanner never runs out of stack. A ${ } counts as a level too. Returns the offset
+        after."""
+        if self.depth + self.braces >= MAX_NESTING:
             self.too_deep = True
             return len(self.text)
         self.depth += 1
@@ -281,7 +283,18 @@ class Scanner:
     def parameter(self, at: int, quoted: bool) -> int:
         """The ${ ... } whose text starts at at, to its matching }. Quotes and $() inside are read as bash
         reads them, and inside double quotes the expansion's own characters stay part of the string, so a
-        quote in "${x:-"a b"}" opens a string of its own. Returns the offset after the }."""
+        quote in "${x:-"a b"}" opens a string of its own. Past MAX_NESTING levels of ${ } and $( ) the scan
+        stops there, marked too deep. Returns the offset after the }."""
+        if self.depth + self.braces >= MAX_NESTING:
+            self.too_deep = True
+            return len(self.text)
+        self.braces += 1
+        try:
+            return self.braced(at, quoted)
+        finally:
+            self.braces -= 1
+
+    def braced(self, at: int, quoted: bool) -> int:
         text, depth = self.text, 0
         while at < len(text):
             char = text[at]

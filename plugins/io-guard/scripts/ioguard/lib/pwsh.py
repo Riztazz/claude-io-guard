@@ -10,7 +10,8 @@ import re
 
 from ioguard.lib.shell import Redirect, SimpleCommand
 
-CODE, STRING, COMMENT = range(3)
+CODE, STRING, COMMENT, DEEP = range(4)     # DEEP: past MAX_NESTING, the rest of the command, not read
+MAX_NESTING = 100                          # strings and $( ) inside each other, well inside Python's stack
 REDIRECT = re.compile(r"(\d|\*)?(>>?)(&\d)?")
 FILE_CALL = re.compile(r"\[(?:System\.)?IO\.File\]::(?:WriteAll\w*|AppendAll\w*|Create|Open\w*)\(\s*"
                        r"(?:(['\"])(?P<path>[^'\"]+)\1"
@@ -18,10 +19,16 @@ FILE_CALL = re.compile(r"\[(?:System\.)?IO\.File\]::(?:WriteAll\w*|AppendAll\w*|
                        r"(?P<resolved>[^'\")\s]+)\3\s*\))", re.I)
 
 
-def quoted_end(text: str, at: int) -> int:
+class NestedTooDeep(Exception):
+    """A string holds $( ) and strings inside each other past MAX_NESTING levels."""
+
+
+def quoted_end(text: str, at: int, depth: int = 0) -> int:
     """The offset after the string, here-string or comment that starts at at. A here-string closes only at
     the start of a line, as PowerShell requires. A $( ) inside a double-quoted string runs code, so its own
-    strings never close the outer one."""
+    strings never close the outer one. NestedTooDeep past MAX_NESTING levels of them."""
+    if depth > MAX_NESTING:
+        raise NestedTooDeep
     if text.startswith(("@'", '@"'), at) and text[at + 2:at + 3] in ("\n", "\r"):
         close = re.compile(r"^" + re.escape(text[at + 1]) + "@", re.M).search(text, at + 2)
         return len(text) if close is None else close.end()
@@ -34,7 +41,7 @@ def quoted_end(text: str, at: int) -> int:
         if quote == '"' and text[at] == "`":
             at += 2
         elif quote == '"' and text.startswith("$(", at):
-            at = subexpression_end(text, at + 2)
+            at = subexpression_end(text, at + 2, depth + 1)
         elif text[at] == quote and text[at + 1:at + 2] == quote:
             at += 2
         elif text[at] == quote:
@@ -44,20 +51,21 @@ def quoted_end(text: str, at: int) -> int:
     return min(at, len(text))
 
 
-def subexpression_end(text: str, at: int) -> int:
-    """The offset after the ) that closes a $( whose code starts at at, past the strings inside it."""
-    depth = 0
+def subexpression_end(text: str, at: int, depth: int = 0) -> int:
+    """The offset after the ) that closes a $( whose code starts at at, past the strings inside it. depth
+    counts the strings and $( ) it sits in."""
+    opened = 0
     while at < len(text):
         char = text[at]
         if char in "'\"":
-            at = quoted_end(text, at)
+            at = quoted_end(text, at, depth)
             continue
         if char == "(":
-            depth += 1
+            opened += 1
         elif char == ")":
-            if depth == 0:
+            if opened == 0:
                 return at + 1
-            depth -= 1
+            opened -= 1
         at += 1
     return at
 
@@ -65,24 +73,33 @@ def subexpression_end(text: str, at: int) -> int:
 @functools.lru_cache(maxsize=64)
 def scan(command: str) -> bytes:
     """The state of each character of the command: CODE, STRING for a string or here-string with its quotes,
-    or COMMENT. One walk serves commands, blanked and script_blocks."""
+    COMMENT, or DEEP from a string nested past MAX_NESTING to the end. One walk serves commands, blanked and
+    script_blocks."""
     marks, at = bytearray(len(command)), 0
     while at < len(command):
         char = command[at]
         here = command.startswith(("@'", '@"'), at) and command[at + 2:at + 3] in ("\n", "\r")
-        if here or char in "'\"":
-            end, state = quoted_end(command, at), STRING
-        elif command.startswith("<#", at):
-            end, state = quoted_end(command, at), COMMENT
-        elif char == "#" and (at == 0 or command[at - 1] in " \t\n;|("):
-            end = command.find("\n", at)
-            end, state = len(command) if end < 0 else end, COMMENT
-        else:
-            at += 1
-            continue
+        try:
+            if here or char in "'\"":
+                end, state = quoted_end(command, at), STRING
+            elif command.startswith("<#", at):
+                end, state = quoted_end(command, at), COMMENT
+            elif char == "#" and (at == 0 or command[at - 1] in " \t\n;|("):
+                end = command.find("\n", at)
+                end, state = len(command) if end < 0 else end, COMMENT
+            else:
+                at += 1
+                continue
+        except NestedTooDeep:
+            end, state = len(command), DEEP
         marks[at:end] = bytes([state]) * (end - at)
         at = end
     return bytes(marks)
+
+
+def too_deep(command: str) -> bool:
+    """Whether a string in the command nests past MAX_NESTING, so the rest of it is not read."""
+    return DEEP in scan(command)
 
 
 def unquote(word: str) -> str:

@@ -132,6 +132,11 @@ class Git:
             return None
         raise GitError(f"git rev-parse in {path} failed: {reason(result)}")
 
+    def superproject(self, root: Path) -> Path | None:
+        """The working tree of the repository that holds root's repository as a submodule, or None."""
+        found = self.checked(root, "rev-parse", "--show-superproject-working-tree").decode("utf-8", PATHS)
+        return Path(found.strip()) if found.strip() else None
+
     def is_ignored(self, path: Path) -> bool:
         """Whether git ignores path, which need not exist yet."""
         result = proc.run([self.program, *CONFIG, "check-ignore", "-q", "--", str(path)],

@@ -119,8 +119,10 @@ class FakeGit:
                  attributes: Mapping[Path, Mapping[str, str]] | None = None,
                  staged_paths: tuple[str, ...] = (), blobs: Mapping[str, bytes] | None = None,
                  other_roots: tuple[Path, ...] = (), diffs: Mapping[Path, bytes] | None = None,
-                 ignored: frozenset[Path] = frozenset()) -> None:
+                 ignored: frozenset[Path] = frozenset(),
+                 superprojects: Mapping[Path, Path] | None = None) -> None:
         self.repo_root = root
+        self.superprojects = dict(superprojects or {})   # each submodule's root, the repository holding it
         self.ignored = ignored
         self.diffs = dict(diffs or {})             # each path's unstaged diff
         self.patches: list[bytes] = []             # every patch staged, in order
@@ -138,6 +140,9 @@ class FakeGit:
     def root(self, path: Path) -> Path | None:
         return next((root for root in self.other_roots if root == path or root in path.parents),
                     self.repo_root)
+
+    def superproject(self, root: Path) -> Path | None:
+        return self.superprojects.get(root)
 
     def is_tracked(self, path: Path) -> bool:
         return path in self.tracked
