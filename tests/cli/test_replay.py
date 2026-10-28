@@ -108,5 +108,16 @@ class AShellResultIsReplayedAsTheModelSawIt(unittest.TestCase):
         self.assertEqual(gone.fs.files, {}, "a file deleted since leaves the file system empty")
 
 
+class TheSnapshotGitAnswersEveryPortCall(unittest.TestCase):
+    def test_a_submodule_is_found_by_its_git_file(self):
+        files = {"a.txt": b"x", "sub/.git": b"gitdir: ../.git/modules/sub\n", "plain/.git": b"gitdir: x\n"}
+        with TemporaryProject(files, git=True) as root:
+            git = replay.SnapshotGit()
+            found = (git.superproject(root / "sub"), git.superproject(root / "plain"), git.superproject(root))
+        self.assertEqual(found, (root, None, None),
+                         "a .git file pointing into modules is a submodule of the repository above it, and "
+                         "a .git folder is a repository of its own")
+
+
 if __name__ == "__main__":
     unittest.main()

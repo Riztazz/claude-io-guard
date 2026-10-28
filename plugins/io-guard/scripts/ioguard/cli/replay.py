@@ -69,6 +69,15 @@ class SnapshotGit:
         self.roots[path] = None
         return None
 
+    def superproject(self, root: Path) -> Path | None:
+        """The repository above root, when root's .git is a file that points into a modules folder, as a
+        submodule's does."""
+        try:
+            pointer = (root / ".git").read_text("utf-8", "replace") if (root / ".git").is_file() else ""
+        except OSError:
+            return None
+        return self.root(root.parent) if "/modules/" in pointer.replace("\\", "/") else None
+
     def is_tracked(self, path: Path) -> bool:
         root = self.root(path)
         if root is None:

@@ -278,6 +278,39 @@ class EachDeleteFormTheReviewsLeftUnreadIsRead(Table):
             "Remove-Item old.zip; Move-Item C:/Users/u/Downloads/a.zip ."), "PowerShell")
 
 
+class ADeleteByAnotherToolIsRead(Table):
+    BUILT = "a path the program builds when it runs"
+
+    def test_each_tool_delete_outside_the_roots_is_refused(self):
+        self.assert_refused_for({
+            "find /c/x -delete": OUTSIDE, "find . -delete": ITSELF,
+            "rsync -a --delete empty/ /c/x/": OUTSIDE, "rsync -a --delete-after empty/ /c/x": OUTSIDE,
+            "rsync -a --remove-source-files /c/x/ build/": OUTSIDE,
+            "robocopy empty C:/x //MIR": OUTSIDE, "cmd //c \"robocopy empty C:\\x /MIR\"": OUTSIDE,
+            "robocopy C:/x build //MOVE": OUTSIDE,
+            "python -c \"import shutil; shutil.rmtree('C:/x')\"": OUTSIDE,
+            "python3 -c \"import shutil; shutil.rmtree(r'C:\\x')\"": OUTSIDE,
+            "python -c \"from pathlib import Path; Path('C:/x.txt').unlink()\"": OUTSIDE,
+            "python -c \"import os; os.remove(p)\"": self.BUILT,
+            "node -e \"require('fs').rmSync('C:/x',{recursive:true})\"": OUTSIDE,
+            "node -e \"fs.unlinkSync(name)\"": self.BUILT,
+            "npx rimraf /c/x": OUTSIDE, "pnpm dlx rimraf /c/x": OUTSIDE, "rimraf C:/x": OUTSIDE,
+            "npx rimraf 'dist/*'": "rimraf expands its own wildcards"})
+        self.assert_refused_for({
+            "npx rimraf C:/x": OUTSIDE, "robocopy empty C:\\x /MIR": OUTSIDE,
+            "python -c \"import shutil; shutil.rmtree('C:/x')\"": OUTSIDE}, "PowerShell")
+
+    def test_the_same_tools_inside_the_roots_or_deleting_nothing_pass(self):
+        self.assert_passed((
+            "find build -name '*.o' -delete", "rsync -a --delete empty/ build/",
+            "rsync -an --delete e/ /c/x/",
+            "rsync -a --delete build/ user@host:/srv/x/", "rsync -a /c/x/ build/", "robocopy build out /E",
+            "robocopy empty C:/x //MIR //L", "python -c \"import shutil; shutil.rmtree('build')\"",
+            "python -c \"x=[1]; x.remove(1)\"", "node -e \"require('fs').rmSync('build',{recursive:true})\"",
+            "npx -y rimraf build", "npx prettier --write ."))
+        self.assert_passed(("robocopy build out /E", "npx rimraf build"), "PowerShell")
+
+
 class ARecursiveDeleteOfARootOrOfGitIsRefused(Table):
     def test_each_fenced_target(self):
         self.assert_refused_for({

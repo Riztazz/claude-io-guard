@@ -6,7 +6,9 @@ eval string, a $( ) or backtick part, a heredoc or here-string a shell reads, or
 runs, that holds one; PowerShell's Remove-Item and its aliases rm, ri, del, erase, rd and rmdir,
 [IO.Directory]::Delete, [IO.File]::Delete and a .Delete() method, in a script block, an Invoke-Expression
 string, a Start-Process command line or a .ps1 script too; cmd /c or //c del, erase, rd and rmdir; git
-clean with --force, git rm without --cached, and git worktree remove. A mv or Move-Item that a delete
+clean with --force, git rm without --cached, and git worktree remove; find -delete, rsync --delete, robocopy
+/MIR and rimraf, alone or run by npx; and the file calls of a python -c or node -e program, such as
+shutil.rmtree or fs.rmSync, given a string literal. A mv or Move-Item that a delete
 follows is a Delete marked moved, since it can bring a path from outside to where the delete reaches. Some
 deletes name no target before the command runs: xargs takes its targets from stdin, Remove-Item with no path
 takes them from the pipeline, a shell fed by a pipe reads commands nobody wrote down, a program held in a
@@ -25,6 +27,7 @@ splatted table, starts with ~user, or names a Git Bash folder such as /usr or a 
 HKCU:, has no path before the command runs, and Resolved says why.
 """
 import fnmatch
+import itertools
 import re
 import shlex
 from dataclasses import dataclass, replace
@@ -62,10 +65,27 @@ SKIPPED = {"setsid": frozenset(), "caffeinate": frozenset({"-t", "-w"}),   # eac
            "wsl": frozenset({"-d", "--distribution", "-u", "--user", "--cd", "-cd", "--shell-type"})}
 MOUNTED = re.compile(r"^(['\"]?)/mnt/([A-Za-z])(?=/|['\"]?$)")      # wsl's mount of a Windows drive
 VARIABLE_PROGRAM = re.compile(r"^\"?\$")
+RSYNC_DELETE = re.compile(r"^--(?:del|delete(?:-before|-during|-delay|-after|-excluded|-missing-args)?)$")
+RSYNC_VALUED = frozenset({"-e", "--rsh", "-f", "--filter", "--exclude", "--include", "--exclude-from",
+                          "--include-from", "--files-from", "-T", "--temp-dir", "--log-file",
+                          "--password-file", "--backup-dir", "--compare-dest", "--copy-dest", "--link-dest",
+                          "--partial-dir", "--chmod", "--chown", "-B", "--block-size", "--timeout", "--port",
+                          "--bwlimit", "--max-size", "--min-size", "--suffix", "--rsync-path", "-M",
+                          "--remote-option"})
+REMOTE = re.compile(r"^(?:rsync://|[^/\\:]{2,}:)")        # host:path, never a drive letter's C:
+LITERAL = re.compile(r"\s*(?:(?:pathlib\.)?Path\(\s*)?(?P<raw>[rR]?)(?P<quote>['\"`])(?P<path>[^'\"`$]*)"
+                     r"(?P=quote)")
+PYTHON_CALLS = re.compile(r"(?P<call>\b(?:shutil\.)?rmtree|\bos\.(?:remove|unlink|rmdir|removedirs))\(")
+PATHLIB_CALL = re.compile(r"\bPath\(\s*(?P<raw>[rR]?)(?P<quote>['\"])(?P<path>[^'\"]*)(?P=quote)\s*\)"
+                          r"\.(?P<call>unlink|rmdir)\(")
+METHOD_CALL = re.compile(r"(?<!\bos)\.(?P<call>unlink|rmdir)\(")      # pathlib's, on any path object
+NODE_CALLS = re.compile(r"(?P<call>\b(?:fs|fsp|fsPromises|promises)\.(?:rm|rmdir|unlink)(?:Sync)?"
+                        r"|\b(?:rmSync|rmdirSync|unlinkSync)|\brimraf(?:\.sync|Sync)?)\(")
 RM_OPTIONS = re.compile(r"^(?:-[dfivIR]*[rRf][dfivrIR]*|--recursive|--force)$")
 XARGS_VALUED = frozenset({"-I", "-n", "-d", "-P", "-L", "-s", "-E", "-a"})
 FIND_NAMING = frozenset({"-name", "-iname", "-path", "-ipath", "-wholename", "-iwholename"})
 FIND_NARROWING = FIND_NAMING | {"-regex", "-iregex"}     # the tests that pick names, not ages or sizes
+FIND_ACTIONS = ("-delete", "-exec", "-execdir", "-ok")
 ONLY_VARIABLE = re.compile(r"\s*\$\{?\w+\}?\s*")
 IO_LINK = re.compile(r"::Create(?:Symbolic|Hard)Link\(", re.I)
 GLOB_LIMIT = 10_000              # the names a wildcard may examine before the target counts as unreadable
@@ -95,6 +115,7 @@ class Shell(Enum):
     BASH = "bash"
     POWERSHELL = "powershell"
     CMD = "cmd"
+    CODE = "code"                # a string literal in a program, which no shell expands
 
 
 @dataclass(frozen=True)
@@ -342,6 +363,8 @@ def simple_deletes(simple: shell.SimpleCommand, where: Path | None, host: Host, 
         return mv_moves(peeled[1:], raws[1:], where)
     if name == "find":
         return find_deletes(peeled, raws, where, host, depth)
+    if (tool := tool_deletes(peeled, raws, where, Shell.BASH)) is not None:
+        return tool
     if name == "git":
         return git_deletes(peeled[1:], raws[1:], where, host)
     if name == "eval":
@@ -370,7 +393,119 @@ def wrapped_deletes(words: list[str], where: Path | None, host: Host, depth: int
         return nested_powershell(wrapped.text, where, host, depth, wrapped.what)
     if wrapped.what == "cmd /c":
         return cmd_deletes(wrapped.raw, where)
+    program = wrapped.what.split()[0]
+    if program in ("python", "py", "node"):
+        return code_deletes(wrapped.what, wrapped.raw, "node" if program == "node" else "python", where)
     return []
+
+
+def tool_deletes(words: list[str], raws: list[str], where: Path | None,
+                 dialect: Shell) -> list[Delete] | None:
+    """The deletes of rsync --delete, robocopy /MIR and rimraf, run alone or by npx and the like, or None
+    when words run none of them."""
+    words, raws = package_runner_peeled(words, raws)
+    name = program_name(words[0]) if words else ""
+    if name == "rsync":
+        return rsync_deletes(words[1:], raws[1:], where, dialect)
+    if name == "robocopy":
+        return robocopy_deletes(words[1:], raws[1:], where, dialect)
+    if name == "rimraf":
+        return rimraf_deletes(words[1:], raws[1:], where, dialect)
+    return None
+
+
+def package_runner_peeled(words: list[str], raws: list[str]) -> tuple[list[str], list[str]]:
+    """words and raws past npx, pnpx, bunx, npm exec, pnpm dlx or exec, and yarn dlx or exec, and their
+    options."""
+    name = program_name(words[0]).lower() if words else ""
+    at = {"npx": 1, "pnpx": 1, "bunx": 1}.get(name, 0)
+    if name in ("npm", "pnpm", "yarn") and words[1:2] in (["exec"], ["x"], ["dlx"]):
+        at = 2
+    if not at:
+        return words, raws
+    while at < len(words) and words[at].startswith("-"):
+        at += 2 if words[at] in ("-p", "--package", "-c", "--call") else 1
+    return words[at:], raws[at:]
+
+
+def rsync_deletes(words: list[str], raws: list[str], where: Path | None, dialect: Shell) -> list[Delete]:
+    """What rsync deletes: the destination's extra files with --delete and its kin, and the sources' files
+    with --remove-source-files. A remote path and a dry run delete nothing here."""
+    options, operands, skip = [], [], False
+    for word, raw in zip(words, raws):
+        if skip:
+            skip = False
+        elif word.startswith("-") and word != "-":
+            options.append(word)
+            skip = word in RSYNC_VALUED
+        else:
+            operands.append(raw)
+    if "--dry-run" in options or any(re.match(r"^-[A-Za-z]*n", option) for option in options) \
+            or len(operands) < 2:
+        return []
+    local = [raw for raw in operands if not REMOTE.match(raw.strip("'\""))]
+    found = []
+    if any(RSYNC_DELETE.match(option) for option in options) and local and local[-1] == operands[-1]:
+        found.append(Delete("rsync --delete", operands[-1], True, dialect, where))
+    if "--remove-source-files" in options:
+        found += [Delete("rsync --remove-source-files", raw, True, dialect, where)
+                  for raw in operands[:-1] if raw in local]
+    return found
+
+
+def robocopy_deletes(words: list[str], raws: list[str], where: Path | None, dialect: Shell) -> list[Delete]:
+    """What robocopy deletes: the destination's extra files with /MIR or /PURGE, and the source with /MOV or
+    /MOVE. A switch may be written //MIR, as Git Bash needs it."""
+    switches = {word.lstrip("/").lower() for word in words if word.startswith("/")}
+    operands = [raw for word, raw in zip(words, raws) if not word.startswith("/")]
+    if "l" in switches or len(operands) < 2:
+        return []
+    found = []
+    if switches & {"mir", "purge"}:
+        found.append(Delete("robocopy /MIR", operands[1], True, dialect, where))
+    if switches & {"mov", "move"}:
+        found.append(Delete("robocopy /MOVE", operands[0], True, dialect, where))
+    return found
+
+
+def rimraf_deletes(words: list[str], raws: list[str], where: Path | None, dialect: Shell) -> list[Delete]:
+    """Each path rimraf deletes whole. rimraf expands a wildcard itself, so a target with one has no path
+    io-guard can name before it runs."""
+    found = []
+    for word, raw in zip(words, raws):
+        if word.startswith("-"):
+            continue
+        if re.search(r"[*?\[{]", word):
+            found.append(unnamed("rimraf", "rimraf expands its own wildcards", where, dialect))
+        else:
+            found.append(Delete("rimraf", raw, True, dialect, where))
+    return found
+
+
+def code_deletes(what: str, code: str, language: str, where: Path | None) -> list[Delete]:
+    """The deletes a python -c or node -e program makes through its file calls, such as shutil.rmtree or
+    fs.rmSync. A call given a string literal deletes that path, and any other has no path before the program
+    runs. rmtree, rimraf and a call given recursive: true are recursive."""
+    found = []
+    calls = PYTHON_CALLS if language == "python" else NODE_CALLS
+    for match in calls.finditer(code):
+        recursive = "rmtree" in match["call"] or "rimraf" in match["call"] \
+            or re.match(r"[^)]*recursive\s*:\s*true", code[match.end():]) is not None
+        literal = LITERAL.match(code, match.end())
+        found.append(code_delete(f"{what} {match['call']}", literal, recursive, where))
+    if language == "python":
+        named = {match.end(): match for match in PATHLIB_CALL.finditer(code)}
+        found += [code_delete(f"{what} .{match['call']}", named.get(match.end()), False, where)
+                  for match in METHOD_CALL.finditer(code)]
+    return found
+
+
+def code_delete(how: str, literal: re.Match | None, recursive: bool, where: Path | None) -> Delete:
+    """The delete of one call, its path from the string literal it was given, else no path."""
+    if literal is None:
+        return unnamed(how, "it deletes a path the program builds when it runs", where, Shell.CODE)
+    text = literal["path"] if literal["raw"] else literal["path"].replace("\\\\", "\\")
+    return Delete(how, text, recursive, Shell.CODE, where)
 
 
 def env_options(words: list[str]) -> list[str]:
@@ -557,22 +692,22 @@ def rm_deletes(name: str, words: list[str], raws: list[str], where: Path | None)
 
 def find_deletes(words: list[str], raws: list[str], where: Path | None, host: Host,
                  depth: int) -> list[Delete]:
-    """Each folder find walks, when its -exec deletes what it finds. Without a test that narrows what it
-    finds, such as -name, the delete is recursive, since it reaches every name under the folder."""
-    at = next((index for index, word in enumerate(words) if word in ("-exec", "-execdir", "-ok")), None)
+    """Each folder find walks, when its -delete or its -exec deletes what it finds. Without a test that
+    narrows what it finds, such as -name, the delete is recursive, since it reaches every name under the
+    folder."""
+    at = next((index for index, word in enumerate(words) if word in FIND_ACTIONS), None)
     if at is None:
         return []
-    inner = []
-    for word in words[at + 1:]:
-        if word in (";", "+", "\\;"):
-            break
-        inner.append(word)
-    if not inner:
-        return []
-    direct = program_name(inner[0]) in RM_PROGRAMS
-    nested = [] if direct else nested_bash(rules.command_text(inner), where, host, depth, "find -exec")
-    if not direct and not nested:
-        return []
+    how, nested = "find -delete", []
+    if "-delete" not in words:
+        inner = list(itertools.takewhile(lambda word: word not in (";", "+", "\\;"), words[at + 1:]))
+        if not inner:
+            return []
+        how = f"find -exec {program_name(inner[0])}"
+        direct = program_name(inner[0]) in RM_PROGRAMS
+        nested = [] if direct else nested_bash(rules.command_text(inner), where, host, depth, "find -exec")
+        if not direct and not nested:
+            return []
     roots = []
     for word, raw in zip(words[1:], raws[1:]):
         if word.startswith(("-", "(", "!")):
@@ -583,7 +718,6 @@ def find_deletes(words: list[str], raws: list[str], where: Path | None, host: Ho
     reaches_git = any(fnmatch.fnmatchcase(name, pattern) for pattern in patterns
                       for name in (".git", "./.git", ".git/x", "./.git/x", ".", "./"))
     recursive = reaches_git or not FIND_NARROWING.intersection(tests)
-    how = f"find -exec {program_name(inner[0])}"
     return [*(Delete(how, root, recursive, Shell.BASH, where) for root in roots or ["."]), *nested]
 
 
@@ -678,6 +812,8 @@ def powershell_simple(simple: shell.SimpleCommand, where: Path | None, host: Hos
     if name in START_PROCESS:
         started = started_words(simple)
         return [] if started is None else wrapped_deletes(started, where, host, depth)
+    if (tool := tool_deletes(words, raws, where, Shell.POWERSHELL)) is not None:
+        return tool
     if words[0].lower().endswith(".ps1"):
         return script_deletes(raws[0], where, host, depth, Shell.POWERSHELL)
     if name in rules.SHELLS and all(word.startswith(("-", "+")) for word in words[1:]) \
@@ -844,8 +980,8 @@ def comma_parts(text: str) -> list[str]:
 
 def cmd_deletes(line: str, where: Path | None) -> list[Delete]:
     """The deletes of a cmd /c line: del, erase, rd and rmdir anywhere in a statement, after if exist, call
-    or a parenthesis too, recursive with /s, a switch glued on as in rd/s/q. cmd reads every / as a switch.
-    After a cd, chdir, pushd or popd the folder is not known."""
+    or a parenthesis too, recursive with /s, a switch glued on as in rd/s/q, and robocopy /MIR. cmd reads
+    every / as a switch. After a cd, chdir, pushd or popd the folder is not known."""
     line = line.strip()
     if len(line) >= 2 and line[0] == line[-1] == '"':
         line = line[1:-1]
@@ -853,6 +989,10 @@ def cmd_deletes(line: str, where: Path | None) -> list[Delete]:
     for statement in re.split(r"&&|\|\||[&|]", line):
         if CMD_MOVES.match(statement):
             where = None
+            continue
+        if re.match(r"\s*\(?\s*robocopy(?:\.exe)?\s", statement, re.I):
+            words = re.findall(r'"[^"]*"|[^\s"]+', statement)[1:]
+            found += robocopy_deletes(words, words, where, Shell.CMD)
             continue
         if (match := CMD_DELETE_WORD.search(statement)) is None:
             continue
@@ -886,6 +1026,8 @@ def resolve(delete: Delete, host: Host) -> Resolved:
             return powershell_paths(delete.target, delete.cwd, host, delete.literal)
         case Shell.CMD:
             return cmd_paths(delete.target, delete.cwd, host)
+        case Shell.CODE:
+            return expanded_paths(delete.target, delete.cwd, host, globbing=False, whole=True)
 
 
 Piece = tuple[str, bool]         # a character of a word, and whether it is an unquoted wildcard
